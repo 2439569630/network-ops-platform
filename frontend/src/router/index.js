@@ -6,6 +6,11 @@ const router = createRouter({
   routes: [
     ...loginRoutes,
     ...homeRoutes,
+    // 重定向
+    {
+        path: '/',
+        redirect: '/home'
+    }
   ],
 })
 
