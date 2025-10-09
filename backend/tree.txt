@@ -1,0 +1,2 @@
+# 显示当前目录结构，但排除 venv 文件夹
+Get-ChildItem   -Recurse | Where-Object { $_.FullName -notlike '*\venv\*' } | Select-Object FullName
