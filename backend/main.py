@@ -8,6 +8,8 @@ from Routers.Login.Login import router as Login
 from DataBase import PostgreSQL
 from logger import setup_logger
 
+from DataBase.Redis import RedisManager
+
 import DataBase.PostgreSQL
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,14 @@ async def lifespan(app: FastAPI):
     print(
         data
     )
+    Redis = RedisManager()
+    await Redis.init_pool()
+
 
 
     yield
     await PostgreSQL.close()
+    await Redis.close_pool()
 
 app = FastAPI(lifespan=lifespan)
 
