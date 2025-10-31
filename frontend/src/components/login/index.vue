@@ -11,7 +11,6 @@ import Login from '@/components/login/index.vue'
 .box {
     width: 100%;
     height: 100vh;
-    background: #f0f2f5;
     /* 隐藏滚动条 */
     overflow: hidden;
 }

@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网络拓扑 - NetAutomation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #1a365d;
+            --secondary: #2d3748;
+            --accent: #3182ce;
+            --success: #38a169;
+            --warning: #d69e2e;
+            --danger: #e53e3e;
+            --light: #e2e8f0;
+            --dark: #171923;
+            --text: #e2e8f0;
+            --text-light: #a0aec0;
+            --sidebar-width: 300px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--dark), var(--primary));
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        /* 侧边栏样式 */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(26, 54, 93, 0.9);
+            padding: 20px;
+            height: 100vh;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            margin-left: 10px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        
+        .sidebar-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar-section h3 i {
+            margin-right: 10px;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .filter-select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        
+        .filter-checkbox {
+            margin-right: 8px;
+        }
+        
+        /* 设备列表 */
+        .device-list {
+            list-style: none;
+            margin-top: 15px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .device-list li {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .device-list li:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .device-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .device-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        
+        /* 状态指示器 */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        
+        .status-online {
+            background: var(--success);
+        }
+        
+        .status-offline {
+            background: var(--danger);
+        }
+        
+        .status-warning {
+            background: var(--warning);
+        }
+        
+        /* 主内容区域样式 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            background: rgba(26, 54, 93, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .content-header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .view-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* 拓扑图容器 */
+        .topology-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: rgba(26, 54, 93, 0.3);
+        }
+        
+        .topology-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 设备详情面板 */
+        .device-details {
+            position: absolute;
+            right: -400px;
+            top: 0;
+            width: 400px;
+            height: 100%;
+            background: rgba(45, 55, 72, 0.95);
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+            transition: right 0.3s ease;
+            padding: 20px;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+        }
+        
+        .device-details.active {
+            right: 0;
+        }
+        
+        .device-details-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .device-details-header h2 {
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .device-details-header h2 i {
+            margin-right: 10px;
+            color: var(--accent);
+        }
+        
+        .close-details {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .device-details-body {
+            margin-bottom: 20px;
+        }
+        
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        
+        .detail-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+        }
+        
+        .detail-section h3 i {
+            margin-right: 10px;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            color: var(--text-light);
+        }
+        
+        .detail-value {
+            font-weight: 500;
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 15px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .btn:hover {
+            background: #2b6cb0;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+        }
+        
+        .btn-outline:hover {
+            background: var(--accent);
+            color: white;
+        }
+        
+        /* 缩放控制 */
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(45, 55, 72, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 5px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .zoom-btn:hover {
+            background: #2b6cb0;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 250px;
+            }
+            
+            .device-details {
+                width: 350px;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 300px;
+            }
+            
+            .device-details {
+                width: 300px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .content-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .view-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .device-details {
+                width: 100%;
+                right: -100%;
+            }
+        }
+        
+        /* 拓扑图元素样式 */
+        .network-node {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .network-node:hover {
+            filter: brightness(1.2);
+            transform: scale(1.05);
+        }
+        
+        .network-link {
+            stroke: rgba(255, 255, 255, 0.3);
+            stroke-width: 2;
+            transition: stroke 0.3s;
+        }
+        
+        .link-online {
+            stroke: var(--success);
+        }
+        
+        .link-offline {
+            stroke: var(--danger);
+        }
+        
+        .link-warning {
+            stroke: var(--warning);
+        }
+        
+        .node-text {
+            font-size: 12px;
+            text-anchor: middle;
+            fill: var(--text);
+            pointer-events: none;
+        }
+        
+        /* 图例 */
+        .topology-legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(45, 55, 72, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .legend-title {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: var(--accent);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .legend-text {
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-project-diagram"></i>
+                <h2>拓扑管理</h2>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3><i class="fas fa-filter"></i> 拓扑筛选</h3>
+                <div class="filter-group">
+                    <label>显示设备类型</label>
+                    <select class="filter-select">
+                        <option value="all">所有设备</option>
+                        <option value="router">路由器</option>
+                        <option value="switch">交换机</option>
+                        <option value="firewall">防火墙</option>
+                        <option value="server">服务器</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>显示连接状态</label>
+                    <select class="filter-select">
+                        <option value="all">所有连接</option>
+                        <option value="online">仅在线</option>
+                        <option value="offline">仅离线</option>
+                        <option value="warning">仅警告</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>
+                        <input type="checkbox" class="filter-checkbox" checked>
+                        显示设备标签
+                    </label>
+                </div>
+                
+                <div class="filter-group">
+                    <label>
+                        <input type="checkbox" class="filter-checkbox" checked>
+                        显示连接状态
+                    </label>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3><i class="fas fa-network-wired"></i> 设备列表</h3>
+                <ul class="device-list">
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-online"></span>
+                            <span>核心路由器-CR01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-online"></span>
+                            <span>汇聚交换机-DS01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-warning"></span>
+                            <span>防火墙-FW01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-online"></span>
+                            <span>接入交换机-AS01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-offline"></span>
+                            <span>服务器-SVR01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-online"></span>
+                            <span>路由器-EDGE01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                    <li>
+                        <div class="device-info">
+                            <span class="status-indicator status-online"></span>
+                            <span>无线控制器-WLC01</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <div class="content-header">
+                <h1>网络拓扑视图</h1>
+                <div class="view-controls">
+                    <button class="btn btn-outline"><i class="fas fa-download"></i> 导出拓扑</button>
+                    <button class="btn"><i class="fas fa-sync-alt"></i> 刷新</button>
+                    <button class="btn"><i class="fas fa-plus"></i> 自动布局</button>
+                </div>
+            </div>
+            
+            <!-- 拓扑图容器 -->
+            <div class="topology-container">
+                <svg class="topology-canvas" id="topology-svg"></svg>
+                
+                <!-- 图例 -->
+                <div class="topology-legend">
+                    <div class="legend-title">图例</div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--success);"></div>
+                        <div class="legend-text">在线设备/连接</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--warning);"></div>
+                        <div class="legend-text">警告状态</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--danger);"></div>
+                        <div class="legend-text">离线设备/连接</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: var(--accent);"></div>
+                        <div class="legend-text">选中设备</div>
+                    </div>
+                </div>
+                
+                <!-- 缩放控制 -->
+                <div class="zoom-controls">
+                    <button class="zoom-btn" id="zoom-in"><i class="fas fa-plus"></i></button>
+                    <button class="zoom-btn" id="zoom-reset"><i class="fas fa-sync-alt"></i></button>
+                    <button class="zoom-btn" id="zoom-out"><i class="fas fa-minus"></i></button>
+                </div>
+                
+                <!-- 设备详情面板 -->
+                <div class="device-details" id="device-details">
+                    <div class="device-details-header">
+                        <h2><i class="fas fa-router"></i> 核心路由器-CR01</h2>
+                        <button class="close-details" id="close-details"><i class="fas fa-times"></i></button>
+                    </div>
+                    
+                    <div class="device-details-body">
+                        <div class="detail-section">
+                            <h3><i class="fas fa-info-circle"></i> 基本信息</h3>
+                            <div class="detail-item">
+                                <span class="detail-label">设备型号:</span>
+                                <span class="detail-value">Cisco Catalyst 9500</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">IP地址:</span>
+                                <span class="detail-value">192.168.1.1</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">MAC地址:</span>
+                                <span class="detail-value">00:1A:2B:3C:4D:5E</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">位置:</span>
+                                <span class="detail-value">北京数据中心-机架A01</span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-chart-line"></i> 性能状态</h3>
+                            <div class="detail-item">
+                                <span class="detail-label">CPU使用率:</span>
+                                <span class="detail-value" style="color: var(--danger);">92%</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">内存使用率:</span>
+                                <span class="detail-value">65%</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">温度:</span>
+                                <span class="detail-value">42°C</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">运行时间:</span>
+                                <span class="detail-value">45天12小时</span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-plug"></i> 接口状态</h3>
+                            <div class="detail-item">
+                                <span class="detail-label">GigabitEthernet0/0:</span>
+                                <span class="detail-value" style="color: var(--success);">Up (1Gbps)</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">GigabitEthernet0/1:</span>
+                                <span class="detail-value" style="color: var(--success);">Up (1Gbps)</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">GigabitEthernet0/2:</span>
+                                <span class="detail-value" style="color: var(--warning);">Up (100Mbps)</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">GigabitEthernet0/3:</span>
+                                <span class="detail-value" style="color: var(--danger);">Down</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="device-details-footer">
+                        <button class="btn btn-outline" style="width: 100%; margin-bottom: 10px;">
+                            <i class="fas fa-terminal"></i> SSH连接
+                        </button>
+                        <button class="btn" style="width: 100%;">
+                            <i class="fas fa-cog"></i> 配置设备
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const svg = document.getElementById('topology-svg');
+            const detailsPanel = document.getElementById('device-details');
+            const closeDetails = document.getElementById('close-details');
+            
+            // 设置SVG尺寸
+            function setSvgSize() {
+                const container = document.querySelector('.topology-container');
+                svg.setAttribute('width', container.clientWidth);
+                svg.setAttribute('height', container.clientHeight);
+            }
+            
+            // 初始化SVG尺寸
+            setSvgSize();
+            window.addEventListener('resize', setSvgSize);
+            
+            // 生成示例拓扑图
+            function generateTopology() {
+                // 清空现有内容
+                svg.innerHTML = '';
+                
+                const width = svg.clientWidth;
+                const height = svg.clientHeight;
+                
+                // 定义设备节点
+                const nodes = [
+                    { id: 'cr01', type: 'router', name: 'CR01', x: width/2, y: 100, status: 'online' },
+                    { id: 'ds01', type: 'switch', name: 'DS01', x: width/2 - 200, y: 250, status: 'online' },
+                    { id: 'fw01', type: 'firewall', name: 'FW01', x: width/2 + 200, y: 250, status: 'warning' },
+                    { id: 'as01', type: 'switch', name: 'AS01', x: width/2 - 300, y: 400, status: 'online' },
+                    { id: 'svr01', type: 'server', name: 'SVR01', x: width/2 - 100, y: 400, status: 'offline' },
+                    { id: 'edge01', type: 'router', name: 'EDGE01', x: width/2 + 100, y: 400, status: 'online' },
+                    { id: 'wlc01', type: 'server', name: 'WLC01', x: width/2 + 300, y: 400, status: 'online' }
+                ];
+                
+                // 定义连接
+                const links = [
+                    { source: 'cr01', target: 'ds01', status: 'online' },
+                    { source: 'cr01', target: 'fw01', status: 'online' },
+                    { source: 'ds01', target: 'as01', status: 'online' },
+                    { source: 'ds01', target: 'svr01', status: 'offline' },
+                    { source: 'fw01', target: 'edge01', status: 'warning' },
+                    { source: 'fw01', target: 'wlc01', status: 'online' }
+                ];
+                
+                // 绘制连接线
+                links.forEach(link => {
+                    const sourceNode = nodes.find(n => n.id === link.source);
+                    const targetNode = nodes.find(n => n.id === link.target);
+                    
+                    if (sourceNode && targetNode) {
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', sourceNode.x);
+                        line.setAttribute('y1', sourceNode.y);
+                        line.setAttribute('x2', targetNode.x);
+                        line.setAttribute('y2', targetNode.y);
+                        line.setAttribute('class', `network-link link-${link.status}`);
+                        line.setAttribute('data-source', link.source);
+                        line.setAttribute('data-target', link.target);
+                        svg.appendChild(line);
+                    }
+                });
+                
+                // 绘制设备节点
+                nodes.forEach(node => {
+                    // 设备图标
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', node.x);
+                    circle.setAttribute('cy', node.y);
+                    circle.setAttribute('r', '25');
+                    circle.setAttribute('class', `network-node node-${node.status}`);
+                    circle.setAttribute('data-id', node.id);
+                    circle.setAttribute('fill', getNodeColor(node.status));
+                    circle.setAttribute('stroke', '#fff');
+                    circle.setAttribute('stroke-width', '2');
+                    circle.style.cursor = 'pointer';
+                    
+                    // 添加点击事件
+                    circle.addEventListener('click', function() {
+                        showDeviceDetails(node);
+                    });
+                    
+                    svg.appendChild(circle);
+                    
+                    // 设备图标
+                    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    icon.setAttribute('x', node.x);
+                    icon.setAttribute('y', node.y + 5);
+                    icon.setAttribute('text-anchor', 'middle');
+                    icon.setAttribute('fill', '#fff');
+                    icon.setAttribute('font-size', '16');
+                    icon.setAttribute('pointer-events', 'none');
+                    icon.textContent = getDeviceIcon(node.type);
+                    svg.appendChild(icon);
+                    
+                    // 设备名称
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', node.x);
+                    text.setAttribute('y', node.y + 40);
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('fill', '#e2e8f0');
+                    text.setAttribute('font-size', '12');
+                    text.setAttribute('pointer-events', 'none');
+                    text.textContent = node.name;
+                    svg.appendChild(text);
+                });
+            }
+            
+            // 根据设备类型获取图标
+            function getDeviceIcon(type) {
+                const icons = {
+                    'router': '⌨️',
+                    'switch': '🔀',
+                    'firewall': '🛡️',
+                    'server': '🖥️'
+                };
+                return icons[type] || '🔘';
+            }
+            
+            // 根据状态获取节点颜色
+            function getNodeColor(status) {
+                const colors = {
+                    'online': '#38a169',
+                    'offline': '#e53e3e',
+                    'warning': '#d69e2e'
+                };
+                return colors[status] || '#a0aec0';
+            }
+            
+            // 显示设备详情
+            function showDeviceDetails(device) {
+                detailsPanel.classList.add('active');
+                // 这里可以根据设备信息更新详情面板内容
+            }
+            
+            // 关闭设备详情
+            closeDetails.addEventListener('click', function() {
+                detailsPanel.classList.remove('active');
+            });
+            
+            // 初始化拓扑图
+            generateTopology();
+            
+            // 缩放控制
+            let scale = 1;
+            const zoomInBtn = document.getElementById('zoom-in');
+            const zoomOutBtn = document.getElementById('zoom-out');
+            const zoomResetBtn = document.getElementById('zoom-reset');
+            
+            zoomInBtn.addEventListener('click', function() {
+                scale += 0.1;
+                svg.style.transform = `scale(${scale})`;
+            });
+            
+            zoomOutBtn.addEventListener('click', function() {
+                if (scale > 0.5) {
+                    scale -= 0.1;
+                    svg.style.transform = `scale(${scale})`;
+                }
+            });
+            
+            zoomResetBtn.addEventListener('click', function() {
+                scale = 1;
+                svg.style.transform = `scale(${scale})`;
+            });
+            
+            // 简单的拖拽功能
+            let isDragging = false;
+            let startX, startY;
+            let translateX = 0, translateY = 0;
+            
+            svg.addEventListener('mousedown', function(e) {
+                isDragging = true;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+                svg.style.cursor = 'grabbing';
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
+                svg.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
+            });
+            
+            document.addEventListener('mouseup', function() {
+                isDragging = false;
+                svg.style.cursor = 'grab';
+            });
+        });
+    </script>
+</body>
+</html>

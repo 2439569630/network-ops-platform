@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备管理 - NetAutomation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #1a365d;
+            --secondary: #2d3748;
+            --accent: #3182ce;
+            --success: #38a169;
+            --warning: #d69e2e;
+            --danger: #e53e3e;
+            --light: #e2e8f0;
+            --dark: #171923;
+            --text: #e2e8f0;
+            --text-light: #a0aec0;
+            --sidebar-width: 280px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--dark), var(--primary));
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+        }
+        
+        .container {
+            display: flex;
+            width: 100%;
+        }
+        
+        /* 侧边栏样式 */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(26, 54, 93, 0.9);
+            padding: 20px;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            margin-left: 10px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        
+        .sidebar-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar-section h3 i {
+            margin-right: 10px;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .filter-select, .filter-input {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        
+        .filter-checkbox {
+            margin-right: 8px;
+        }
+        
+        .filter-list {
+            list-style: none;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .filter-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+        }
+        
+        /* 主内容区域样式 */
+        .main-content {
+            flex: 1;
+            padding: 25px;
+        }
+        
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .content-header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .search-box {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            width: 300px;
+        }
+        
+        .search-box input {
+            flex: 1;
+            padding: 10px 15px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+        }
+        
+        .search-box button {
+            padding: 10px 15px;
+            background: var(--accent);
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* 设备网格布局 */
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .device-card {
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s, box-shadow 0.3s;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .device-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .device-card-header {
+            background: rgba(26, 54, 93, 0.8);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .device-card-header h3 {
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .device-card-header h3 i {
+            margin-right: 10px;
+            color: var(--accent);
+        }
+        
+        .device-status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .status-online {
+            background: rgba(56, 161, 105, 0.2);
+            color: var(--success);
+        }
+        
+        .status-offline {
+            background: rgba(229, 62, 62, 0.2);
+            color: var(--danger);
+        }
+        
+        .status-warning {
+            background: rgba(214, 158, 46, 0.2);
+            color: var(--warning);
+        }
+        
+        .device-card-body {
+            padding: 15px;
+        }
+        
+        .device-info {
+            margin-bottom: 15px;
+        }
+        
+        .device-info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .device-info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            color: var(--text-light);
+        }
+        
+        .info-value {
+            font-weight: 500;
+        }
+        
+        .device-card-footer {
+            padding: 15px;
+            background: rgba(26, 54, 93, 0.4);
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 15px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .btn:hover {
+            background: #2b6cb0;
+        }
+        
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+        }
+        
+        .btn-outline:hover {
+            background: var(--accent);
+            color: white;
+        }
+        
+        /* 设备列表视图 */
+        .devices-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
+        
+        .devices-table th {
+            background: rgba(26, 54, 93, 0.8);
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .devices-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .devices-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .devices-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        /* 分页控件 */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .pagination-item {
+            padding: 8px 15px;
+            margin: 0 5px;
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .pagination-item:hover, .pagination-item.active {
+            background: var(--accent);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .devices-grid {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+            
+            .sidebar-content {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 20px;
+            }
+            
+            .sidebar-section {
+                margin-bottom: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .content-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .search-box {
+                width: 100%;
+                margin: 15px 0;
+            }
+            
+            .action-buttons {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .devices-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .devices-table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+        
+        /* 视图切换 */
+        .view-options {
+            display: flex;
+            margin-bottom: 20px;
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 5px;
+            overflow: hidden;
+            width: fit-content;
+        }
+        
+        .view-option {
+            padding: 8px 15px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .view-option.active {
+            background: var(--accent);
+        }
+        
+        /* 选项卡样式 */
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .tab.active {
+            color: var(--accent);
+        }
+        
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--accent);
+        }
+        
+        /* 复选框样式 */
+        .device-checkbox {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-filter"></i>
+                <h2>设备筛选</h2>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-search"></i> 搜索</h3>
+                    <div class="filter-group">
+                        <input type="text" class="filter-input" placeholder="设备名称、IP或型号...">
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-network-wired"></i> 设备类型</h3>
+                    <div class="filter-group">
+                        <select class="filter-select">
+                            <option value="">所有类型</option>
+                            <option value="router">路由器</option>
+                            <option value="switch">交换机</option>
+                            <option value="firewall">防火墙</option>
+                            <option value="ap">无线AP</option>
+                            <option value="server">服务器</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-check-circle"></i> 状态</h3>
+                    <div class="filter-group">
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>在线</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>离线</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>警告</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-map-marker-alt"></i> 位置</h3>
+                    <div class="filter-group">
+                        <select class="filter-select">
+                            <option value="">所有位置</option>
+                            <option value="beijing">北京数据中心</option>
+                            <option value="shanghai">上海办公室</option>
+                            <option value="guangzhou">广州分公司</option>
+                            <option value="chengdu">成都办事处</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-microchip"></i> 厂商</h3>
+                    <ul class="filter-list">
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> Cisco</label></li>
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> Huawei</label></li>
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> H3C</label></li>
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> Juniper</label></li>
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> Dell</label></li>
+                        <li><label><input type="checkbox" class="filter-checkbox" checked> HP</label></li>
+                    </ul>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-exclamation-triangle"></i> 告警级别</h3>
+                    <div class="filter-group">
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>严重</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>警告</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            <span>正常</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <div class="content-header">
+                <h1>设备管理</h1>
+                <div class="search-box">
+                    <input type="text" placeholder="搜索设备...">
+                    <button><i class="fas fa-search"></i></button>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn"><i class="fas fa-plus"></i> 添加设备</button>
+                    <button class="btn"><i class="fas fa-download"></i> 导出</button>
+                </div>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab active">所有设备</button>
+                <button class="tab">路由器</button>
+                <button class="tab">交换机</button>
+                <button class="tab">防火墙</button>
+                <button class="tab">无线设备</button>
+            </div>
+            
+            <div class="view-options">
+                <button class="view-option active"><i class="fas fa-th"></i></button>
+                <button class="view-option"><i class="fas fa-list"></i></button>
+            </div>
+            
+            <!-- 设备卡片视图 -->
+            <div class="devices-grid">
+                <!-- 设备卡片1 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-router"></i> CORE-R01</h3>
+                        <span class="device-status status-online">在线</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.1</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">Cisco 9500</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">北京数据中心</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">CPU使用率:</span>
+                                <span class="info-value" style="color: var(--danger);">92%</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">内存使用率:</span>
+                                <span class="info-value">65%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline"><i class="fas fa-terminal"></i> SSH</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 设备卡片2 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-network-wired"></i> SW-ACCESS-01</h3>
+                        <span class="device-status status-online">在线</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.2</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">H3C S6850</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">上海办公室</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">CPU使用率:</span>
+                                <span class="info-value">35%</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">内存使用率:</span>
+                                <span class="info-value">42%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline"><i class="fas fa-terminal"></i> SSH</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 设备卡片3 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-shield-alt"></i> FW-PERIMETER</h3>
+                        <span class="device-status status-warning">警告</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.3</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">FortiGate 100F</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">北京数据中心</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">CPU使用率:</span>
+                                <span class="info-value">78%</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">内存使用率:</span>
+                                <span class="info-value" style="color: var(--warning);">85%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline"><i class="fas fa-terminal"></i> SSH</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 设备卡片4 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-wifi"></i> AP-FLOOR-2</h3>
+                        <span class="device-status status-offline">离线</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.4</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">Aruba AP-515</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">广州分公司</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">状态:</span>
+                                <span class="info-value" style="color: var(--danger);">连接失败</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">离线时间:</span>
+                                <span class="info-value">2小时前</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline" disabled><i class="fas fa-terminal"></i> SSH</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 设备卡片5 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-server"></i> SERVER-DB01</h3>
+                        <span class="device-status status-online">在线</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.5</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">Dell PowerEdge R740</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">成都办事处</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">CPU使用率:</span>
+                                <span class="info-value">45%</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">内存使用率:</span>
+                                <span class="info-value">62%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline"><i class="fas fa-terminal"></i> RDP</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 设备卡片6 -->
+                <div class="device-card">
+                    <div class="device-card-header">
+                        <h3><i class="fas fa-router"></i> EDGE-R02</h3>
+                        <span class="device-status status-online">在线</span>
+                    </div>
+                    <div class="device-card-body">
+                        <div class="device-info">
+                            <div class="device-info-item">
+                                <span class="info-label">IP地址:</span>
+                                <span class="info-value">192.168.1.6</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">型号:</span>
+                                <span class="info-value">Juniper MX204</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">位置:</span>
+                                <span class="info-value">北京数据中心</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">CPU使用率:</span>
+                                <span class="info-value">28%</span>
+                            </div>
+                            <div class="device-info-item">
+                                <span class="info-label">内存使用率:</span>
+                                <span class="info-value">35%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-card-footer">
+                        <button class="btn btn-sm btn-outline"><i class="fas fa-terminal"></i> SSH</button>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm"><i class="fas fa-cog"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 分页控件 -->
+            <div class="pagination">
+                <div class="pagination-item"><i class="fas fa-chevron-left"></i></div>
+                <div class="pagination-item active">1</div>
+                <div class="pagination-item">2</div>
+                <div class="pagination-item">3</div>
+                <div class="pagination-item">4</div>
+                <div class="pagination-item">5</div>
+                <div class="pagination-item"><i class="fas fa-chevron-right"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 简单的视图切换功能
+        document.querySelectorAll('.view-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.view-option').forEach(opt => {
+                    opt.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // 这里可以添加切换卡片视图和列表视图的逻辑
+            });
+        });
+        
+        // 选项卡切换功能
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // 这里可以添加切换不同设备分类的逻辑
+            });
+        });
+    </script>
+</body>
+</html>

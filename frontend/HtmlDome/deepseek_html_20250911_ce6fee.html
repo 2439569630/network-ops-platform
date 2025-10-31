@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自动化任务 - NetAutomation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #1a365d;
+            --secondary: #2d3748;
+            --accent: #3182ce;
+            --success: #38a169;
+            --warning: #d69e2e;
+            --danger: #e53e3e;
+            --light: #e2e8f0;
+            --dark: #171923;
+            --text: #e2e8f0;
+            --text-light: #a0aec0;
+            --sidebar-width: 280px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--dark), var(--primary));
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* 侧边栏样式 */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(26, 54, 93, 0.9);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            margin-left: 10px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        
+        .sidebar-section h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar-section h3 i {
+            margin-right: 10px;
+        }
+        
+        /* 任务分类 */
+        .category-list {
+            list-style: none;
+        }
+        
+        .category-list li {
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+        }
+        
+        .category-list li:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .category-list li.active {
+            background: var(--accent);
+        }
+        
+        .category-list i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .category-count {
+            margin-left: auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+        }
+        
+        /* 筛选器 */
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .filter-select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        
+        .filter-checkbox {
+            margin-right: 8px;
+        }
+        
+        /* 主内容区域样式 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 25px;
+        }
+        
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .content-header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .search-box {
+            display: flex;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            width: 300px;
+        }
+        
+        .search-box input {
+            flex: 1;
+            padding: 10px 15px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+        }
+        
+        .search-box button {
+            padding: 10px 15px;
+            background: var(--accent);
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* 选项卡样式 */
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 5px;
+            overflow: hidden;
+            width: fit-content;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: var(--accent);
+        }
+        
+        /* 任务列表 */
+        .tasks-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 25px;
+        }
+        
+        .tasks-list {
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+        }
+        
+        .tasks-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: rgba(26, 54, 93, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .tasks-list-header h3 {
+            font-size: 1.2rem;
+        }
+        
+        .tasks-list-content {
+            padding: 0;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .task-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .task-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .task-item:last-child {
+            border-bottom: none;
+        }
+        
+        .task-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .task-title {
+            font-size: 1.1rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+        
+        .task-title i {
+            margin-right: 10px;
+            color: var(--accent);
+        }
+        
+        .task-status {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .status-scheduled {
+            background: rgba(49, 130, 206, 0.2);
+            color: var(--accent);
+        }
+        
+        .status-running {
+            background: rgba(214, 158, 46, 0.2);
+            color: var(--warning);
+        }
+        
+        .status-completed {
+            background: rgba(56, 161, 105, 0.2);
+            color: var(--success);
+        }
+        
+        .status-failed {
+            background: rgba(229, 62, 62, 0.2);
+            color: var(--danger);
+        }
+        
+        .task-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+        
+        .task-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .task-detail-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .task-detail-item i {
+            margin-right: 8px;
+            color: var(--accent);
+        }
+        
+        /* 任务详情面板 */
+        .task-detail-panel {
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            height: fit-content;
+        }
+        
+        .task-detail-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .task-detail-header h3 {
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .task-detail-header h3 i {
+            margin-right: 10px;
+            color: var(--accent);
+        }
+        
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        
+        .detail-section h4 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+        }
+        
+        .detail-section h4 i {
+            margin-right: 10px;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            color: var(--text-light);
+        }
+        
+        .detail-value {
+            font-weight: 500;
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+            text-decoration: none;
+        }
+        
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .btn:hover {
+            background: #2b6cb0;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+        
+        .btn-block {
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .btn-success {
+            background: var(--success);
+        }
+        
+        .btn-success:hover {
+            background: #2f855a;
+        }
+        
+        .btn-warning {
+            background: var(--warning);
+        }
+        
+        .btn-warning:hover {
+            background: #b7791f;
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+        }
+        
+        .btn-danger:hover {
+            background: #c53030;
+        }
+        
+        /* 执行历史 */
+        .execution-history {
+            margin-top: 20px;
+        }
+        
+        .history-item {
+            padding: 12px 15px;
+            border-radius: 5px;
+            background: rgba(26, 54, 93, 0.4);
+            margin-bottom: 10px;
+        }
+        
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .history-date {
+            font-weight: 500;
+        }
+        
+        .history-status {
+            font-size: 0.9rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        
+        .history-duration {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .tasks-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .task-detail-panel {
+                order: -1;
+                margin-bottom: 25px;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                margin-bottom: 25px;
+            }
+            
+            .sidebar-content {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 20px;
+            }
+            
+            .sidebar-section {
+                margin-bottom: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .content-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .search-box {
+                width: 100%;
+                margin: 15px 0;
+            }
+            
+            .action-buttons {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .tabs {
+                width: 100%;
+            }
+            
+            .tab {
+                flex: 1;
+                text-align: center;
+            }
+        }
+        
+        /* 工作流设计器 */
+        .workflow-designer {
+            background: rgba(45, 55, 72, 0.6);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+        }
+        
+        .workflow-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .workflow-canvas {
+            height: 300px;
+            background: rgba(26, 54, 93, 0.4);
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .workflow-canvas::before {
+            content: "";
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(49, 130, 206, 0.1) 10px,
+                rgba(49, 130, 206, 0.1) 20px
+            );
+            animation: moveBackground 20s linear infinite;
+        }
+        
+        @keyframes moveBackground {
+            0% { transform: translateX(0) translateY(0); }
+            100% { transform: translateX(-50%) translateY(-50%); }
+        }
+        
+        .workflow-placeholder {
+            text-align: center;
+            z-index: 2;
+            position: relative;
+        }
+        
+        .workflow-placeholder i {
+            font-size: 3rem;
+            color: var(--accent);
+            margin-bottom: 15px;
+        }
+        
+        .workflow-tools {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: var(--secondary);
+            border-radius: 10px;
+            width: 500px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 {
+            font-size: 1.3rem;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .close-modal {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: var(--text);
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-robot"></i>
+                <h2>自动化任务</h2>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-list"></i> 任务分类</h3>
+                    <ul class="category-list">
+                        <li class="active">
+                            <i class="fas fa-network-wired"></i>
+                            <span>配置管理</span>
+                            <span class="category-count">12</span>
+                        </li>
+                        <li>
+                            <i class="fas fa-shield-alt"></i>
+                            <span>安全策略</span>
+                            <span class="category-count">8</span>
+                        </li>
+                        <li>
+                            <i class="fas fa-backup"></i>
+                            <span>备份任务</span>
+                            <span class="category-count">5</span>
+                        </li>
+                        <li>
+                            <i class="fas fa-sync-alt"></i>
+                            <span>系统维护</span>
+                            <span class="category-count">7</span>
+                        </li>
+                        <li>
+                            <i class="fas fa-bug"></i>
+                            <span>故障处理</span>
+                            <span class="category-count">3</span>
+                        </li>
+                        <li>
+                            <i class="fas fa-chart-line"></i>
+                            <span>性能监控</span>
+                            <span class="category-count">9</span>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-filter"></i> 筛选条件</h3>
+                    <div class="filter-group">
+                        <label>任务状态</label>
+                        <select class="filter-select">
+                            <option value="all">所有状态</option>
+                            <option value="scheduled">已计划</option>
+                            <option value="running">运行中</option>
+                            <option value="completed">已完成</option>
+                            <option value="failed">已失败</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>设备类型</label>
+                        <select class="filter-select">
+                            <option value="all">所有设备</option>
+                            <option value="router">路由器</option>
+                            <option value="switch">交换机</option>
+                            <option value="firewall">防火墙</option>
+                            <option value="server">服务器</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>
+                            <input type="checkbox" class="filter-checkbox" checked>
+                            仅显示启用任务
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-history"></i> 最近执行</h3>
+                    <div class="filter-group">
+                        <label>时间范围</label>
+                        <select class="filter-select">
+                            <option value="today">今天</option>
+                            <option value="week">本周</option>
+                            <option value="month">本月</option>
+                            <option value="all">所有时间</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <div class="content-header">
+                <h1>自动化任务管理</h1>
+                <div class="search-box">
+                    <input type="text" placeholder="搜索任务...">
+                    <button><i class="fas fa-search"></i></button>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn" id="create-task-btn"><i class="fas fa-plus"></i> 创建任务</button>
+                    <button class="btn btn-outline"><i class="fas fa-download"></i> 导出</button>
+                </div>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab active">任务列表</button>
+                <button class="tab">工作流设计</button>
+                <button class="tab">执行历史</button>
+                <button class="tab">任务模板</button>
+            </div>
+            
+            <div class="tasks-container">
+                <!-- 任务详情面板 -->
+                <div class="task-detail-panel">
+                    <div class="task-detail-header">
+                        <h3><i class="fas fa-network-wired"></i> 核心设备配置备份</h3>
+                        <span class="task-status status-scheduled">已计划</span>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4><i class="fas fa-info-circle"></i> 基本信息</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">任务类型:</span>
+                            <span class="detail-value">配置备份</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">目标设备:</span>
+                            <span class="detail-value">核心交换机, 核心路由器</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">执行频率:</span>
+                            <span class="detail-value">每天 02:00</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">创建人:</span>
+                            <span class="detail-value">admin</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">创建时间:</span>
+                            <span class="detail-value">2023-10-15</span>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4><i class="fas fa-cog"></i> 任务操作</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <button class="btn btn-success"><i class="fas fa-play"></i> 立即执行</button>
+                            <button class="btn btn-warning"><i class="fas fa-pause"></i> 暂停任务</button>
+                            <button class="btn"><i class="fas fa-edit"></i> 编辑</button>
+                            <button class="btn btn-danger"><i class="fas fa-trash"></i> 删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4><i class="fas fa-history"></i> 最近执行</h4>
+                        <div class="execution-history">
+                            <div class="history-item">
+                                <div class="history-header">
+                                    <span class="history-date">2023-11-05 02:00</span>
+                                    <span class="history-status status-completed">成功</span>
+                                </div>
+                                <div class="history-duration">执行时间: 2分34秒</div>
+                            </div>
+                            <div class="history-item">
+                                <div class="history-header">
+                                    <span class="history-date">2023-11-04 02:00</span>
+                                    <span class="history-status status-completed">成功</span>
+                                </div>
+                                <div class="history-duration">执行时间: 3分12秒</div>
+                            </div>
+                            <div class="history-item">
+                                <div class="history-header">
+                                    <span class="history-date">2023-11-03 02:00</span>
+                                    <span class="history-status status-failed">失败</span>
+                                </div>
+                                <div class="history-duration">执行时间: 1分45秒</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 任务列表 -->
+                <div class="tasks-list">
+                    <div class="tasks-list-header">
+                        <h3>任务列表</h3>
+                        <div>
+                            <button class="btn btn-sm"><i class="fas fa-sort"></i> 排序</button>
+                        </div>
+                    </div>
+                    <div class="tasks-list-content">
+                        <!-- 任务项 -->
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-network-wired"></i>
+                                    核心设备配置备份
+                                </div>
+                                <span class="task-status status-scheduled">已计划</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>每天 02:00</span>
+                                <span>上次执行: 今天 02:00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-shield-alt"></i>
+                                    防火墙策略更新
+                                </div>
+                                <span class="task-status status-running">运行中</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>每周一 03:00</span>
+                                <span>开始于: 10分钟前</span>
+                            </div>
+                        </div>
+                        
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-sync-alt"></i>
+                                    设备软件升级
+                                </div>
+                                <span class="task-status status-completed">已完成</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>单次任务</span>
+                                <span>完成于: 2小时前</span>
+                            </div>
+                        </div>
+                        
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-bug"></i>
+                                    安全漏洞扫描
+                                </div>
+                                <span class="task-status status-failed">已失败</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>每周五 22:00</span>
+                                <span>上次执行: 昨天 22:00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-backup"></i>
+                                    系统配置归档
+                                </div>
+                                <span class="task-status status-scheduled">已计划</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>每月1号 04:00</span>
+                                <span>下次执行: 2023-12-01</span>
+                            </div>
+                        </div>
+                        
+                        <div class="task-item">
+                            <div class="task-item-header">
+                                <div class="task-title">
+                                    <i class="fas fa-chart-line"></i>
+                                    性能数据收集
+                                </div>
+                                <span class="task-status status-scheduled">已计划</span>
+                            </div>
+                            <div class="task-meta">
+                                <span>每小时</span>
+                                <span>上次执行: 25分钟前</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 工作流设计器 -->
+            <div class="workflow-designer">
+                <div class="workflow-header">
+                    <h3>工作流设计器</h3>
+                    <button class="btn btn-sm"><i class="fas fa-plus"></i> 添加步骤</button>
+                </div>
+                <div class="workflow-canvas">
+                    <div class="workflow-placeholder">
+                        <i class="fas fa-project-diagram"></i>
+                        <p>拖放任务步骤到此处创建工作流</p>
+                    </div>
+                </div>
+                <div class="workflow-tools">
+                    <button class="btn"><i class="fas fa-save"></i> 保存工作流</button>
+                    <button class="btn btn-outline"><i class="fas fa-play"></i> 测试工作流</button>
+                    <button class="btn btn-outline"><i class="fas fa-question-circle"></i> 帮助</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 创建任务模态框 -->
+    <div class="modal" id="create-task-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>创建新任务</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>任务名称</label>
+                    <input type="text" class="form-control" placeholder="输入任务名称">
+                </div>
+                
+                <div class="form-group">
+                    <label>任务描述</label>
+                    <textarea class="form-control" rows="3" placeholder="输入任务描述"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>任务类型</label>
+                    <select class="form-control">
+                        <option value="">选择任务类型</option>
+                        <option value="backup">配置备份</option>
+                        <option value="update">软件更新</option>
+                        <option value="security">安全扫描</option>
+                        <option value="monitor">性能监控</option>
+                        <option value="custom">自定义脚本</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>目标设备</label>
+                    <select class="form-control" multiple>
+                        <option value="all">所有设备</option>
+                        <option value="router1">核心路由器-CR01</option>
+                        <option value="switch1">核心交换机-DS01</option>
+                        <option value="firewall1">防火墙-FW01</option>
+                        <option value="server1">服务器-SVR01</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>执行计划</label>
+                    <select class="form-control">
+                        <option value="once">单次执行</option>
+                        <option value="daily">每天</option>
+                        <option value="weekly">每周</option>
+                        <option value="monthly">每月</option>
+                        <option value="cron">自定义CRON表达式</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="cancel-create">取消</button>
+                <button class="btn">创建任务</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 模态框控制
+        const createTaskBtn = document.getElementById('create-task-btn');
+        const createTaskModal = document.getElementById('create-task-modal');
+        const cancelCreateBtn = document.getElementById('cancel-create');
+        const closeModalBtn = document.querySelector('.close-modal');
+        
+        createTaskBtn.addEventListener('click', function() {
+            createTaskModal.style.display = 'flex';
+        });
+        
+        cancelCreateBtn.addEventListener('click', function() {
+            createTaskModal.style.display = 'none';
+        });
+        
+        closeModalBtn.addEventListener('click', function() {
+            createTaskModal.style.display = 'none';
+        });
+        
+        // 点击模态框外部关闭
+        window.addEventListener('click', function(event) {
+            if (event.target === createTaskModal) {
+                createTaskModal.style.display = 'none';
+            }
+        });
+        
+        // 选项卡切换
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // 任务项点击事件
+        const taskItems = document.querySelectorAll('.task-item');
+        taskItems.forEach(item => {
+            item.addEventListener('click', function() {
+                taskItems.forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // 分类列表点击事件
+        const categoryItems = document.querySelectorAll('.category-list li');
+        categoryItems.forEach(item => {
+            item.addEventListener('click', function() {
+                categoryItems.forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

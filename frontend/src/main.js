@@ -1,24 +1,44 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { createPinia } from 'pinia'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
 import 'vuetify/styles'
+// ElementPlus
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+
 
 // 引入 fontawesome
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 // 按需引入你需要的图标
-import { faHome,faSitemap,faSync,faPlus } from '@fortawesome/free-solid-svg-icons'
-import { faHome as faHomeRegular } from '@fortawesome/free-regular-svg-icons'
+import { faHome,faSitemap,faSync,faPlus,faGlobe,faBell,faServer,faChartLine,faList} from '@fortawesome/free-solid-svg-icons'
 
-library.add(faHome, faHomeRegular, faPlus)
-library.add(faSitemap)
-library.add(faSync)
+library.add(faHome, faPlus,faGlobe,faBell,faSitemap,faSync,faServer,faChartLine,faList)
+
 const app = createApp(App)
+const pinia = createPinia()
 
+import axios from './axios/axios.js'
+
+// 在main.js或组件中
+export default {
+  mounted() {
+    this.$nextTick(() => {
+      const observer = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          console.log(`${entry.name}: ${entry.duration}ms`)
+        })
+      })
+      observer.observe({entryTypes: ['measure']})
+    })
+  }
+}
+app.config.performance = true // 开启性能监测
 const vuetify = createVuetify({
   components,
   directives,
@@ -27,4 +47,6 @@ const vuetify = createVuetify({
 app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(vuetify)
 app.use(router)
+app.use(pinia)
+app.use(ElementPlus)
 app.mount('#app')

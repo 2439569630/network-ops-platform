@@ -1,8 +1,12 @@
-<template>
+<template v-once>
     <div class="box">
         <div class="container">
             <div class="one">
                 <one />
+            </div>
+
+            <div class="DataCard">
+                <DataCard />
             </div>
 
         </div>
@@ -10,17 +14,11 @@
 </template>
 <script setup>
 import one from "./one_components.vue"
+import DataCard from "./DataCard.vue"
 </script>
 <style scoped>
 .box {
-    position: absolute;
-    top: 70px;
-    left: 0;
-    bottom: 0;
-    right: 0;
-    height: calc(100vh - 70px);
-    /* 隐藏滚动条 */
-    overflow: hidden;
+    height: 100%;
     background: linear-gradient(135deg, var(--dark), var(--primary));
 }
 .container {
@@ -37,9 +35,26 @@ import one from "./one_components.vue"
 
 .one {
     width: 100%;
-    height: 10%;
-    min-height: 50px;
+    height: auto;
     margin-top: 30px;
 
 }
+.DataCard {
+    width: 100%;
+    height: 80%;
+    margin-top: 20px;
+}
+
+
+
+/* 媒体查询 */
+/* 小屏 */
+@media (max-width: 991px) {
+    .bigBox,.container,.one {
+        margin: 0;
+        padding: 0;
+    }
+
+}
+
 </style>
