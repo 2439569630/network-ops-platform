@@ -15,11 +15,11 @@ async def init():
     try:
         # 创建连接池
         pool = await asyncpg.create_pool(
-            host='www.mynameislhq.xyz',
-            port=5432,
-            user='user',
-            password='kf4PTkCsBFWWaNCp',
-            database='user',
+            host='123.207.72.157',
+            port=54322,
+            user='lhq',
+            password='isHjPEaxBrwbkQpN',
+            database='lhq',
             min_size=5,
             max_size=20,
             command_timeout=30,
