@@ -28,10 +28,14 @@ import LEFT from './left/left.vue'
     /* background: rgba(45, 55, 72, 0.6); */
 }
 .main {
-    width: 80vw;
+    width: 85vw;
     /* background: rgba(45, 55, 72, 0.6); */
     height: 100vh;
+    padding: 0;
+}
 
+.common-layout :deep(.el-main) {
+    padding: 0;
 }
 
 </style>

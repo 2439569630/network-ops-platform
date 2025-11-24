@@ -17,7 +17,7 @@
 <style scoped>
 .header {
     height: 80px;
-    background: rgba(26, 54, 93, 0.9);
+    /* background: rgba(26, 54, 93, 0.9); */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     /* 固定菜单栏 */
     position: fixed;

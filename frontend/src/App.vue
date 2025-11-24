@@ -15,7 +15,7 @@
 .app {
     width: 100vw;
     height: 100vh;
-    background: linear-gradient(135deg, var(--dark), var(--primary));
+    /* background: linear-gradient(135deg, var(--dark), var(--primary)); */
     overflow: hidden;
 }
 
@@ -34,27 +34,27 @@ body::-webkit-scrollbar {
 
 /* 为所有非根元素启用滚动条 */
 div::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 div::-webkit-scrollbar-track {
-    background: #2d3748;
-    border-radius: 5px;
+    background: #f1f5f9;
+    border-radius: 4px;
 }
 
 div::-webkit-scrollbar-thumb {
-    background: #4a5568;
-    border-radius: 5px;
-    border: 2px solid #2d3748;
+    background: #cbd5e1;
+    border-radius: 4px;
+    border: none;
 }
 
 div::-webkit-scrollbar-thumb:hover {
-    background: #718096;
+    background: #94a3b8;
 }
 
 div {
     scrollbar-width: thin;
-    scrollbar-color: #4a5568 #2d3748;
+    scrollbar-color: #cbd5e1 #f1f5f9;
 }
 </style>

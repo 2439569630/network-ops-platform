@@ -42,11 +42,9 @@ const goto = (path) => {
     height: 100%;
     color: white;
     padding: 10px;
-    /* 新增以下属性 */
     display: flex;
-    /* 设置为 Flex 布局 */
-background: rgba(26, 54, 93, 0.8);
-
+    background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
 }
 
 .tac {
@@ -59,7 +57,6 @@ background: rgba(26, 54, 93, 0.8);
 }
 .menu {
     background: none;
-    /* background: rgba(45, 55, 72, 0.6); */
     color: #fff;
     border: 0;
 }
@@ -67,13 +64,25 @@ background: rgba(26, 54, 93, 0.8);
     border: 0;
     color: #fff;
     background: none;
-
 }
 .el-menu-item {
-    color: #fff;
+    color: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    margin: 4px 0;
+    transition: all 0.3s ease;
 }
 .el-menu-item:hover {
-    background: rgba(116, 128, 147, 0.6);
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    transform: translateX(4px);
+}
+.el-menu-item.is-active {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-weight: 500;
+}
+.el-menu-item-group {
+    padding: 8px 0;
 }
 
 </style>

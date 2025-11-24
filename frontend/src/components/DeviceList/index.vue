@@ -1,19 +1,20 @@
 <template>
-    <div class="DeviceList-common-layout">
-        <el-container class="container">
-            <el-header class="header-DeviceList">
-                <Header />
-            </el-header>
+    <div :class="[$style.deviceListLayout]" v-loading="deviceStore.loading" element-loading-text="加载中..."
+            element-loading-background="rgba(0, 0, 0, 0.5)">
 
-            <el-main class="Main-DeviceList">
-                <Main />
-            </el-main>
-            <el-footer class="footer-DeviceList">
-                <Footer />
-            </el-footer>
-        </el-container>
+        <el-header :class="$style.headerDeviceList">
+            <Header />
+        </el-header>
+        <el-main :class="$style.mainDeviceList">
+            <Main />
+        </el-main>
+        <el-footer :class="$style.footerDeviceList">
+            <Footer />
+        </el-footer>
+
     </div>
 </template>
+
 
 <script setup>
 import Header from './Header.vue'
@@ -28,22 +29,10 @@ const deviceStore = dveiceDateStore()
 
 // 页面加载时获取数据
 onMounted(async () => {
-    // 先清空数据
+    // 切换页面数据展示类型 
+    console.log(deviceStore.getdataCardType)
     deviceStore.clearData()
-    await axios.get('/user/device/get?type=0')
-        .then((response) => {
-            if (response.data) {
-                deviceStore.addData(response.data)
-            }
-        }).catch((error) => {
-            console.error('获取设备信息失败:', error)
-            ElMessage({
-                message: error.response.data?.message ,
-                type: 'error'
-            })
-        })
-
-
+    deviceStore.getServerDveiceData()
 })
 
 
@@ -51,16 +40,35 @@ onMounted(async () => {
 
 </script>
 
-<style scoped>
-.DeviceList-common-layout {
-    height: calc(100vh - 40px);
-    /* 使用视口高度作为基准 */
+<style module>
+.deviceListLayout {
+    height: 100vh;
     width: 100%;
     display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #f8f9fa;
+}
+
+.headerDeviceList {
+    height: 10%;
+    width: 100%;
 
 }
 
-.header-DeviceList {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+.mainDeviceList {
+    height: 80%;
+    width: 100%;
+    margin-top: 20px;
+    flex-grow: 1;
+    padding-top: 0;
+    overflow: hidden;
 }
+
+.footerDeviceList {
+    /* height: 10%; */
+    width: 100%;
+
+}
+
 </style>
