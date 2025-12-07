@@ -1,3 +1,5 @@
+import messagePushRoutes from '@/router/messagePush/index.js'
+
 export default [
     {
         path: '/user',
@@ -20,6 +22,7 @@ export default [
                     title: '设备列表'
                 }
             },
+            ...messagePushRoutes
         ]
     },
    

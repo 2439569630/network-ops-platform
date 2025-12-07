@@ -7,7 +7,7 @@
                         <el-menu-item index="1" @click="goto('/user/home')">首页</el-menu-item>
                         <el-menu-item index="2" @click="goto('/user/device')">设备管理</el-menu-item>
                         <el-menu-item index="3" @click="goto('/user/device')">SNMP</el-menu-item>
-                        <el-menu-item index="4" @click="goto('/user/device')">消息推送</el-menu-item>
+                        <el-menu-item index="4" @click="goto('/user/message')">消息推送</el-menu-item>
                         <el-menu-item index="5" @click="goto('/user/device')">全局配置</el-menu-item>
                         <el-menu-item index="10" @click="goto('/Login')">退出登录</el-menu-item>
                     </el-menu-item-group>
