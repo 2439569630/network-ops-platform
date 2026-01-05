@@ -1,79 +1,94 @@
 import asyncio
 import logging
+import subprocess
+import sys
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from Routers.Login.Login import router as Login
-from Routers.User.device import router as device
-
-from DataBase import PostgreSQL
-from logger import setup_logger
-
-from DataBase.Redis import RedisManager
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import DataBase.PostgreSQL
 
-# 导入异常消息处理
-from auth.security import UnicornException, unicorn_exception_handler
+from app.api.v1.api import api_router
+from app.api.v1.endpoints import devices
+from app.workers.monitor.manager import MonitorManager
+from app.core.config import settings
+from app.core.database import db
+from app.core.redis import redis_manager
+from app.core.logger import setup_logger
+from app.core.security import UnicornException, unicorn_exception_handler
 
 logger = logging.getLogger(__name__)
-# 首先配置日志系统
-setup_logger()
 
+# 配置日志系统
+setup_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info('初始化')
+    logger.info('服务初始化...')
 
-    # 初始化 Redis 实例
-    redis = RedisManager()
-
-    # 并发执行初始化
-    init_tasks = [
-        PostgreSQL.init(),
-        redis.init_pool()
-    ]
-    await asyncio.gather(*init_tasks)
-
-    # 获取连接池
-    pool = PostgreSQL.get_pool()
+    # 1. 初始化资源
+    await redis_manager.init()
+    await db.connect()
 
     # 测试数据库连接
-    data = await PostgreSQL.execute('select 1', fetch_val=True, fetch=True)
-    print(data)
+    try:
+        await db.fetch_val('select 1')
+        logger.info("数据库连接成功")
+    except Exception as e:
+        logger.error(f"数据库连接失败: {e}")
+
+    # 2. 启动监控服务
+    monitor = MonitorManager()
+    await monitor.start()
 
     yield
 
-    # 并发执行关闭任务
+    # 4. 清理资源
+    logger.info('服务关闭中...')
+    
+    # 关闭 SSH 子进程
+    global ssh_process
+    if ssh_process:
+        logger.info("正在停止 SSH 子进程...")
+        ssh_process.terminate()
+        try:
+            # 等待子进程退出
+            ssh_process.wait(timeout=5)
+            logger.info("SSH 子进程已停止")
+        except subprocess.TimeoutExpired:
+            logger.warning("SSH 子进程停止超时，强制关闭")
+            ssh_process.kill()
+    
+    await monitor.stop()
+    
     close_tasks = [
-        PostgreSQL.close(),
-        redis.close_pool()
+        db.disconnect(),
+        redis_manager.close()
     ]
     await asyncio.gather(*close_tasks)
 
-app = FastAPI(lifespan=lifespan)
-
-
-# 跨域配置
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
-
-
-# 导入并注册路由模块
-# include_router()用于将路由注册到FastAPI应用中
-app.include_router(Login)  # 注册登录相关的路由模块
-app.include_router(device)  # 注册设备相关的路由模块
+# 跨域配置
+if settings.BACKEND_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # 注册异常处理器
 app.add_exception_handler(UnicornException, unicorn_exception_handler)
+
+# 路由注册
+# 标准 API (挂载在 /api/v1)
+app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+app.include_router(devices.router, prefix="/user/device", tags=["Device (Legacy)"])
