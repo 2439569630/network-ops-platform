@@ -118,7 +118,7 @@ const login = async (userName, userPassword) => {
         return
     }
 
-    axios.post('/login', {
+    axios.post('/api/v1/auth/login', {
         username: userName,
         password: userPassword
     }).then(async res => {
@@ -129,7 +129,19 @@ const login = async (userName, userPassword) => {
             localStorage.removeItem('username')
             localStorage.removeItem('password')
         }
-        await router.push('/user/home')
+        
+        // 存储 Token (新接口返回 token 字段)
+        if (res.data.token) {
+            // 设置 cookie (保留原逻辑，或者根据需求存 localStorage)
+            // document.cookie = `token=${res.data.token}; path=/; max-age=${60 * 60 * 24 * 7}` 
+            // 注意：后端如果已经 Set-Cookie，前端无需手动设置，除非需要存 localStorage
+            // 这里假设后端 Set-Cookie 或者返回 token 供前端使用
+            // 如果后端返回结构变了，这里需要适配
+            // 假设后端返回 { status: "success", message: "...", token: "..." }
+            console.log("Login success, token:", res.data.token)
+        }
+
+        await router.push('/user/dashboard')
 
         ElNotification({
             title: 'Success',
@@ -144,7 +156,7 @@ const login = async (userName, userPassword) => {
         
         ElNotification({
             title: 'Error',
-            message: err.response.data.message || '登录失败',
+            message: err.response?.data?.message || err.message || '登录失败',
             type: 'error',
         })
     })

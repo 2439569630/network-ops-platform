@@ -3,7 +3,7 @@
         <div class="device-list-header">
             <div class="header-left">
                 <h1 class="page-title">设备管理</h1>
-                <p class="page-subtitle">管理系统中的所有网络设备</p>
+                <p class="page-subtitle">管理网络设备</p>
             </div>
 
             <div class="header-center">
@@ -14,6 +14,8 @@
                         placeholder="搜索设备名称、IP地址或位置..." 
                         :prefix-icon="Search"
                         clearable
+                        @clear="handleSearch"
+                        @keyup.enter="handleSearch"
                     />
                     <el-button 
                         type="primary" 
@@ -29,7 +31,7 @@
                 <el-button 
                     type="primary" 
                     :icon="Plus" 
-                    @click="dialogFormVisible = true"
+                    @click="addDevice"
                     class="action-btn primary"
                 >
                     添加设备
@@ -48,33 +50,35 @@
         <el-dialog 
             v-model="dialogFormVisible" 
             title="添加新设备" 
-            width="650px" 
-            
+            width="600px" 
             class="device-dialog"
             center
+            :close-on-click-modal="false"
+            destroy-on-close
         >
             <el-form 
                 :model="deviceForm" 
                 :rules="rules" 
                 ref="deviceFormRef" 
-                label-width="100px"
-                label-position="left"
+                label-width="90px"
+                label-position="right"
                 class="device-form"
+                status-icon
             >
+                <!-- 基本信息 -->
+                <div class="form-section-title">基本信息</div>
                 <div class="form-row">
                     <el-form-item label="设备名称" prop="device_name" class="form-item">
                         <el-input 
                             v-model="deviceForm.device_name" 
-                            placeholder="请输入设备名称" 
-                            size="large"
+                            placeholder="例如: Core-Router-01" 
                         />
                     </el-form-item>
                     
                     <el-form-item label="设备类型" prop="type" class="form-item">
                         <el-select 
                             v-model="deviceForm.type" 
-                            placeholder="请选择设备类型"
-                            size="large"
+                            placeholder="请选择"
                             style="width: 100%"
                         >
                             <el-option label="路由器" value="路由器" />
@@ -84,39 +88,33 @@
                         </el-select>
                     </el-form-item>
                 </div>
-                
+
+                <!-- 连接信息 -->
+                <div class="form-section-title">连接信息</div>
                 <div class="form-row">
-                    <el-form-item label="IPv4地址" prop="ipv4" class="form-item">
+                    <el-form-item label="IPv4地址" prop="ipv4" class="form-item" style="flex: 2">
                         <el-input 
                             v-model="deviceForm.ipv4" 
                             placeholder="例如: 192.168.1.1" 
-                            size="large"
                         />
                     </el-form-item>
-
-                    <el-form-item label="MAC地址" prop="mac" class="form-item">
-                        <el-input 
-                            v-model="deviceForm.mac" 
-                            placeholder="例如: 00-1B-44-11-3A-B7" 
-                            size="large"
+                    <el-form-item label="SSH端口" prop="ssh_port" class="form-item" style="flex: 1">
+                        <el-input-number 
+                            v-model="deviceForm.ssh_port" 
+                            :min="1" 
+                            :max="65535"
+                            style="width: 100%"
+                            controls-position="right"
                         />
                     </el-form-item>
                 </div>
-                
-                <el-form-item label="IPv6地址" class="full-width">
-                    <el-input 
-                        v-model="deviceForm.ipv6" 
-                        placeholder="例如: 2001:0db8:85a3:0000:0000:8a2e:0370:7334" 
-                        size="large"
-                    />
-                </el-form-item>
-                
+
                 <div class="form-row">
                     <el-form-item label="账号" prop="user_name" class="form-item">
                         <el-input 
                             v-model="deviceForm.user_name" 
-                            placeholder="请输入登录账号" 
-                            size="large"
+                            placeholder="登录用户名" 
+                            :prefix-icon="User"
                         />
                     </el-form-item>
 
@@ -124,44 +122,61 @@
                         <el-input 
                             v-model="deviceForm.password" 
                             type="password"
-                            placeholder="请输入登录密码" 
-                            size="large"
+                            placeholder="登录密码" 
                             show-password
+                            :prefix-icon="Lock"
+                        />
+                    </el-form-item>
+                </div>
+
+                <!-- 其他信息 -->
+                <div class="form-section-title">其他信息</div>
+                <div class="form-row">
+                    <el-form-item label="MAC地址" prop="mac" class="form-item">
+                        <el-input 
+                            v-model="deviceForm.mac" 
+                            placeholder="例如: 00:1B:44:11:3A:B7" 
+                        />
+                    </el-form-item>
+                    <el-form-item label="位置" prop="location" class="form-item">
+                        <el-input 
+                            v-model="deviceForm.location" 
+                            placeholder="例如: 机房A-01柜" 
+                            :prefix-icon="Location"
                         />
                     </el-form-item>
                 </div>
                 
-                <el-form-item label="位置" prop="location" class="full-width">
+                <el-form-item label="IPv6地址" prop="ipv6" class="full-width">
                     <el-input 
-                        v-model="deviceForm.location" 
-                        placeholder="请输入设备物理位置" 
-                        size="large"
+                        v-model="deviceForm.ipv6" 
+                        placeholder="例如: 2001:0db8:85a3:0000:0000:8a2e:0370:7334" 
                     />
                 </el-form-item>
             </el-form>
             
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button 
-                        @click="testConnect()" 
-                        class="test-btn"
-                        :icon="Connection"
-                    >
-                        测试连接
-                    </el-button>
-                    <div>
+                    <div class="footer-left">
                         <el-button 
-                            @click="closeDialog" 
-                            class="cancel-btn"
+                            @click="testConnect" 
+                            class="test-btn"
+                            :loading="testing"
+                            :icon="Connection"
+                            plain
+                            type="warning"
                         >
-                            取消
+                            {{ testing ? '连接测试中...' : '测试连接' }}
                         </el-button>
+                    </div>
+                    <div class="footer-right">
+                        <el-button @click="closeDialog">取消</el-button>
                         <el-button 
                             type="primary" 
                             @click="submitForm"
-                            class="confirm-btn"
+                            :loading="submitting"
                         >
-                            添加设备
+                            确定添加
                         </el-button>
                     </div>
                 </div>
@@ -171,15 +186,21 @@
 </template>
 
 <script setup>
-import { Plus, Upload, Search, Connection } from '@element-plus/icons-vue'
+import { Plus, Upload, Search, Connection, User, Lock, Location } from '@element-plus/icons-vue'
 import { ref, reactive } from 'vue'
 import axios from '@/axios/axios'
+import { ElMessage } from 'element-plus'
+import { dveiceDateStore } from './Date/index' // 引入 Store
+
+const store = dveiceDateStore() // 使用 Store
 
 // 搜索输入
 const searchInput = ref('')
 
 // 表单显示状态
 const dialogFormVisible = ref(false)
+const testing = ref(false)
+const submitting = ref(false)
 
 // 设备表单
 const deviceForm = reactive({
@@ -191,6 +212,7 @@ const deviceForm = reactive({
     ipv6: '',
     mac: '',
     location: '',
+    ssh_port: 22,
     status: '在线'
 })
 
@@ -206,20 +228,21 @@ const rules = reactive({
         { required: true, message: '请输入IPv4地址', trigger: 'blur' },
         { 
             pattern: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
-            message: '请输入正确的IPv4地址格式',
+            message: 'IPv4格式不正确',
             trigger: 'blur'
         }
+    ],
+    ssh_port: [
+        { required: true, message: '请输入端口', trigger: 'blur' },
+        { type: 'number', message: '必须为数字', trigger: 'blur' }
     ],
     mac: [
         { required: false, message: 'MAC地址', trigger: 'blur' },
         {
             pattern: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/,
-            message: '请输入正确的MAC地址格式',
+            message: 'MAC地址格式不正确',
             trigger: 'blur'
         }
-    ],
-    location: [
-        { required: false, message: '请输入设备位置', trigger: 'blur' }
     ],
     user_name: [
         { required: true, message: '请输入账号', trigger: 'blur' }
@@ -234,7 +257,8 @@ const deviceFormRef = ref()
 
 // 搜索事件
 const handleSearch = () => {
-    console.log('搜索', searchInput.value)
+    // 调用 Store 的搜索方法
+    store.setSearchQuery(searchInput.value)
 }
 
 // 打开添加设备弹窗
@@ -248,6 +272,7 @@ const closeDialog = () => {
     // 重置表单
     if (deviceFormRef.value) {
         deviceFormRef.value.resetFields()
+        deviceForm.ssh_port = 22 // 重置端口默认值
     }
 }
 
@@ -255,57 +280,57 @@ const closeDialog = () => {
 const submitForm = () => {
     if (!deviceFormRef.value) return
     
-    deviceFormRef.value.validate((valid) => {
+    deviceFormRef.value.validate(async (valid) => {
         if (valid) {
-            axios.post('/user/device/add', deviceForm).then((res) => {
-                
-            })
-            closeDialog()
-        } else {
-            console.log('表单验证失败')
-            return false
+            submitting.value = true
+            try {
+                const res = await axios.post('/user/device/add', deviceForm)
+                if (res.data.code === 200) {
+                    ElMessage.success('设备添加成功')
+                    closeDialog()
+                    // 刷新列表
+                    store.refreshData()
+                } else {
+                    ElMessage.error(res.data.message || '添加失败')
+                }
+            } catch (error) {
+                console.error('添加设备错误:', error)
+                ElMessage.error('添加设备失败')
+            } finally {
+                submitting.value = false
+            }
         }
     })
 }
 
 // 测试连接
 const testConnect = async () => {
-   try {
-        const baseURL = axios.defaults.baseURL;
-        const response = await fetch(`${baseURL}/user/device/add`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                credentials: 'include'
-            },
-            body: JSON.stringify({
-                ...deviceForm,
-            })
-        });
+    // 简单验证必要字段
+    if (!deviceForm.ipv4 || !deviceForm.user_name || !deviceForm.password || !deviceForm.type) {
+        ElMessage.warning('请先填写设备类型、IPv4、账号和密码')
+        return
+    }
 
-        if (!response.ok) {
-            throw new Error(`SSH连接测试失败: ${response.status}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullResponse = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-                console.log('SSH测试完成');
-                break;
-            }
-
-            const chunk = decoder.decode(value);
-            fullResponse += chunk;
-        }
+    testing.value = true
+    try {
+        const res = await axios.post('/user/device/test_connect', {
+            ipv4: deviceForm.ipv4,
+            ssh_port: deviceForm.ssh_port,
+            user_name: deviceForm.user_name,
+            password: deviceForm.password,
+            type: deviceForm.type
+        })
         
-        return fullResponse;
+        if (res.data.code === 200) {
+            ElMessage.success('连接测试成功')
+        } else {
+            ElMessage.error(res.data.message || '连接测试失败')
+        }
     } catch (error) {
         console.error('SSH连接测试错误:', error);
+        ElMessage.error('连接测试请求发生错误')
+    } finally {
+        testing.value = false
     }
 }
 </script>
@@ -313,7 +338,6 @@ const testConnect = async () => {
 <style scoped>
 .device-list-container {
     width: 100%;
-    background: none;
     margin-top: 20px;
 }
 
@@ -324,7 +348,7 @@ const testConnect = async () => {
     background: #fff;
     padding: 24px;
     border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
     flex-wrap: wrap;
     gap: 20px;
 }
@@ -332,8 +356,6 @@ const testConnect = async () => {
 .header-left {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-width: 200px;
 }
 
 .page-title {
@@ -345,98 +367,100 @@ const testConnect = async () => {
 
 .page-subtitle {
     font-size: 14px;
-    color: #6b7280;
+    color: #9ca3af;
     margin: 0;
 }
 
 .header-center {
+    flex: 1;
     display: flex;
     justify-content: center;
-    flex: 2;
-    min-width: 300px;
 }
 
 .search-box {
     display: flex;
     align-items: center;
-    max-width: 400px;
+    max-width: 480px;
     width: 100%;
+    gap: 12px;
 }
 
 .search-input {
     flex: 1;
-    margin-right: 8px;
 }
 
-.search-input :deep(.el-input__inner) {
+.search-input :deep(.el-input__wrapper) {
     border-radius: 8px;
-    height: 40px;
+    padding: 4px 12px;
+    box-shadow: 0 0 0 1px #e5e7eb inset;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 2px #3b82f6 inset;
 }
 
 .search-btn {
-    height: 40px;
     border-radius: 8px;
-    padding: 0 20px;
+    padding: 0 24px;
+    height: 40px;
 }
 
 .header-right {
     display: flex;
-    justify-content: flex-end;
-    flex: 1;
-    min-width: 250px;
     gap: 12px;
 }
 
 .action-btn {
-    height: 40px;
     border-radius: 8px;
-    font-weight: 500;
-    padding: 0 16px;
+    height: 40px;
+    padding: 0 20px;
 }
 
-.action-btn.primary {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    border: none;
-}
-
-.action-btn.primary:hover {
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-/* 弹窗样式 */
+/* 弹窗样式优化 */
 .device-dialog :deep(.el-dialog) {
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .device-dialog :deep(.el-dialog__header) {
-    padding: 24px 24px 16px;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 20px 24px;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
     margin-right: 0;
 }
 
 .device-dialog :deep(.el-dialog__title) {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
-    color: #1f2937;
+    color: #111827;
 }
 
 .device-dialog :deep(.el-dialog__body) {
-    padding: 24px;
+    padding: 24px 32px;
+}
+
+.form-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 16px;
+    padding-left: 8px;
+    border-left: 3px solid #3b82f6;
+    line-height: 1;
 }
 
 .device-form {
-    padding: 0 8px;
+    padding: 4px 0;
 }
 
 .form-row {
     display: flex;
-    gap: 20px;
+    gap: 24px;
+    margin-bottom: 8px;
 }
 
-.form-item, .full-width {
+.form-item {
     flex: 1;
 }
 
@@ -446,78 +470,42 @@ const testConnect = async () => {
 
 .device-form :deep(.el-form-item__label) {
     font-weight: 500;
-    color: #374151;
-    padding-bottom: 8px;
+    color: #4b5563;
 }
 
-.device-form :deep(.el-input__inner) {
-    border-radius: 8px;
-    height: 40px;
-}
-
-.device-form :deep(.el-select) {
-    width: 100%;
+.device-form :deep(.el-input__wrapper),
+.device-form :deep(.el-select__wrapper) {
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px #d1d5db inset;
 }
 
 .dialog-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 16px;
-    border-top: 1px solid #f0f0f0;
+    padding-top: 8px;
 }
 
-.test-btn {
-    color: #3b82f6;
-    border-color: #3b82f6;
+.footer-left {
+    display: flex;
+    align-items: center;
 }
 
-.test-btn:hover {
-    background: #eff6ff;
-    color: #1d4ed8;
-    border-color: #1d4ed8;
+.footer-right {
+    display: flex;
+    gap: 12px;
 }
 
-.cancel-btn {
-    margin-right: 12px;
-}
-
-.confirm-btn {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    border: none;
-    padding: 0 24px;
-}
-
-.confirm-btn:hover {
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
-    transform: translateY(-1px);
-}
-
-/* 响应式设计 */
-@media (max-width: 1024px) {
+/* 响应式适配 */
+@media (max-width: 768px) {
     .device-list-header {
         flex-direction: column;
         align-items: stretch;
-        gap: 20px;
     }
     
-    .header-left, .header-center, .header-right {
-        justify-content: center;
-        min-width: auto;
-    }
-    
-    .header-right {
-        justify-content: center;
-    }
-}
-
-@media (max-width: 768px) {
-    .device-list-container {
-        padding: 12px;
-    }
-    
-    .device-list-header {
-        padding: 16px;
+    .header-center {
+        order: 3;
+        width: 100%;
     }
     
     .form-row {
@@ -526,14 +514,22 @@ const testConnect = async () => {
     }
     
     .dialog-footer {
-        flex-direction: column;
-        gap: 12px;
+        flex-direction: column-reverse;
+        gap: 16px;
     }
     
-    .dialog-footer > div {
+    .footer-left, .footer-right {
         width: 100%;
-        display: flex;
-        justify-content: flex-end;
+        justify-content: center;
+    }
+    
+    .footer-right {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .footer-right button {
+        width: 100%;
     }
 }
 </style>

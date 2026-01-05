@@ -51,16 +51,16 @@ onMounted(async () => {
 }
 
 .headerDeviceList {
-    height: 10%;
+    min-height: 120px;
+    background: none;
     width: 100%;
-
+    padding: 0 20px; /* Add some padding to align with body */
 }
 
 .mainDeviceList {
-    height: 80%;
+    flex: 1; /* Take remaining space */
     width: 100%;
     margin-top: 20px;
-    flex-grow: 1;
     padding-top: 0;
     overflow: hidden;
 }

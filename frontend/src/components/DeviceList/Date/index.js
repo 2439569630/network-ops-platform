@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
-
+import Cookies from 'js-cookie'
 // 设备列表数据
 export const dveiceDateStore = defineStore('data', () => {
     // {
@@ -28,12 +28,47 @@ export const dveiceDateStore = defineStore('data', () => {
     // loading状态
     const loading = ref(false)
 
+    // 分页相关
+    const currentPage = ref(1)
+    const pageSize = ref(10)
 
-
+    // 搜索相关
+    const searchQuery = ref('')
 
     /////////////////////////////////////////////
     ///////////////  操作区域 ///////////////////
     ////////////////////////////////////////////
+    
+    // 发送指令获取数据
+    const sendGetListCommand = () => {
+        if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+            const command = {
+                command: 'get_list',
+                type: dataCard.value === 0 ? 0 : dataCard.value, // 这里的 dataCard 其实被用作了 type，根据组件逻辑调整
+                search: searchQuery.value
+            }
+            console.log('Sending command:', command)
+            ws.value.send(JSON.stringify(command))
+            loading.value = true
+        }
+    }
+
+    // 设置搜索词并刷新
+    const setSearchQuery = (query) => {
+        searchQuery.value = query
+        currentPage.value = 1 // 重置页码
+        sendGetListCommand()
+    }
+    
+    // 强制刷新
+    const refreshData = () => {
+        sendGetListCommand()
+    }
+
+    // 监听 dataCard 变化 (Tab 切换)
+    // 注意：Main.vue 里的 handleTabClick 调用了 getServerDveiceData，所以这里可能不需要 watch，或者调整逻辑
+    // 现在的 getServerDveiceData 只是初始化连接，如果连接已存在，应该直接发指令
+
 
 
 
@@ -54,6 +89,16 @@ export const dveiceDateStore = defineStore('data', () => {
     const getData = () => {
         return data.value  // 返回data的value属性值
     }
+
+    /**
+     * 获取分页数据
+     */
+    const getPaginatedData = () => {
+        const start = (currentPage.value - 1) * pageSize.value
+        const end = start + pageSize.value
+        return data.value.slice(start, end)
+    }
+
     const dataLength = () => {
         return data.value.length
     }
@@ -89,62 +134,157 @@ export const dveiceDateStore = defineStore('data', () => {
     }
 
     // 监听data的变化，决定是否显示加载动画
-    watch(data, (newValue, oldValue) => {
-        if (newValue.length === 0) {
-            loading.value = true
-        } else {
-            loading.value = false
-        }
-    })
+    // watch(data, (newValue, oldValue) => {
+    //     if (newValue.length === 0) {
+    //         loading.value = true
+    //     } else {
+    //         loading.value = false
+    //     }
+    // })
 
+    // WebSocket 实例
+    const ws = ref(null)
 
-
-    const getServerDveiceData = async (urlType = 0) => {
-        try {
-            const timeout = 10000 // 设置超时时间为10秒
-            // 构建url
-            const url = `/user/device/get?type=${urlType}`
-            console.log(urlType)
-
-            // 添加超时控制
-            const response = await Promise.race([
-                axios.get(url),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('请求超时')), timeout)
-                )
-            ])
-
-            if (response.data) {
-                addData(response.data)
-                return response.data
-            }
-        } catch (error) {
-            console.error("获取设备列表数据失败：", error)
-
-            const errorMessage = error.message === '请求超时'
-                ? '请求超时，请检查网络连接'
-                : error.response?.data?.message || error.message || '获取设备数据失败'
-
-            ElMessage({
-                message: errorMessage,
-                type: 'error'
-            })
-
-            throw error
+    // 停止 WebSocket (原停止轮询)
+    const stopPolling = () => {
+        if (ws.value) {
+            ws.value.close()
+            ws.value = null
         }
     }
 
+    const initWebSocket = (urlType = 0) => {
+        // 确保先关闭旧连接
+        stopPolling()
 
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const wsHost = window.location.hostname
+        // 动态获取端口
+        // 如果是开发环境(5173)，则后端通常在 8000
+        // 否则(生产环境)，使用当前端口(空代表80/443)
+        const port = window.location.port === '5173' ? '8000' : window.location.port
+        const wsPort = port ? `:${port}` : ''
 
+        const token = Cookies.get('token')
+        
+        if (!token) {
+            console.error('WebSocket init failed: No token found')
+            loading.value = false
+            return
+        }
 
+        const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/list?token=${token}`
+        
+        console.log('Connecting to WebSocket:', wsUrl)
 
+        try {
+            ws.value = new WebSocket(wsUrl)
 
+            ws.value.onopen = () => {
+                console.log('Device List WebSocket connected')
+                // 连接成功后，立即发送获取列表的指令
+                sendGetListCommand()
+            }
 
+            ws.value.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data)
+                    if (msg.type === 'list') {
+                        // 收到完整列表
+                        console.log('Received device list:', msg.data)
+                        data.value = msg.data
+                        loading.value = false
+                    } else if (msg.type === 'update') {
+                        // 收到单个设备更新
+                        const updateItem = msg.data
+                        const index = data.value.findIndex(d => d.id === updateItem.id)
+                        if (index !== -1) {
+                            // 仅更新存在的字段
+                            Object.assign(data.value[index], updateItem)
+                        }
+                    }
+                } catch (e) {
+                    console.error('WebSocket message parse error:', e)
+                }
+            }
 
+            ws.value.onerror = (error) => {
+                console.error('WebSocket error:', error)
+                loading.value = false
+            }
+            
+            ws.value.onclose = (e) => {
+                console.log('Device List WebSocket closed', e.code, e.reason)
+            }
+        } catch (e) {
+             console.error('WebSocket creation failed:', e)
+             loading.value = false
+        }
+    }
 
+    const getServerDveiceData = async (urlType = 0) => {
+        try {
+            // 更新 type
+            // 如果 urlType 是字符串（来自 element-plus tabs），转为 int
+            // 注意：store 中的 dataCard 可能也需要同步
+            
+            // 初始化 WebSocket 连接 (如果已连接，则复用)
+            if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+                currentPage.value = 1
+                loading.value = true
+                initWebSocket(urlType)
+            } else {
+                // 已连接，直接发送指令
+                // 这里可能需要先更新内部的 type 状态，以便 sendGetListCommand 使用正确的 type
+                // 但目前的 sendGetListCommand 使用 dataCard.value。
+                // 暂时假设调用者会先设置 dataCard
+                sendGetListCommand()
+            }
+            
+        } catch (error) {
+            console.error("启动设备列表获取失败：", error)
+            loading.value = false
+        }
+    }
 
+    // 保留 fetchData 供手动刷新或其他用途（如果需要）
+    const fetchData = async (urlType, isSilent = false) => {
+         // ... implementation if needed, but WS handles it now
+    }
+
+    const deleteDevice = async (device) => {
+        try {
+            // 假设删除接口为 /user/device/delete，参数为设备ID或IP
+            // 这里优先使用ID，如果没有则使用IP
+            const payload = device.id ? { id: device.id } : { ip: device.ipv4 }
+            
+            const response = await axios.post('/api/v1/user/device/delete', payload)
+            
+            if (response.data.code === 200) {
+                // 删除成功后，从本地列表中移除
+                const index = data.value.findIndex(item => 
+                    (device.id && item.id === device.id) || 
+                    (!device.id && item.ipv4 === device.ipv4)
+                )
+                if (index !== -1) {
+                    data.value.splice(index, 1)
+                }
+                return true
+            } else {
+                throw new Error(response.data.message || '删除失败')
+            }
+        } catch (error) {
+            console.error("删除设备失败：", error)
+            ElMessage({
+                message: error.response?.data?.message || error.message || '删除设备失败',
+                type: 'error'
+            })
+            return false
+        }
+    }
 
     return {
+        data, // 导出 data
         getData,
         addData,
         loading,
@@ -154,6 +294,12 @@ export const dveiceDateStore = defineStore('data', () => {
         getdataCardType,
         getServerDveiceData,
         dataLength,
-
+        stopPolling, // 导出停止方法
+        currentPage,
+        pageSize,
+        getPaginatedData,
+        deleteDevice, // 导出删除方法
+        setSearchQuery,
+        refreshData
     }
 })

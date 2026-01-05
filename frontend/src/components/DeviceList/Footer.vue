@@ -1,6 +1,13 @@
 <template>
     <div class="box-DeviceList-Footer"  v-if="Ddevice_List_date.dataLength()">
-        <el-pagination :background="hasBackground" layout="prev, pager, next" :total="1000" />
+        <el-pagination 
+            v-model:current-page="Ddevice_List_date.currentPage"
+            v-model:page-size="Ddevice_List_date.pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :background="hasBackground" 
+            layout="total, sizes, prev, pager, next, jumper" 
+            :total="Ddevice_List_date.dataLength()" 
+        />
     </div>
 
 </template>

@@ -10,6 +10,7 @@ import 'vuetify/styles'
 // ElementPlus
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 
 // 引入 fontawesome
@@ -48,5 +49,7 @@ app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(vuetify)
 app.use(router)
 app.use(pinia)
-app.use(ElementPlus)
+app.use(ElementPlus, {
+  locale: zhCn,
+})
 app.mount('#app')
