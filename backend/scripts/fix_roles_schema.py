@@ -21,6 +21,16 @@ async def add_column():
             print("Column added.")
         else:
             print("Column already exists.")
+
+        user_perm_level = await db.fetch_val(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'permission_level'"
+        )
+        if user_perm_level:
+            print("Dropping users.permission_level column...")
+            await db.execute("ALTER TABLE users DROP COLUMN permission_level")
+            print("Column dropped.")
+        else:
+            print("users.permission_level column not found.")
             
     except Exception as e:
         print(f"Error: {e}")

@@ -4,19 +4,21 @@ from typing import List
 from app.schemas.user import UserCreate, UserResponse, RoleUpdate, UserUpdate, UserStatusUpdate
 from app.services.user_service import UserService
 from app.api import deps
+from app.core.security import PermissionChecker, user_is_super
 from pydantic import BaseModel
 
 router = APIRouter()
 
 def check_admin(user: dict):
-    # 0: Super Admin, 1: Admin
-    if user.get("permission_level") not in [0, 1]:
-        raise HTTPException(status_code=403, detail="权限不足")
+    if user_is_super(user):
+        return
+    raise HTTPException(status_code=403, detail="权限不足")
 
 @router.post("/add", response_model=dict)
 async def create_user(
     user_in: UserCreate, 
-    current_user: dict = Depends(deps.get_current_user)
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:auth:register", "sys:user:manage"]))
 ):
     """创建新用户 (仅管理员)"""
     check_admin(current_user)
@@ -31,7 +33,8 @@ async def create_user(
 @router.delete("/delete", response_model=dict)
 async def delete_user(
     user_id: int = Body(..., embed=True), # Accept user_id from body to match old style or query? Old style was body.
-    current_user: dict = Depends(deps.get_current_user)
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """删除用户 (仅管理员)"""
     check_admin(current_user)
@@ -44,29 +47,12 @@ async def delete_user(
     except Exception as e:
         return {"code": 500, "message": f"删除用户失败: {str(e)}"}
 
-@router.post("/update_role", response_model=dict)
-async def update_user_role(
-    user_id: int = Body(...),
-    permission_level: int = Body(...),
-    current_user: dict = Depends(deps.get_current_user)
-):
-    """更新用户角色等级 (仅管理员)"""
-    check_admin(current_user)
-    if user_id == current_user.get("id"):
-        return {"code": 400, "message": "不能修改自己的权限等级"}
-        
-    try:
-        data = RoleUpdate(permission_level=permission_level)
-        await UserService.update_user_role(user_id, data)
-        return {"code": 200, "message": "权限修改成功"}
-    except Exception as e:
-        return {"code": 500, "message": f"修改权限失败: {str(e)}"}
-
 @router.post("/update_perms", response_model=dict)
 async def update_user_perms(
     user_id: int = Body(...),
     permissions: List[str] = Body(...),
-    current_user: dict = Depends(deps.get_current_user)
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """更新用户细粒度权限 (仅管理员)"""
     check_admin(current_user)
@@ -81,7 +67,8 @@ async def update_user_perms(
 async def update_user_status(
     user_id: int = Body(...),
     is_approved: bool = Body(...),
-    current_user: dict = Depends(deps.get_current_user)
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """封禁/解封用户 (仅管理员)"""
     check_admin(current_user)
@@ -95,7 +82,10 @@ async def update_user_status(
         return {"code": 500, "message": f"更新状态失败: {str(e)}"}
 
 @router.get("/roleList", response_model=dict)
-async def list_roles(current_user: dict = Depends(deps.get_current_user)):
+async def list_roles(
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:view"]))
+):
     """获取用户角色列表 (仅管理员，复用 list 逻辑但适配前端路径)"""
     check_admin(current_user)
     try:

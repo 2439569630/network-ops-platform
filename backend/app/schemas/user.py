@@ -9,7 +9,6 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
-    permission_level: int = 2  # 默认普通用户
     permissions: Optional[List[str]] = None
 
 class UserUpdate(BaseModel):
@@ -19,7 +18,6 @@ class UserUpdate(BaseModel):
     new_password: Optional[str] = None
 
 class RoleUpdate(BaseModel):
-    permission_level: Optional[int] = None
     permissions: Optional[List[str]] = None
 
 class UserStatusUpdate(BaseModel):
@@ -27,7 +25,6 @@ class UserStatusUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    permission_level: int
     is_approved: bool
     permissions: Optional[List[str]] = None
     created_at: Optional[datetime] = None

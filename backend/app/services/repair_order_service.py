@@ -6,6 +6,40 @@ from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, Order
 
 class RepairOrderService:
     @staticmethod
+    async def pick_auto_assignee_id() -> Optional[int]:
+        sql = """
+            SELECT u.id
+            FROM users u
+            JOIN user_roles ur ON ur.user_id = u.id
+            JOIN roles ro ON ro.id = ur.role_id
+            WHERE ro.code = 'yunwei'
+              AND (u.is_approved IS NULL OR u.is_approved = true)
+            ORDER BY (
+                SELECT COUNT(*)
+                FROM repair_orders r
+                WHERE r.assignee_id = u.id
+                  AND r.status = 'processing'
+            ) ASC, u.id ASC
+            LIMIT 1
+        """
+        return await db.fetch_val(sql)
+
+    @staticmethod
+    async def list_assignees() -> List[dict]:
+        rows = await db.fetch_all(
+            """
+            SELECT DISTINCT u.id, u.username
+            FROM users u
+            JOIN user_roles ur ON ur.user_id = u.id
+            JOIN roles ro ON ro.id = ur.role_id
+            WHERE ro.code = 'yunwei'
+              AND (u.is_approved IS NULL OR u.is_approved = true)
+            ORDER BY u.id ASC
+            """
+        )
+        return [dict(r) for r in rows] if rows else []
+
+    @staticmethod
     async def create_order(data: RepairOrderCreate, submitter_id: int) -> int:
         sql = """
             INSERT INTO repair_orders (
@@ -53,10 +87,19 @@ class RepairOrderService:
             params.append(user_id)
             idx += 1
         elif role_level == 1:
-            # Maintenance see assigned or unassigned(pending) or all? 
-            # Design: 查看所有工单 - ✓(部分)
-            # Usually see orders assigned to them OR pending orders (pool)
-            pass # Currently allow viewing all, or filter by assignee if needed
+            if status:
+                if status == "pending":
+                    where_clauses.append(f"(assignee_id = ${idx} OR assignee_id IS NULL)")
+                    params.append(user_id)
+                    idx += 1
+                else:
+                    where_clauses.append(f"assignee_id = ${idx}")
+                    params.append(user_id)
+                    idx += 1
+            else:
+                where_clauses.append(f"(assignee_id = ${idx} OR (status = 'pending' AND assignee_id IS NULL))")
+                params.append(user_id)
+                idx += 1
             
         where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         
@@ -135,6 +178,9 @@ class RepairOrderService:
             idx += 1
             # Log status change
             await RepairOrderService.log_action(order_id, operator_id, "update_status", current['status'], data.status, "更新状态")
+
+            if data.status == "completed":
+                updates.append("actual_completion_time = NOW()")
             
         if data.assignee_id:
             updates.append(f"assignee_id = ${idx}")

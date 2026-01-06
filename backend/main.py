@@ -90,5 +90,6 @@ app.add_exception_handler(UnicornException, unicorn_exception_handler)
 # 标准 API (挂载在 /api/v1)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+app.include_router(devices.ssh_router, tags=["SSH"])
 
 app.include_router(devices.router, prefix="/user/device", tags=["Device (Legacy)"])

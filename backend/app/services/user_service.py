@@ -17,7 +17,7 @@ class UserService:
 
     @staticmethod
     async def get_user_list() -> List[dict]:
-        sql = "SELECT id, username, nickname, email, permission_level, is_approved, permissions, created_at FROM users ORDER BY id"
+        sql = "SELECT id, username, nickname, email, is_approved, permissions, created_at FROM users ORDER BY id"
         users = await db.fetch_all(sql)
         # Ensure permissions is a list (JSON deserialization might be automatic in asyncpg, but let's be safe)
         result = []
@@ -33,7 +33,7 @@ class UserService:
 
     @staticmethod
     async def get_user_by_id(user_id: int) -> Optional[dict]:
-        sql = "SELECT id, username, nickname, email, permission_level, is_approved, permissions, created_at FROM users WHERE id = $1"
+        sql = "SELECT id, username, nickname, email, is_approved, permissions, created_at FROM users WHERE id = $1"
         user = await db.fetch_one(sql, user_id)
         if user:
             u_dict = dict(user)
@@ -59,19 +59,13 @@ class UserService:
         hashed_pw = get_password_hash(data.password)
         nickname = data.nickname or data.username
         
-        # Default perms logic
         perms = data.permissions
         if perms is None:
-             if data.permission_level == 2:
-                perms = ["sys:monitor:view", "sys:device:list"]
-             elif data.permission_level == 1:
-                 perms = ["sys:monitor:view", "sys:device:list", "sys:device:add", "sys:device:edit", "sys:device:del", "sys:ssh:connect", "sys:user:view"]
-             else:
-                 perms = []
+            perms = ["sys:monitor:view"]
 
         sql = """
-            INSERT INTO users (username, password, nickname, email, permission_level, is_approved, permissions)
-            VALUES ($1, $2, $3, $4, $5, true, $6)
+            INSERT INTO users (username, password, nickname, email, is_approved, permissions)
+            VALUES ($1, $2, $3, $4, true, $5)
             RETURNING id
         """
         # asyncpg handles list to jsonb/json automatically if configured, but safe to dump if text column
@@ -79,15 +73,26 @@ class UserService:
         # Based on old code: await PostgreSQL.execute(sql, ..., json.dumps(perms))
         perms_json = json.dumps(perms)
         
-        user_id = await db.fetch_val(sql, data.username, hashed_pw, nickname, data.email, data.permission_level, perms_json)
+        user_id = await db.fetch_val(sql, data.username, hashed_pw, nickname, data.email, perms_json)
+
+        default_role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
+        if default_role_id:
+            await db.execute(
+                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                int(user_id),
+                int(default_role_id),
+            )
         return user_id
 
     @staticmethod
     async def update_user_role(user_id: int, data: RoleUpdate):
-        if data.permission_level is not None:
-            await db.execute("UPDATE users SET permission_level = $1 WHERE id = $2", data.permission_level, user_id)
         if data.permissions is not None:
              await db.execute("UPDATE users SET permissions = $1 WHERE id = $2", json.dumps(data.permissions), user_id)
+             try:
+                 from app.services.rbac_service import RbacService
+                 await RbacService.bump_user_perm_version(int(user_id))
+             except Exception:
+                 pass
 
     @staticmethod
     async def delete_user(user_id: int):

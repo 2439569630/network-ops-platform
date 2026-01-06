@@ -1,20 +1,25 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union, Any
 import logging
+import json
 from jose import jwt
 from passlib.context import CryptContext
 from fastapi import Request, WebSocket, Query, Cookie, Depends
 from fastapi.responses import JSONResponse
 from app.core.config import settings
+from app.core.database import db
+from app.core.redis import redis_manager
+from app.services.rbac_service import RbacService
 
 logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UnicornException(Exception):
-    def __init__(self, code: int, message: str):
+    def __init__(self, code: int, message: str, error_code: Optional[str] = None):
         self.code = code
         self.message = message
+        self.error_code = error_code
         self.status = "error"
 
 def unicorn_exception_handler(request: Request, exc: UnicornException):
@@ -23,7 +28,8 @@ def unicorn_exception_handler(request: Request, exc: UnicornException):
         content={
             "code": exc.code,
             "status": exc.status,
-            "message": exc.message
+            "message": exc.message,
+            **({"error": exc.error_code} if getattr(exc, "error_code", None) else {}),
         }
     )
 
@@ -39,37 +45,169 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode = {"exp": expire, "sub": str(subject)}
+    sub: str
+    if isinstance(subject, dict):
+        sub = str(subject.get("id") or subject.get("username") or "")
+    else:
+        sub = str(subject)
+
+    to_encode = {"exp": expire, "sub": sub}
     if isinstance(subject, dict):
         to_encode.update(subject)
         
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+def _normalize_role_codes(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            if item is None:
+                continue
+            if isinstance(item, dict):
+                code = item.get("code")
+                if code is None:
+                    continue
+                out.append(str(code))
+            else:
+                out.append(str(item))
+        return out
+    if isinstance(value, str):
+        s = value.strip()
+        return [s] if s else []
+    return []
+
+def user_has_role(user: dict, role_code: str) -> bool:
+    target = str(role_code or "").strip().lower()
+    if not target:
+        return False
+    roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
+    return target in roles
+
+def user_is_super(user: dict) -> bool:
+    if user.get("is_super") is True:
+        return True
+    roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
+    if roles & {"admin", "superadmin", "super_admin", "super-admin"}:
+        return True
+    return False
+
 def decode_token(token: str) -> dict:
     try:
-        # 增加日志：打印使用的密钥前几位，确保密钥加载正确
-        masked_key = settings.SECRET_KEY[:3] + "***" if settings.SECRET_KEY else "None"
-        logger.info(f"Decoding token with key prefix: {masked_key}, alg: {settings.ALGORITHM}")
-        
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
     except Exception as e:
         logger.error(f"Decode token failed: {e}", exc_info=True)
         return None
 
-def verify_token(token: str = Cookie(None)):
+def _normalize_permissions(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(x) for x in value if x is not None]
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed if x is not None]
+        except Exception:
+            return []
+    return []
+
+async def _get_or_init_user_perm_version(user_id: int) -> int:
+    redis_client = redis_manager.get_client()
+    key = f"authz:ver:user:{int(user_id)}"
+    raw = await redis_client.get(key)
+    if raw is None:
+        await redis_client.set(key, "1")
+        return 1
+    try:
+        v = int(raw)
+        if v > 0:
+            return v
+    except Exception:
+        pass
+    await redis_client.set(key, "1")
+    return 1
+
+async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> list[str]:
+    uid = int(user_id)
+    ver = perm_ver
+    if ver is None:
+        ver = await _get_or_init_user_perm_version(uid)
+    try:
+        ver = int(ver)
+        if ver <= 0:
+            ver = await _get_or_init_user_perm_version(uid)
+    except Exception:
+        ver = await _get_or_init_user_perm_version(uid)
+
+    redis_client = redis_manager.get_client()
+    cache_key = f"authz:perms:user:{uid}:v{int(ver)}"
+    cached = await redis_client.get(cache_key)
+    if cached:
+        try:
+            parsed = json.loads(cached)
+            if isinstance(parsed, list):
+                return [str(x) for x in parsed if x is not None]
+        except Exception:
+            cached = None
+
+    user_row = await db.fetch_one("SELECT permissions FROM users WHERE id = $1", uid)
+    direct_perms = _normalize_permissions(user_row.get("permissions") if user_row else None)
+    role_perms = await RbacService.get_user_permission_codes(uid)
+    merged = sorted(list({str(p) for p in (direct_perms + role_perms) if str(p).strip()}))
+    merged = RbacService.expand_permission_codes(merged)
+
+    try:
+        await redis_client.set(cache_key, json.dumps(merged), ex=3600)
+    except Exception:
+        pass
+    return merged
+
+async def user_has_permission(user: dict, perm: str) -> bool:
+    if user_is_super(user):
+        return True
+    user_id = user.get("id")
+    if user_id is None:
+        return False
+    perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
+    return str(perm) in {str(p) for p in (perms or [])}
+
+async def verify_token(token: str = Cookie(None)):
     if token is None:
-        raise UnicornException(401, "未登录")
+        raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
 
     try:
         payload = decode_token(token)
         if not payload:
-             raise UnicornException(401, "Token无效")
+            raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
+
+        user_id = payload.get("id")
+        if user_id is not None:
+            uid = int(user_id)
+            redis_ver = await _get_or_init_user_perm_version(uid)
+            token_ver = payload.get("perm_ver")
+            if token_ver is None:
+                raise UnicornException(401, "Token版本过旧，请重新登录", error_code="AUTH_TOKEN_TOO_OLD")
+            try:
+                token_ver_int = int(token_ver)
+            except Exception:
+                raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
+            if token_ver_int != int(redis_ver):
+                raise UnicornException(401, "权限已更新，请重新登录", error_code="AUTHZ_VERSION_MISMATCH")
+
         return payload
+    except UnicornException:
+        raise
     except Exception as e:
-        logger.error(f"Token验证异常: {e}")
-        raise UnicornException(401, "身份验证失败")
+        logger.error(f"Token验证异常: {e}", exc_info=True)
+        raise UnicornException(401, "身份验证失败", error_code="AUTH_VERIFY_FAILED")
 
 async def verify_token_ws(
     websocket: WebSocket,
@@ -95,6 +233,24 @@ async def verify_token_ws(
              logger.warning("WS Auth: Decode failed or expired")
              await websocket.close(code=4001, reason="Token无效")
              return None
+
+        user_id = payload.get("id")
+        if user_id is not None:
+            uid = int(user_id)
+            redis_ver = await _get_or_init_user_perm_version(uid)
+            token_ver = payload.get("perm_ver")
+            if token_ver is None:
+                await websocket.close(code=4001, reason="Token版本过旧，请重新登录")
+                return None
+            try:
+                token_ver_int = int(token_ver)
+            except Exception:
+                await websocket.close(code=4001, reason="Token无效")
+                return None
+            if token_ver_int != int(redis_ver):
+                await websocket.close(code=4001, reason="权限已更新，请重新登录")
+                return None
+
         logger.info(f"WS Auth: Success for user {payload.get('id', 'unknown')}")
         return payload
     except Exception as e:
@@ -104,13 +260,41 @@ async def verify_token_ws(
 
 class RoleChecker:
     def __init__(self, allowed_roles: list):
-        self.allowed_roles = allowed_roles
+        self.allowed_roles = {str(r).strip().lower() for r in (allowed_roles or []) if str(r).strip()}
 
     def __call__(self, user: dict = Depends(verify_token)):
-        # permission_level: 0=SuperAdmin, 1=Admin, 2=User
-        user_role = user.get("permission_level")
-        if user_role not in self.allowed_roles:
-             raise UnicornException(403, "权限不足")
+        if user_is_super(user):
+            return user
+        roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
+        if roles & self.allowed_roles:
+            return user
+        raise UnicornException(403, "权限不足")
+
+class PermissionChecker:
+    def __init__(self, required_permissions: Union[str, list], require_all: bool = False):
+        if isinstance(required_permissions, str):
+            self.required_permissions = [required_permissions]
+        else:
+            self.required_permissions = [str(p) for p in (required_permissions or [])]
+        self.require_all = bool(require_all)
+
+    async def __call__(self, user: dict = Depends(verify_token)):
+        if user_is_super(user):
+            return user
+
+        user_id = user.get("id")
+        if user_id is None:
+            raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
+        perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
+        perms_set = {str(p) for p in (perms or [])}
+
+        required = [str(p) for p in self.required_permissions if str(p).strip()]
+        if not required:
+            return user
+
+        allowed = all(p in perms_set for p in required) if self.require_all else any(p in perms_set for p in required)
+        if not allowed:
+            raise UnicornException(403, "权限不足")
         return user
 
-allow_admin = RoleChecker([0, 1]) # 允许超级管理员和管理员
+allow_admin = RoleChecker(["admin"])

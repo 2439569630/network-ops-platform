@@ -8,7 +8,6 @@ class User:
     username: str
     password: str
     nickname: str
-    permission_level: int
     is_approved: bool
     permissions: Optional[List[str]] = None
     email: Optional[str] = None

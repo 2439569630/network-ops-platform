@@ -8,15 +8,14 @@ from app.schemas.rbac import (
     RolePermissionsSet,
 )
 from app.services.rbac_service import RbacService
+from app.core.security import user_is_super
 
 
 router = APIRouter()
 
 
 def check_super_admin(user: dict):
-    if user.get("permission_level") != 0:
-        return False
-    return True
+    return user_is_super(user)
 
 
 @router.get("/roles/with_users", response_model=dict)
@@ -83,6 +82,27 @@ async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
     except Exception as e:
         return {"code": 500, "message": f"获取权限列表失败: {str(e)}"}
 
+@router.get("/permissions/directory", response_model=dict)
+async def list_permission_directory(current_user: dict = Depends(deps.get_current_user)):
+    if not check_super_admin(current_user):
+        return {"code": 403, "message": "权限不足"}
+    try:
+        data = await RbacService.list_permission_directory(include_custom=True)
+        return {"code": 200, "data": data}
+    except Exception as e:
+        return {"code": 500, "message": f"获取权限目录失败: {str(e)}"}
+
+@router.post("/permissions/sync", response_model=dict)
+async def sync_system_permissions(current_user: dict = Depends(deps.get_current_user)):
+    if not check_super_admin(current_user):
+        return {"code": 403, "message": "权限不足"}
+    try:
+        result = await RbacService.sync_system_permissions()
+        data = await RbacService.list_permission_directory(include_custom=True)
+        return {"code": 200, "message": "同步成功", "data": {"result": result, "directory": data}}
+    except Exception as e:
+        return {"code": 500, "message": f"同步失败: {str(e)}"}
+
 
 @router.post("/permissions", response_model=dict)
 async def create_permission(
@@ -91,6 +111,8 @@ async def create_permission(
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        if RbacService.is_system_permission_code(perm_in.code):
+            return {"code": 400, "message": "系统权限不允许手动创建，请使用同步功能"}
         perm_id = await RbacService.create_permission(perm_in.name, perm_in.code, perm_in.description)
         return {"code": 200, "message": "创建成功", "data": {"id": perm_id}}
     except Exception as e:
@@ -104,6 +126,17 @@ async def update_permission(
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        existing = await RbacService.get_permission_by_id(permission_id)
+        if not existing:
+            return {"code": 404, "message": "权限不存在"}
+        existing_code = existing.get("code")
+        if RbacService.is_system_permission_code(existing_code):
+            if perm_in.code is not None and str(perm_in.code) != str(existing_code):
+                return {"code": 400, "message": "系统权限不允许修改编码"}
+        if perm_in.code is not None:
+            new_code = str(perm_in.code)
+            if RbacService.is_system_permission_code(new_code) and new_code != str(existing_code):
+                return {"code": 400, "message": "不允许将自定义权限改为系统权限编码"}
         await RbacService.update_permission(permission_id, perm_in.model_dump())
         return {"code": 200, "message": "更新成功"}
     except Exception as e:
@@ -115,6 +148,11 @@ async def delete_permission(permission_id: int, current_user: dict = Depends(dep
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        existing = await RbacService.get_permission_by_id(permission_id)
+        if not existing:
+            return {"code": 404, "message": "权限不存在"}
+        if RbacService.is_system_permission_code(existing.get("code")):
+            return {"code": 400, "message": "系统权限不允许删除"}
         await RbacService.delete_permission(permission_id)
         return {"code": 200, "message": "删除成功"}
     except Exception as e:

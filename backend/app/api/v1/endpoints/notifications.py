@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from app.core.security import verify_token, verify_token_ws, allow_admin
+from app.core.security import PermissionChecker, verify_token_ws, user_is_super, user_has_permission
 from app.services.notification_service import NotificationService
 from app.schemas.notification import NotificationConfig, TestNotification
 from app.core.redis import redis_manager
@@ -11,17 +11,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/history", response_model=dict)
-async def get_history(user: dict = Depends(verify_token)):
+async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history"))):
     """获取通知历史"""
     try:
-        user_role = int(user.get('permission_level', 2))
-        rows = await NotificationService.get_history(user_role, user.get('id'))
+        can_view_all = user_is_super(user) or (await user_has_permission(user, "sys:notify:global"))
+        rows = await NotificationService.get_history(bool(can_view_all), user.get('id'))
         return {"code": 200, "data": rows}
     except Exception as e:
         return {"code": 500, "message": f"获取历史失败: {str(e)}"}
 
 @router.get("/config", response_model=dict)
-async def get_config(user: dict = Depends(verify_token)):
+async def get_config(user: dict = Depends(PermissionChecker("sys:notify:config:view"))):
     """获取用户通知配置"""
     try:
         config = await NotificationService.get_config(user.get('id'))
@@ -30,11 +30,17 @@ async def get_config(user: dict = Depends(verify_token)):
         return {"code": 500, "message": f"获取配置失败: {str(e)}"}
 
 @router.post("/config", response_model=dict)
-async def update_config(data: NotificationConfig, user: dict = Depends(allow_admin)):
+async def update_config(
+    data: NotificationConfig,
+    user: dict = Depends(PermissionChecker("sys:notify:config:edit")),
+):
     """更新用户通知配置"""
     try:
-        user_role = int(user.get('permission_level', 2))
-        await NotificationService.update_config(user.get('id'), user_role, data)
+        if getattr(data, "use_global_email", False):
+            if not user_is_super(user):
+                if not await user_has_permission(user, "sys:notify:global"):
+                    return {"code": 403, "message": "权限不足"}
+        await NotificationService.update_config(user.get('id'), data)
         return {"code": 200, "message": "配置保存成功"}
     except ValueError as e:
         return {"code": 403, "message": str(e)}
@@ -42,9 +48,16 @@ async def update_config(data: NotificationConfig, user: dict = Depends(allow_adm
         return {"code": 500, "message": f"保存失败: {str(e)}"}
 
 @router.post("/test", response_model=dict)
-async def test_notification(data: TestNotification, user: dict = Depends(verify_token)):
+async def test_notification(
+    data: TestNotification,
+    user: dict = Depends(PermissionChecker("sys:notify:test")),
+):
     """测试通知发送"""
     try:
+        if data.channel == "email" and data.config and data.config.get("use_global_email"):
+            if not user_is_super(user):
+                if not await user_has_permission(user, "sys:notify:global"):
+                    return {"code": 403, "message": "权限不足"}
         success, msg = await NotificationService.test_notification(data)
         if success:
             return {"code": 200, "message": "发送成功"}
@@ -63,6 +76,9 @@ async def websocket_alerts(websocket: WebSocket):
     token = websocket.query_params.get("token")
     user = await verify_token_ws(websocket, token)
     if not user:
+        return
+    if not (user_is_super(user) or (await user_has_permission(user, "sys:alert:subscribe"))):
+        await websocket.close(code=4003, reason="权限不足")
         return
 
     redis_client = redis_manager.get_client()

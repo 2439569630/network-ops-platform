@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from app.core.database import db
-from app.core.security import allow_admin
+from app.core.security import PermissionChecker
 from app.core.system_config import SystemConfig
 from pydantic import BaseModel
 from typing import Optional, List
@@ -15,7 +15,7 @@ class ConfigUpdate(BaseModel):
     value: str
 
 @router.get("/config/list", response_model=dict)
-async def list_config(user: dict = Depends(allow_admin)):
+async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]))):
     """获取所有系统配置 (仅管理员)"""
     try:
         sql = """
@@ -30,7 +30,7 @@ async def list_config(user: dict = Depends(allow_admin)):
         return {"code": 500, "message": f"获取配置失败: {str(e)}"}
 
 @router.post("/config/update", response_model=dict)
-async def update_config(data: ConfigUpdate, user: dict = Depends(allow_admin)):
+async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionChecker(["sys:config:edit"]))):
     """更新系统配置 (仅管理员)"""
     try:
         if data.key == "trap_autostart":

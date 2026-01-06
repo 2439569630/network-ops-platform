@@ -7,9 +7,9 @@ from app.schemas.notification import NotificationConfig, TestNotification
 
 class NotificationService:
     @staticmethod
-    async def get_history(user_role: int, user_id: int) -> List[dict]:
+    async def get_history(can_view_all: bool, user_id: int) -> List[dict]:
         """获取通知历史"""
-        if user_role <= 1:
+        if can_view_all:
             sql = """
                 SELECT dn.id, dn.device_id, d.device_name, dn.level, dn.message, dn.created_at 
                 FROM device_notifications dn
@@ -49,11 +49,8 @@ class NotificationService:
         return data
 
     @staticmethod
-    async def update_config(user_id: int, user_role: int, data: NotificationConfig):
+    async def update_config(user_id: int, data: NotificationConfig):
         """更新用户通知配置"""
-        if data.use_global_email and user_role > 1:
-            raise ValueError("无权使用全局邮箱配置")
-
         sql = """
             INSERT INTO user_notification_config (
                 user_id, enable_email, use_global_email, email_config, 
