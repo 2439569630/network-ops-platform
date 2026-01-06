@@ -37,6 +37,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Monitor } from '@element-plus/icons-vue';
 import Cookies from 'js-cookie'; // 引入 js-cookie
+import axios from '@/axios/axios';
 
 const route = useRoute();
 const router = useRouter();
@@ -48,12 +49,15 @@ const commandInput = ref('');
 const inputRef = ref(null);
 const terminalRef = ref(null);
 let ws = null;
+let reconnectTimer = null;
+let reconnectAttempted = false;
 
 const statusType = computed(() => isConnected.value ? 'success' : 'info');
 const statusText = computed(() => isConnected.value ? '已连接' : '未连接');
 
-const handleConnect = () => {
+const handleConnect = (options = {}) => {
     if (ws) {
+        ws.__manualClose = true;
         ws.close();
     }
     terminalContent.value = '';
@@ -79,9 +83,11 @@ const handleConnect = () => {
 
     try {
         ws = new WebSocket(wsUrl);
+        ws.__manualClose = false;
         
         ws.onopen = () => {
             isConnected.value = true;
+            reconnectAttempted = false;
             // terminalContent.value += "连接成功。\n";
             focusInput();
         };
@@ -108,8 +114,29 @@ const handleConnect = () => {
         
         ws.onclose = (e) => {
             isConnected.value = false;
+            if (ws?.__manualClose) return;
+
             terminalContent.value += `\n连接已断开 (Code: ${e.code}).\n`;
             scrollToBottom();
+
+            const closeCode = Number(e?.code || 0);
+            if (closeCode === 4003) return;
+            if (closeCode !== 4001) return;
+            if (reconnectAttempted) return;
+
+            reconnectAttempted = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(async () => {
+                try {
+                    const res = await axios.post('/api/v1/auth/refresh');
+                    const nextToken = res?.data?.token;
+                    if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' });
+                    handleConnect({ reason: 'auth_refresh' });
+                } catch (err) {
+                    terminalContent.value += '\n认证已失效，请重新登录。\n';
+                    scrollToBottom();
+                }
+            }, 500);
         };
         
         ws.onerror = (error) => {
@@ -158,7 +185,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (ws) {
+        ws.__manualClose = true;
         ws.close();
+    }
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
     }
 });
 </script>

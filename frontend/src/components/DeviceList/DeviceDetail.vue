@@ -15,7 +15,7 @@
             </div>
           </div>
           <div class="header-right">
-            <el-button type="primary" :icon="Monitor" @click="handleWebSSH">WebSSH 连接</el-button>
+            <el-button v-if="canSsh" type="primary" :icon="Monitor" @click="handleWebSSH">WebSSH 连接</el-button>
             <el-button :icon="Refresh" @click="fetchDeviceData" :loading="loading">刷新数据</el-button>
             <el-button type="danger" plain :icon="SwitchButton" @click="handleRestart">重启设备</el-button>
           </div>
@@ -215,14 +215,17 @@ import {
 import Cookies from 'js-cookie'
 import axios from '@/axios/axios'
 import { dveiceDateStore } from './Date/index' // 引入 Store
+import { homeDataStore } from '@/components/home/home/data'
 
 const route = useRoute()
 const router = useRouter()
 const store = dveiceDateStore() // 使用 Store
+const authStore = homeDataStore()
 const deviceId = route.params.id
 const loading = ref(false)
 const activeTab = ref('interfaces') // 默认值，后续会根据设备类型调整
 const timer = ref(null)
+const canSsh = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:ssh:connect')))
 
 // 设备数据模型
 const deviceData = reactive({
@@ -475,6 +478,8 @@ watch(() => store.data, (newData) => {
 }, { deep: true })
 
 onMounted(() => {
+  authStore.syncAuthFromToken()
+  authStore.fetchPermissions()
   fetchDeviceData()
   // 初始化 WebSocket 连接
   initWebSocket()

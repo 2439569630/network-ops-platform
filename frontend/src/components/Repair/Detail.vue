@@ -14,6 +14,7 @@
              <!-- 管理员操作区 -->
              <div v-if="isAdmin && order?.status === 'pending'">
                  <el-button type="primary" @click="dialogAssignVisible = true">派单</el-button>
+                 <el-button @click="handleAutoAssign">自动派单</el-button>
              </div>
              <!-- 维修人员操作区 -->
              <div v-if="isMaintenance && order?.status === 'pending'">
@@ -104,21 +105,22 @@ const route = useRoute();
 const orderId = route.params.id;
 const order = ref(null);
 const loading = ref(false);
-const currentUserRole = ref(2); // Default user
+const roleCodes = ref([]);
+const isSuper = ref(false);
 
 // 派单相关
 const dialogAssignVisible = ref(false);
 const maintenanceUsers = ref([]); // 维修人员列表
 const assignForm = ref({ assignee_id: null });
 
-const isAdmin = computed(() => currentUserRole.value === 0);
-const isMaintenance = computed(() => currentUserRole.value === 1);
+const isAdmin = computed(() => isSuper.value);
+const isMaintenance = computed(() => roleCodes.value.includes('yunwei'));
 
 // Helper functions (Same as List.vue, ideally move to utils)
 const getPriorityLabel = (val) => ({ low: '低', medium: '中', high: '高', emergency: '紧急' }[val] || val);
 const getPriorityType = (val) => ({ low: 'info', medium: '', high: 'warning', emergency: 'danger' }[val] || '');
 const getStatusLabel = (val) => ({ 
-    pending: '待受理', processing: '处理中', completed: '已完成', closed: '已关闭', cancelled: '已取消' 
+    pending: '待受理', processing: '处理中', completed: '已完成', closed: '已关闭', cancelled: '已取消', need_info: '需补充信息'
 }[val] || val);
 const getStatusType = (val) => ({ 
     pending: 'info', processing: 'primary', completed: 'success', closed: 'success', cancelled: 'info' 
@@ -127,7 +129,7 @@ const formatDate = (str) => str ? new Date(str).toLocaleString() : '-';
 
 const getActionLabel = (val) => ({
     create: '创建工单', assign: '指派工单', accept: '接单', complete: '完成工单', 
-    cancel: '取消工单', review: '评价', update_status: '更新状态', remark: '添加备注'
+    auto_assign: '自动派单', cancel: '取消工单', review: '评价', update_status: '更新状态', remark: '添加备注'
 }[val] || val);
 
 const getLogType = (action) => {
@@ -154,13 +156,10 @@ const fetchDetail = async () => {
 };
 
 const fetchMaintenanceUsers = async () => {
-    // 假设有一个接口获取维修人员列表，或者获取所有用户后过滤
-    // 这里简化处理
     try {
-        const res = await axios.get('/api/v1/users/roleList'); // 复用用户列表
+        const res = await axios.get('/api/v1/repair-orders/assignees');
         if (res.data.code === 200) {
-            // 过滤 role = 1 (维修)
-            maintenanceUsers.value = res.data.data.filter(u => u.permission_level === 1);
+            maintenanceUsers.value = res.data.data || [];
         }
     } catch (e) {}
 };
@@ -173,6 +172,21 @@ const handleAssign = async () => {
             ElMessage.success('派单成功');
             dialogAssignVisible.value = false;
             fetchDetail();
+        }
+    } catch (e) {
+        ElMessage.error('操作失败');
+    }
+};
+
+const handleAutoAssign = async () => {
+    try {
+        const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, {});
+        if (res.data.code === 200) {
+            ElMessage.success('自动派单成功');
+            dialogAssignVisible.value = false;
+            fetchDetail();
+        } else {
+            ElMessage.error(res.data.message || '操作失败');
         }
     } catch (e) {
         ElMessage.error('操作失败');
@@ -213,11 +227,13 @@ onMounted(() => {
     if (token) {
         try {
             const decoded = jwtDecode(token);
-            currentUserRole.value = decoded.permission_level;
+            const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
+            roleCodes.value = roles;
+            isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
         } catch (e) {}
     }
     fetchDetail();
-    if (currentUserRole.value === 0) {
+    if (isSuper.value) {
         fetchMaintenanceUsers();
     }
 });

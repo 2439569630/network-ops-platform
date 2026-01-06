@@ -178,7 +178,7 @@
                           v-for="perm in group.items" 
                           :key="perm.id" 
                           class="perm-item"
-                          :class="{ active: currentRolePermIds.includes(perm.id) }"
+                          :class="{ active: currentRolePermIds.includes(perm.id), child: perm._depth === 1, grandchild: perm._depth === 2 }"
                           @click="togglePerm(perm.id)"
                         >
                           <div class="perm-switch">
@@ -225,33 +225,46 @@
            <!-- 左侧：权限树/列表 -->
            <div class="left-panel">
             <div class="panel-header">
-              <span class="panel-title">权限列表</span>
-              <el-button type="primary" size="small" circle :icon="Plus" @click="handleCreatePerm" />
+              <span class="panel-title">权限目录</span>
+              <div>
+                <el-button size="small" :loading="permSyncing" @click="handleSyncPermissions">一键同步</el-button>
+                <el-button size="small" @click="fetchPermissionDirectory">刷新</el-button>
+                <el-button type="primary" size="small" circle :icon="Plus" @click="handleCreatePerm" />
+              </div>
             </div>
              <div class="search-bar">
                <el-input v-model="permListFilter" placeholder="搜索权限名称/编码" prefix-icon="Search" clearable />
              </div>
              <div class="perm-tree-list custom-scrollbar" v-loading="permissionLoading">
-                <div 
-                  v-for="perm in filteredPermList" 
-                  :key="perm.id"
-                  class="perm-tree-item"
-                  :class="{ active: currentPerm?.id === perm.id }"
-                  @click="handleSelectPerm(perm)"
-                >
-                  <el-icon class="item-icon"><Connection /></el-icon>
-                  <div class="item-content">
-                    <div class="item-title">{{ perm.name }}</div>
-                    <div class="item-subtitle">{{ perm.code }}</div>
+                <div v-for="(group, groupName) in filteredPermGroups" :key="groupName" class="perm-tree-group">
+                  <div class="perm-tree-group-header">{{ groupName }}</div>
+                  <div 
+                    v-for="perm in group.items" 
+                    :key="perm.id ?? perm.code"
+                    class="perm-tree-item"
+                    :class="{ active: currentPerm?.code === perm.code, child: perm._depth === 1, grandchild: perm._depth === 2 }"
+                    @click="handleSelectPerm(perm)"
+                  >
+                    <el-icon class="item-icon"><Connection /></el-icon>
+                    <div class="item-content">
+                      <div class="item-title">{{ perm.name }}</div>
+                      <div class="item-subtitle">{{ perm.code }}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <el-tag size="small" :type="perm.in_directory ? 'success' : 'info'">{{ perm.in_directory ? '系统' : '自定义' }}</el-tag>
+                      <el-tag v-if="perm.exists === false" size="small" type="warning">未同步</el-tag>
+                    </div>
+                    <el-button 
+                      v-if="perm.id && !perm.in_directory"
+                      type="danger" 
+                      link 
+                      :icon="Delete" 
+                      @click.stop="handlePermDelete(perm)" 
+                      class="delete-btn"
+                    />
                   </div>
-                  <el-button 
-                    type="danger" 
-                    link 
-                    :icon="Delete" 
-                    @click.stop="handlePermDelete(perm)" 
-                    class="delete-btn"
-                  />
                 </div>
+                <el-empty v-if="Object.keys(filteredPermGroups).length === 0" description="未找到相关权限" />
              </div>
            </div>
 
@@ -259,19 +272,19 @@
            <div class="right-panel" v-if="currentPerm">
               <div class="panel-header">
                 <span class="panel-title">权限详情</span>
-                <el-button type="primary" :loading="permSaving" @click="saveCurrentPerm">保存</el-button>
+                <el-button type="primary" :disabled="!currentPerm?.id" :loading="permSaving" @click="saveCurrentPerm">保存</el-button>
               </div>
               <div class="panel-body">
                 <div class="config-section">
                   <el-form :model="currentPermForm" label-width="100px" class="perm-form">
                     <el-form-item label="权限名称" required>
-                      <el-input v-model="currentPermForm.name" />
+                      <el-input v-model="currentPermForm.name" :disabled="!currentPerm?.id" />
                     </el-form-item>
                     <el-form-item label="权限编码" required>
-                      <el-input v-model="currentPermForm.code" placeholder="例如: sys:user:view" />
+                      <el-input v-model="currentPermForm.code" placeholder="例如: sys:user:view" :disabled="!currentPerm?.id || currentPerm?.in_directory" />
                     </el-form-item>
                     <el-form-item label="描述">
-                      <el-input v-model="currentPermForm.description" type="textarea" :rows="3" />
+                      <el-input v-model="currentPermForm.description" type="textarea" :rows="3" :disabled="!currentPerm?.id" />
                     </el-form-item>
                     <!-- <el-form-item label="类型">
                       <el-radio-group v-model="currentPermForm.type">
@@ -361,6 +374,8 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } 
 import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import Cookies from 'js-cookie';
+import { jwtDecode } from 'jwt-decode';
 import { 
   Key, InfoFilled, Avatar, Lock, Plus, UserFilled, MoreFilled, 
   Search, Connection, Delete, User
@@ -384,6 +399,8 @@ const currentRolePermIds = ref([]); // 当前角色选中的权限ID集合
 const permissionLoading = ref(false);
 const permSaving = ref(false);
 const allPermissions = ref([]); // 所有的权限列表
+const permissionDirectory = ref([]);
+const permSyncing = ref(false);
 const currentPerm = ref(null);
 const currentPermForm = reactive({ name: '', code: '', description: '', type: 'button' });
 const permFilterText = ref(''); // 角色详情里的权限搜索
@@ -400,7 +417,129 @@ const availableUsersLoading = ref(false);
 const availableUsers = ref([]);
 const selectedUserIds = ref([]);
 
+const currentUserId = ref(null);
+
 // --- Computed ---
+
+const permissionDepsByCode = {
+  'sys:device:add': ['sys:device:list'],
+  'sys:device:edit': ['sys:device:list'],
+  'sys:device:del': ['sys:device:list'],
+  'sys:user:manage': ['sys:user:view'],
+  'sys:config:edit': ['sys:config:view'],
+  'sys:repair:create': ['sys:repair:view'],
+  'sys:repair:handle': ['sys:repair:view'],
+  'sys:repair:manage': ['sys:repair:view', 'sys:repair:handle'],
+};
+
+const normalizePermCode = (code) => String(code || '').trim();
+
+const getPermModuleKey = (code) => {
+  const parts = normalizePermCode(code).split(':').filter(Boolean);
+  if (parts.length >= 2 && parts[0] === 'sys') return parts[1];
+  return parts[0] || '';
+};
+
+const moduleNameMap = {
+  auth: '认证授权',
+  email: '认证授权',
+  monitor: '监控告警',
+  alert: '监控告警',
+  message: '消息中心',
+  location: '位置管理',
+  device: '设备管理',
+  ssh: '设备管理',
+  user: '用户管理',
+  config: '系统配置',
+  notify: '通知',
+  repair: '工单系统',
+};
+
+const getPermGroupName = (code) => {
+  const moduleKey = getPermModuleKey(code);
+  return moduleNameMap[moduleKey] || (moduleKey ? moduleKey.toUpperCase() : '其他');
+};
+
+const getPermActionKey = (code) => {
+  const parts = normalizePermCode(code).split(':').filter(Boolean);
+  const action = parts[parts.length - 1] || '';
+  const priority = {
+    view: 0,
+    list: 0,
+    login: 0,
+    register: 1,
+    verify: 1,
+    create: 2,
+    add: 2,
+    edit: 3,
+    del: 4,
+    connect: 5,
+    handle: 6,
+    manage: 7,
+    global: 8,
+  };
+  return { action, priority: priority[action] ?? 50 };
+};
+
+const getPermDepth = (code) => {
+  const { action } = getPermActionKey(code);
+  if (action === 'view' || action === 'list') return 0;
+  if (action === 'manage') return 2;
+  return 1;
+};
+
+const expandPermCodes = (codes) => {
+  const selected = new Set((codes || []).map(normalizePermCode).filter(Boolean));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const code of Array.from(selected)) {
+      const deps = permissionDepsByCode[code] || [];
+      for (const dep of deps) {
+        const depNorm = normalizePermCode(dep);
+        if (depNorm && !selected.has(depNorm)) {
+          selected.add(depNorm);
+          changed = true;
+        }
+      }
+    }
+  }
+  return Array.from(selected);
+};
+
+const buildStableSelectionAfterRemoval = (selectedCodes) => {
+  const selected = new Set((selectedCodes || []).map(normalizePermCode).filter(Boolean));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const code of Array.from(selected)) {
+      const deps = permissionDepsByCode[code] || [];
+      const ok = deps.every(d => selected.has(normalizePermCode(d)));
+      if (!ok) {
+        selected.delete(code);
+        changed = true;
+      }
+    }
+  }
+  return Array.from(selected);
+};
+
+const permIdByCode = computed(() => {
+  const map = new Map();
+  (allPermissions.value || []).forEach(p => {
+    const code = normalizePermCode(p.code);
+    if (code) map.set(code, p.id);
+  });
+  return map;
+});
+
+const permCodeById = computed(() => {
+  const map = new Map();
+  (allPermissions.value || []).forEach(p => {
+    map.set(p.id, normalizePermCode(p.code));
+  });
+  return map;
+});
 
 const indicatorStyle = computed(() => {
   return {
@@ -423,36 +562,30 @@ const filteredPermissionGroups = computed(() => {
   const filter = permFilterText.value.toLowerCase();
   
   allPermissions.value.forEach(p => {
-    // Filter logic
     if (filter && !p.name.toLowerCase().includes(filter) && !p.code.toLowerCase().includes(filter)) {
       return;
     }
     
-    // Grouping logic (extract prefix as group name, e.g. "sys:user:view" -> "sys")
-    const parts = p.code.split(':');
-    let groupName = '其他';
-    if (parts.length > 1) {
-       // 尝试映射更友好的名称
-       const prefix = parts[0];
-       const map = {
-         'sys': '系统管理',
-         'device': '设备管理',
-         'monitor': '监控告警',
-         'repair': '工单系统',
-         'auth': '认证授权'
-       };
-       groupName = map[prefix] || prefix.toUpperCase();
-    }
+    const groupName = getPermGroupName(p.code);
     
     if (!groups[groupName]) {
       groups[groupName] = { items: [], allChecked: false, isIndeterminate: false };
     }
-    groups[groupName].items.push(p);
+    groups[groupName].items.push({ ...p, _depth: getPermDepth(p.code) });
   });
-  
+
   // Update check status for each group
   for (const name in groups) {
     const group = groups[name];
+    group.items.sort((a, b) => {
+      const ma = getPermModuleKey(a.code);
+      const mb = getPermModuleKey(b.code);
+      if (ma !== mb) return ma.localeCompare(mb);
+      const aa = getPermActionKey(a.code);
+      const ab = getPermActionKey(b.code);
+      if (aa.priority !== ab.priority) return aa.priority - ab.priority;
+      return String(a.code || '').localeCompare(String(b.code || ''));
+    });
     const checkedCount = group.items.filter(item => currentRolePermIds.value.includes(item.id)).length;
     group.allChecked = checkedCount === group.items.length && group.items.length > 0;
     group.isIndeterminate = checkedCount > 0 && checkedCount < group.items.length;
@@ -461,22 +594,52 @@ const filteredPermissionGroups = computed(() => {
   return groups;
 });
 
-// 过滤后的权限列表（权限管理页）
-const filteredPermList = computed(() => {
-  if (!permListFilter.value) return allPermissions.value;
+const filteredPermGroups = computed(() => {
   const kw = permListFilter.value.toLowerCase();
-  return allPermissions.value.filter(p => 
-    p.name.toLowerCase().includes(kw) || p.code.toLowerCase().includes(kw)
-  );
+  const list = (permissionDirectory.value || []).filter(p => {
+    if (!kw) return true;
+    return String(p.name || '').toLowerCase().includes(kw) || String(p.code || '').toLowerCase().includes(kw);
+  });
+
+  const groups = {};
+  list.forEach(p => {
+    const groupName = getPermGroupName(p.code);
+    if (!groups[groupName]) groups[groupName] = { items: [] };
+    groups[groupName].items.push({ ...p, _depth: getPermDepth(p.code) });
+  });
+
+  for (const name in groups) {
+    groups[name].items.sort((a, b) => {
+      const ma = getPermModuleKey(a.code);
+      const mb = getPermModuleKey(b.code);
+      if (ma !== mb) return ma.localeCompare(mb);
+      const aa = getPermActionKey(a.code);
+      const ab = getPermActionKey(b.code);
+      if (aa.priority !== ab.priority) return aa.priority - ab.priority;
+      return String(a.code || '').localeCompare(String(b.code || ''));
+    });
+  }
+
+  return groups;
 });
 
 // --- Lifecycle ---
 onMounted(() => {
+  const token = Cookies.get('token');
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      if (decoded && decoded.id !== undefined && decoded.id !== null) {
+        currentUserId.value = Number(decoded.id);
+      }
+    } catch {}
+  }
   if (route.query.tab) {
     activeTab.value = route.query.tab;
   }
   fetchRoles();
   fetchPermissions();
+  fetchPermissionDirectory();
   updateIndicator();
 
   if (tabSwitcherRef.value && typeof ResizeObserver !== 'undefined') {
@@ -568,6 +731,45 @@ const fetchPermissions = async () => {
   finally { permissionLoading.value = false; }
 };
 
+const fetchPermissionDirectory = async () => {
+  permissionLoading.value = true;
+  try {
+    const res = await axios.get('/api/v1/rbac/permissions/directory');
+    if (res.data.code === 200) {
+      permissionDirectory.value = res.data.data || [];
+    } else {
+      ElMessage.error(res.data.message || '获取权限目录失败');
+    }
+  } catch (e) {
+    ElMessage.error('获取权限目录失败');
+  } finally {
+    permissionLoading.value = false;
+  }
+};
+
+const handleSyncPermissions = async () => {
+  permSyncing.value = true;
+  try {
+    const res = await axios.post('/api/v1/rbac/permissions/sync');
+    if (res.data.code === 200) {
+      ElMessage.success(res.data.message || '同步成功');
+      const directory = res.data.data?.directory;
+      if (Array.isArray(directory)) {
+        permissionDirectory.value = directory;
+      } else {
+        await fetchPermissionDirectory();
+      }
+      await fetchPermissions();
+    } else {
+      ElMessage.error(res.data.message || '同步失败');
+    }
+  } catch (e) {
+    ElMessage.error('同步失败');
+  } finally {
+    permSyncing.value = false;
+  }
+};
+
 // --- Methods: Role Management ---
 
 const handleSelectRole = async (role) => {
@@ -641,6 +843,15 @@ const saveCurrentRole = async () => {
     const updatedRole = roleTableData.value.find(r => r.id === roleId);
     if(updatedRole) handleSelectRole(updatedRole);
     
+    try {
+      const refreshRes = await axios.post('/api/v1/auth/refresh');
+      const nextToken = refreshRes?.data?.token;
+      if (nextToken) {
+        Cookies.set('token', nextToken, { sameSite: 'lax' });
+      }
+    } catch {}
+    await router.replace({ query: { ...route.query, __perm_refresh: String(Date.now()) } });
+
     hasChanges.value = false;
   } catch (e) {
     ElMessage.error(e.message || '保存失败');
@@ -761,23 +972,40 @@ const handleRemoveMember = async (user) => {
 };
 
 const togglePerm = (id) => {
-  const index = currentRolePermIds.value.indexOf(id);
-  if (index > -1) {
-    currentRolePermIds.value.splice(index, 1);
-  } else {
-    currentRolePermIds.value.push(id);
+  const code = permCodeById.value.get(id);
+  if (!code) {
+    const index = currentRolePermIds.value.indexOf(id);
+    if (index > -1) currentRolePermIds.value.splice(index, 1);
+    else currentRolePermIds.value.push(id);
+    return;
   }
+
+  const selectedCodes = currentRolePermIds.value
+    .map(pid => permCodeById.value.get(pid))
+    .filter(Boolean);
+
+  const isEnabled = currentRolePermIds.value.includes(id);
+  let nextCodes;
+  if (isEnabled) {
+    nextCodes = buildStableSelectionAfterRemoval(selectedCodes.filter(c => c !== code));
+  } else {
+    nextCodes = expandPermCodes([...selectedCodes, code]);
+  }
+
+  const nextIds = nextCodes
+    .map(c => permIdByCode.value.get(c))
+    .filter(Boolean);
+  currentRolePermIds.value = Array.from(new Set(nextIds));
 };
 
 const handleGroupCheckAll = (val, group) => {
   const ids = group.items.map(i => i.id);
   if (val) {
-    // Add all that are not present
-    ids.forEach(id => {
-      if (!currentRolePermIds.value.includes(id)) currentRolePermIds.value.push(id);
-    });
+    const codes = ids.map(id => permCodeById.value.get(id)).filter(Boolean);
+    const expanded = expandPermCodes(codes);
+    const nextIds = expanded.map(c => permIdByCode.value.get(c)).filter(Boolean);
+    currentRolePermIds.value = Array.from(new Set([...currentRolePermIds.value, ...nextIds]));
   } else {
-    // Remove all
     currentRolePermIds.value = currentRolePermIds.value.filter(id => !ids.includes(id));
   }
 };
@@ -798,24 +1026,35 @@ const handleCreatePerm = () => {
 };
 
 const saveCurrentPerm = async () => {
+    if (!currentPerm.value?.id) {
+        ElMessage.warning('该权限未同步入库，无法保存');
+        return;
+    }
     if (!currentPermForm.name || !currentPermForm.code) {
         ElMessage.warning('名称和编码不能为空');
         return;
     }
     permSaving.value = true;
     try {
+        const payload = {
+            name: currentPermForm.name,
+            code: currentPermForm.code,
+            description: currentPermForm.description
+        };
         if (currentPerm.value.id === 'new') {
-            const res = await axios.post('/api/v1/rbac/permissions', currentPermForm);
+            const res = await axios.post('/api/v1/rbac/permissions', payload);
             if (res.data.code === 200) {
                 ElMessage.success('创建成功');
                 await fetchPermissions();
+                await fetchPermissionDirectory();
                 currentPerm.value = null;
             } else { throw new Error(res.data.message); }
         } else {
-            const res = await axios.put(`/api/v1/rbac/permissions/${currentPerm.value.id}`, currentPermForm);
+            const res = await axios.put(`/api/v1/rbac/permissions/${currentPerm.value.id}`, payload);
             if (res.data.code === 200) {
                 ElMessage.success('更新成功');
                 await fetchPermissions();
+                await fetchPermissionDirectory();
             } else { throw new Error(res.data.message); }
         }
     } catch(e) {
@@ -827,12 +1066,17 @@ const saveCurrentPerm = async () => {
 
 const handlePermDelete = async (perm) => {
     try {
+        if (perm.in_directory) {
+            ElMessage.warning('系统权限不允许删除');
+            return;
+        }
         await ElMessageBox.confirm(`确定删除权限 ${perm.name} 吗？`, '提示', { type: 'warning' });
         const res = await axios.delete(`/api/v1/rbac/permissions/${perm.id}`);
         if (res.data.code === 200) {
             ElMessage.success('删除成功');
             if (currentPerm.value?.id === perm.id) currentPerm.value = null;
-            fetchPermissions();
+            await fetchPermissions();
+            await fetchPermissionDirectory();
         }
     } catch {}
 };
@@ -1190,6 +1434,14 @@ const handlePermDelete = async (perm) => {
   transition: background 0.2s;
 }
 
+.perm-item.child {
+  padding-left: 18px;
+}
+
+.perm-item.grandchild {
+  padding-left: 28px;
+}
+
 .perm-item:hover {
   background-color: var(--bg-hover);
 }
@@ -1227,12 +1479,29 @@ const handlePermDelete = async (perm) => {
   background-color: var(--bg-card);
 }
 
+.perm-tree-group-header {
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background-color: var(--bg-dark);
+  border-bottom: 1px solid var(--border-color);
+}
+
 .perm-tree-item {
   display: flex;
   align-items: center;
   padding: 12px 16px;
   cursor: pointer;
   border-bottom: 1px solid #ebeef5;
+}
+
+.perm-tree-item.child {
+  padding-left: 28px;
+}
+
+.perm-tree-item.grandchild {
+  padding-left: 40px;
 }
 
 .perm-tree-item:hover {

@@ -144,10 +144,12 @@ export const dveiceDateStore = defineStore('data', () => {
 
     // WebSocket 实例
     const ws = ref(null)
+    let reconnectAttempted = false
 
     // 停止 WebSocket (原停止轮询)
     const stopPolling = () => {
         if (ws.value) {
+            ws.value.__manualClose = true
             ws.value.close()
             ws.value = null
         }
@@ -178,15 +180,18 @@ export const dveiceDateStore = defineStore('data', () => {
         console.log('Connecting to WebSocket:', wsUrl)
 
         try {
-            ws.value = new WebSocket(wsUrl)
+            const socket = new WebSocket(wsUrl)
+            socket.__manualClose = false
+            ws.value = socket
 
-            ws.value.onopen = () => {
+            socket.onopen = () => {
                 console.log('Device List WebSocket connected')
+                reconnectAttempted = false
                 // 连接成功后，立即发送获取列表的指令
                 sendGetListCommand()
             }
 
-            ws.value.onmessage = (event) => {
+            socket.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data)
                     if (msg.type === 'list') {
@@ -208,13 +213,28 @@ export const dveiceDateStore = defineStore('data', () => {
                 }
             }
 
-            ws.value.onerror = (error) => {
+            socket.onerror = (error) => {
                 console.error('WebSocket error:', error)
                 loading.value = false
             }
             
-            ws.value.onclose = (e) => {
+            socket.onclose = async (e) => {
                 console.log('Device List WebSocket closed', e.code, e.reason)
+                if (socket.__manualClose) return
+
+                const closeCode = Number(e?.code || 0)
+                if (closeCode !== 4001) return
+                if (reconnectAttempted) return
+                reconnectAttempted = true
+                try {
+                    const res = await axios.post('/api/v1/auth/refresh')
+                    const nextToken = res?.data?.token
+                    if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' })
+                    initWebSocket(urlType)
+                } catch (err) {
+                    loading.value = false
+                    ElMessage.error('登录已失效，请重新登录')
+                }
             }
         } catch (e) {
              console.error('WebSocket creation failed:', e)

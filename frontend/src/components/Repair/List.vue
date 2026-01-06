@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <div class="left">
-            <span><el-icon><List /></el-icon> 我的工单</span>
+            <span><el-icon><List /></el-icon> {{ headerTitle }}</span>
           </div>
           <div class="right">
             <el-button type="primary" icon="Plus" @click="$router.push('/user/repair/apply')">提交报修</el-button>
@@ -55,14 +55,14 @@
           <template #default="scope">
             <el-button type="primary" link size="small" @click="viewDetail(scope.row.id)">详情</el-button>
             <el-button 
-                v-if="scope.row.status === 'pending'" 
+                v-if="canCancel(scope.row)" 
                 type="danger" 
                 link 
                 size="small" 
                 @click="cancelOrder(scope.row.id)"
             >取消</el-button>
             <el-button 
-                v-if="scope.row.status === 'completed'" 
+                v-if="canReview(scope.row)" 
                 type="success" 
                 link 
                 size="small" 
@@ -113,11 +113,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue';
+import { ref, onMounted, reactive, computed } from 'vue';
 import { List, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from '@/axios/axios';
 import { useRouter } from 'vue-router';
+import Cookies from 'js-cookie';
+import { jwtDecode } from 'jwt-decode';
 
 const router = useRouter();
 const loading = ref(false);
@@ -126,6 +128,15 @@ const page = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
 const statusFilter = ref('');
+const roleCodes = ref([]);
+const isSuper = ref(false);
+const currentUserId = ref(null);
+
+const headerTitle = computed(() => {
+    if (isSuper.value) return '工单列表';
+    if (roleCodes.value.includes('yunwei')) return '待处理工单';
+    return '我的工单';
+});
 
 // 评价相关
 const reviewDialogVisible = ref(false);
@@ -198,6 +209,14 @@ const viewDetail = (id) => {
     router.push(`/user/repair/detail/${id}`);
 };
 
+const canCancel = (row) => {
+    return row?.status === 'pending' && Number(row?.submitter_id) === Number(currentUserId.value);
+};
+
+const canReview = (row) => {
+    return row?.status === 'completed' && Number(row?.submitter_id) === Number(currentUserId.value);
+};
+
 const cancelOrder = async (id) => {
     try {
         await ElMessageBox.prompt('请输入取消原因', '取消工单', {
@@ -236,6 +255,18 @@ const submitReview = async () => {
 };
 
 onMounted(() => {
+    const token = Cookies.get('token');
+    if (token) {
+        try {
+            const decoded = jwtDecode(token);
+            const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
+            roleCodes.value = roles;
+            isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+            currentUserId.value = decoded.id;
+        } catch (e) {
+            // ignore
+        }
+    }
     fetchOrders();
 });
 </script>

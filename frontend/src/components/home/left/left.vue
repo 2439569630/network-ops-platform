@@ -16,6 +16,11 @@
                         <span>系统概览</span>
                     </el-menu-item>
 
+                    <el-menu-item index="message" @click="goto('/user/message')" v-if="hasPerm('sys:message:access')">
+                         <el-icon><Message /></el-icon>
+                         <span>消息中心</span>
+                    </el-menu-item>
+
                     <!-- 2. 个人工作台 (所有人可见) -->
                     <el-sub-menu index="workspace">
                         <template #title>
@@ -26,10 +31,6 @@
                              <el-icon><UserFilled /></el-icon>
                              <span>个人中心</span>
                         </el-menu-item>
-                        <el-menu-item index="message" @click="goto('/user/message')">
-                             <el-icon><Message /></el-icon>
-                             <span>消息中心</span>
-                        </el-menu-item>
                     </el-sub-menu>
 
                     <!-- 3. 业务管理 (设备与位置) -->
@@ -38,7 +39,7 @@
                             <el-icon><OfficeBuilding /></el-icon>
                             <span>业务管理</span>
                         </template>
-                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasPerm('sys:device:list')">
+                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasPerm('sys:location:view')">
                             <el-icon><Location /></el-icon>
                             <span>位置管理</span>
                         </el-menu-item>
@@ -49,16 +50,16 @@
                     </el-sub-menu>
                     
                     <!-- 4. 运维工单 (所有人可见) -->
-                    <el-sub-menu index="repair">
+                    <el-sub-menu index="repair" v-if="hasAnyPerm(['sys:repair:create', 'sys:repair:view', 'sys:repair:handle', 'sys:repair:manage'])">
                         <template #title>
                             <el-icon><Memo /></el-icon>
                             <span>运维工单</span>
                         </template>
-                        <el-menu-item index="repair-apply" @click="goto('/user/repair/apply')">
+                        <el-menu-item index="repair-apply" @click="goto('/user/repair/apply')" v-if="hasAnyPerm(['sys:repair:create', 'sys:repair:manage'])">
                             <el-icon><EditPen /></el-icon>
                             <span>我要报修</span>
                         </el-menu-item>
-                        <el-menu-item index="repair-list" @click="goto('/user/repair/list')">
+                        <el-menu-item index="repair-list" @click="goto('/user/repair/list')" v-if="hasAnyPerm(['sys:repair:view', 'sys:repair:handle', 'sys:repair:manage'])">
                             <el-icon><List /></el-icon>
                             <span>工单列表</span>
                         </el-menu-item>
@@ -70,7 +71,7 @@
                             <el-icon><Setting /></el-icon>
                             <span>系统管理</span>
                         </template>
-                        <el-menu-item index="role" @click="goto('/user/role')" v-if="hasPerm('sys:user:view')">
+                        <el-menu-item index="role" @click="goto('/user/role')" v-if="isSuper">
                             <el-icon><Avatar /></el-icon>
                             <span>角色与权限管理</span>
                         </el-menu-item>
@@ -93,9 +94,10 @@
 
 <script setup>
 import { useRouter, useRoute } from 'vue-router';
-import { ref, onMounted, computed } from 'vue';
-import { jwtDecode } from 'jwt-decode';
+import { onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import Cookies from 'js-cookie';
+import axios from '@/axios/axios';
+import { homeDataStore } from '@/components/home/home/data';
 import { 
     UserFilled, Monitor, Connection, Message, Setting, SwitchButton, Odometer, 
     OfficeBuilding, Location, User, DataLine, School, Avatar, Tools,
@@ -104,8 +106,9 @@ import {
 
 const router = useRouter();
 const route = useRoute();
-const userRole = ref(2); // 默认普通用户
-const permissions = ref([]);
+const store = homeDataStore();
+const isSuper = computed(() => Boolean(store.isSuper));
+const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));
 
 const activeMenu = computed(() => {
     const path = route.path;
@@ -142,42 +145,70 @@ const activeMenu = computed(() => {
 
 const hasPerm = (perm) => {
     // 超级管理员拥有所有权限
-    if (userRole.value === 0) return true;
+    if (isSuper.value) return true;
     return permissions.value.includes(perm);
 };
 
 // 工具方法：判断是否有数组中任意一个权限
 const hasAnyPerm = (perms) => {
-    if (userRole.value === 0) return true;
+    if (isSuper.value) return true;
     return perms.some(p => permissions.value.includes(p));
 }
 
-onMounted(() => {
-  const token = Cookies.get('token');
-  if (token) {
-    try {
-        const decoded = jwtDecode(token);
-        userRole.value = Number(decoded.permission_level);
-        // 如果 token 中包含 permissions
-        if (decoded.permissions) {
-             permissions.value = decoded.permissions;
-        } else {
-             // 兼容旧 Token 或未包含的情况，按 Role 映射
-             if (userRole.value === 1) {
-                 // 运维人员权限
-                 permissions.value = ["sys:device:list", "sys:monitor:view", "sys:location:view"];
-             } else if (userRole.value === 2) {
-                 // 普通用户权限（通常只有查看自己的信息）
-                 permissions.value = [];
-             }
-        }
-    } catch (e) {
-        console.error("Token decode error", e);
+let permTimer = null;
+let authRefreshListener = null;
+
+const syncAuthAndPerms = async (options = {}) => {
+  const force = Boolean(options.force);
+  store.syncAuthFromToken();
+  if (!Cookies.get('token')) return;
+  await store.fetchPermissions({ force });
+};
+
+onMounted(async () => {
+  await syncAuthAndPerms();
+
+  try {
+    const res = await axios.post('/api/v1/auth/refresh');
+    if (res.data && res.data.token) {
+        await syncAuthAndPerms({ force: true });
     }
+  } catch (e) {
+    return;
+  }
+
+  authRefreshListener = async () => {
+    await syncAuthAndPerms({ force: true });
+  };
+  window.addEventListener('auth:refreshed', authRefreshListener);
+
+  permTimer = setInterval(() => {
+    syncAuthAndPerms({ force: true });
+  }, 30000);
+});
+
+onBeforeUnmount(() => {
+  if (permTimer) {
+    clearInterval(permTimer);
+    permTimer = null;
+  }
+  if (authRefreshListener) {
+    window.removeEventListener('auth:refreshed', authRefreshListener);
+    authRefreshListener = null;
   }
 });
 
+watch(
+  () => route.fullPath,
+  () => {
+    store.syncAuthFromToken();
+  }
+);
+
 const goto = (path) => {
+    if (String(path).toLowerCase() === '/login') {
+        Cookies.remove('token');
+    }
     router.push(path);
 }
 </script>

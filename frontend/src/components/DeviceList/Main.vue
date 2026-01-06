@@ -80,7 +80,7 @@
 
                         <div :class="$style.actions">
                             <el-button type="primary" size="small" :icon="View" @click="showDeviceDetail(item)">详情</el-button>
-                            <el-button type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="item.status !== '在线'">SSH</el-button>
+                            <el-button v-if="canSsh" type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="item.status !== '在线'">SSH</el-button>
                             <el-button type="danger" size="small" :icon="Delete" @click="handleDelete(item)">删除</el-button>
                         </div>
                     </div>
@@ -105,7 +105,7 @@
                     <el-table-column label="操作" width="200" fixed="right">
                         <template #default="{ row }">
                             <el-button link type="primary" size="small" @click="showDeviceDetail(row)">详情</el-button>
-                            <el-button link type="success" size="small" @click="connectSSH(row)" :disabled="row.status !== '在线'">SSH</el-button>
+                            <el-button v-if="canSsh" link type="success" size="small" @click="connectSSH(row)" :disabled="row.status !== '在线'">SSH</el-button>
                             <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
                         </template>
                     </el-table-column>
@@ -116,19 +116,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Grid, List, View, Connection, Delete } from '@element-plus/icons-vue';
 import { dveiceDateStore } from './Date/index';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { homeDataStore } from '@/components/home/home/data'
 
 const store = dveiceDateStore();
 const router = useRouter();
+const authStore = homeDataStore()
 const activeTab = ref('0');
 
 // 计算属性和状态
 const isCardView = computed(() => store.getdataCardType() === 0);
 const deviceList = computed(() => store.getPaginatedData());
+const canSsh = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:ssh:connect')))
 
 // 方法
 const setCardView = (isCard) => {
@@ -141,6 +144,7 @@ const handleTabClick = (tab) => {
 };
 
 const connectSSH = (item) => {
+    if (!canSsh.value) return
     if (item.ipv4) {
         router.push({
             name: 'ssh-connection',
@@ -204,6 +208,11 @@ const handleDelete = (item) => {
 };
 
 // 生命周期
+onMounted(() => {
+    authStore.syncAuthFromToken()
+    authStore.fetchPermissions()
+})
+
 onBeforeUnmount(() => {
     store.stopPolling();
 });

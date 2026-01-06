@@ -47,8 +47,8 @@ const vuetify = createVuetify({
 // 全局注册组件
 app.component('font-awesome-icon', FontAwesomeIcon)
 app.use(vuetify)
-app.use(router)
 app.use(pinia)
+app.use(router)
 app.use(ElementPlus, {
   locale: zhCn,
 })

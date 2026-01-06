@@ -5,87 +5,36 @@
         <div class="login-left">
             <h1>网络设备自动化运维平台</h1>
         </div>
-        <!-- 登录/注册/找回密码卡片切换区域 -->
-        <transition  :loading="loading" :style="{color: 'white'}" name="fade-transition" mode="out-in">
-
-            <!-- 登录卡片 -->
-            <v-card  v-if="isLogin == 0"  class="login-center" key="login">
-                <v-alert-title >
-                    登录
-                </v-alert-title>
-                <v-form :style="{ marginTop: '20px' }">
-                    <v-row>
-                        <v-text-field class="login-form" v-model="userName" label="账号" required type="text" inputmode="numeric" />
-                    </v-row>
-                    <v-row>
-                        <v-text-field class="login-form" v-model="userPassword" label="密码" type="password" required></v-text-field>
-                    </v-row>
-                    <v-row>
-                        <v-checkbox v-model="rememberPassword" label="记住密码"></v-checkbox>
-                    </v-row>
-                    <v-row>
-                        <v-btn  :style="{  background: '#4caf50'}" @click="login(userName, userPassword)">登录</v-btn>
-                        <v-btn :style="{ marginLeft: '10px', background: 'blue' }" text @click="isLogin = 1">注册</v-btn>
-                        <v-btn :style="{ marginLeft: '10px', background: 'none' }" text @click="isLogin = 2">找回密码</v-btn>
-                    </v-row>
-                </v-form>
-            </v-card>
-            <!-- 注册卡片 -->
-            <v-card v-else-if="isLogin == 1" class="login-center" key="register">
-                <v-alert-title>
-                    注册
-                </v-alert-title>
-                <v-form :style="{ marginTop: '20px' }">
-                    <v-row>
-                        <v-text-field class="login-form" v-model="registerUserName" label="账号" required type="text" inputmode="numeric" />
-                    </v-row>
-                    <v-row>
-                        <v-text-field class="login-form" v-model="registerPassword" label="密码" type="password" required />
-                    </v-row>
-                    <v-row>
-                        <v-text-field class="login-form" v-model="registerConfirmPassword" label="确认密码" type="password" required />
-                    </v-row>
-                    <v-row>
-                        <v-btn :style="{  background: 'blue' }"  @click="Register(registerUserName, registerPassword, registerConfirmPassword)">注册</v-btn>
-                        <v-btn :style="{ marginLeft: '10px',  background: 'none' }" text @click="isLogin = 0">返回登录</v-btn>
-                    </v-row>
-                </v-form>
-            </v-card>
-            <!-- 找回密码卡片 -->
-            <v-card v-else class="login-center" key="forgot">
-                <v-alert-title>
-                    找回密码
-                </v-alert-title>
-                <v-form  :style="{ marginTop: '20px' }">
-                    <v-row>
-                        <v-text-field class="login-form" v-model="forgotUserName" label="账号" required type="text" inputmode="numeric" />
-                    </v-row>
-                    <v-row>
-                        <v-text-field class="login-form" v-model="forgotEmail" label="邮箱" required type="email" />
-                    </v-row>
-                    <v-row>
-                        <v-btn :style="{background: '#4caf50'}" @click="ForgotPassword(forgotUserName, forgotEmail)">提交</v-btn>
-                        <v-btn :style="{ marginLeft: '10px' ,  background: 'none' }" text @click="isLogin = 0">返回登录</v-btn>
-                    </v-row>
-                </v-form>
-                
-            </v-card>
-           
-        </transition>
+        <v-card class="login-center">
+            <v-alert-title>
+                登录
+            </v-alert-title>
+            <v-form :style="{ marginTop: '20px' }">
+                <v-row>
+                    <v-text-field class="login-form" v-model="userName" label="账号" required type="text" inputmode="numeric" />
+                </v-row>
+                <v-row>
+                    <v-text-field class="login-form" v-model="userPassword" label="密码" type="password" required></v-text-field>
+                </v-row>
+                <v-row>
+                    <v-checkbox v-model="rememberPassword" label="记住密码"></v-checkbox>
+                </v-row>
+                <v-row>
+                    <v-btn :style="{ background: '#4caf50' }" @click="login(userName, userPassword)">登录</v-btn>
+                </v-row>
+            </v-form>
+        </v-card>
     </div>
 </template>
 
 <script setup>
-// 导入必要的组件和工具
-import Login from '@/components/login/index.vue'
 import { ref, onMounted } from 'vue'
 import router from '@/router'
-import axios from 'axios'
+import axios from '@/axios/axios'
+import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
 
 
-// 页面切换状态管理
-const isLogin = ref(0) // 0登录 1注册
 const userName = ref('') // 登录用户名
 const userPassword = ref('') // 登录密码
 
@@ -103,10 +52,6 @@ onMounted(() => {
 })
 
 
-
-
-
-const loading = ref(false)
 const login = async (userName, userPassword) => {
     // not null
     if (userName == '' || userPassword == '') {
@@ -130,15 +75,8 @@ const login = async (userName, userPassword) => {
             localStorage.removeItem('password')
         }
         
-        // 存储 Token (新接口返回 token 字段)
         if (res.data.token) {
-            // 设置 cookie (保留原逻辑，或者根据需求存 localStorage)
-            // document.cookie = `token=${res.data.token}; path=/; max-age=${60 * 60 * 24 * 7}` 
-            // 注意：后端如果已经 Set-Cookie，前端无需手动设置，除非需要存 localStorage
-            // 这里假设后端 Set-Cookie 或者返回 token 供前端使用
-            // 如果后端返回结构变了，这里需要适配
-            // 假设后端返回 { status: "success", message: "...", token: "..." }
-            console.log("Login success, token:", res.data.token)
+            Cookies.set('token', res.data.token, { sameSite: 'lax' })
         }
 
         await router.push('/user/dashboard')

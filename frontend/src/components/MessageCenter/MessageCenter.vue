@@ -1,140 +1,417 @@
 <template>
-  <div class="message-center">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>消息中心</span>
+  <div class="mc-container">
+    <div class="mc-header">
+      <div class="page-title">
+        <el-icon class="mr-2"><Bell /></el-icon>
+        <span>消息中心</span>
+        <el-tooltip content="告警、通知与推送设置" placement="right">
+          <el-icon class="info-icon"><InfoFilled /></el-icon>
+        </el-tooltip>
+      </div>
+      <div class="header-actions">
+        <el-button size="small" @click="refreshAll">刷新</el-button>
+      </div>
+    </div>
+
+    <div class="mc-content">
+      <div class="mc-topbar">
+        <div ref="tabSwitcherRef" class="tab-switcher">
+          <div
+            v-for="tab in visibleTabs"
+            :key="tab.name"
+            class="tab-item"
+            :ref="(el) => setTabRef(tab.name, el)"
+            :class="{ active: activeTab === tab.name }"
+            @click="activeTab = tab.name"
+          >
+            <el-icon><component :is="tab.icon" /></el-icon> {{ tab.label }}
+          </div>
+          <div class="tab-indicator" :style="indicatorStyle"></div>
         </div>
-      </template>
 
-      <el-tabs v-model="activeTab">
-        <!-- 告警监控 (Trap) -->
-        <el-tab-pane label="实时告警" name="alerts">
-             <div class="alert-toolbar">
-                <el-button type="primary" size="small" @click="clearAlerts">清空告警</el-button>
-             </div>
-             <el-table :data="alerts" style="width: 100%" row-key="id" stripe>
-                <el-table-column prop="time" label="时间" width="180" />
-                <el-table-column prop="level" label="级别" width="100">
-                    <template #default="scope">
-                        <el-tag :type="getAlertLevelType(scope.row.level)">{{ scope.row.level }}</el-tag>
-                    </template>
-                </el-table-column>
-                <el-table-column prop="source" label="来源 IP" width="150" />
-                <el-table-column prop="type" label="类型" width="150" />
-                <el-table-column prop="description" label="描述" />
-             </el-table>
-             <el-empty v-if="alerts.length === 0" description="暂无实时告警" />
-        </el-tab-pane>
+        <div class="topbar-right" v-if="activeTab === 'alerts'">
+          <div class="status-pill" :class="`status-pill--${wsStatus}`">
+            <span class="status-emoji">{{ wsStatusEmoji }}</span>
+            <span class="status-text">{{ wsStatusText }}</span>
+          </div>
+        </div>
+      </div>
 
-        <!-- 消息通知列表 -->
-        <el-tab-pane label="设备通知" name="notifications">
-            <el-table :data="notifications" style="width: 100%" v-loading="loading">
-                <el-table-column prop="created_at" label="时间" width="180">
-                    <template #default="scope">
-                        {{ new Date(scope.row.created_at).toLocaleString() }}
-                    </template>
-                </el-table-column>
-                <el-table-column prop="level" label="级别" width="100">
-                    <template #default="scope">
-                        <el-tag :type="getLevelType(scope.row.level)">{{ scope.row.level }}</el-tag>
-                    </template>
-                </el-table-column>
-                <el-table-column prop="device_name" label="设备" width="150" />
-                <el-table-column prop="message" label="内容" />
-            </el-table>
-            <div class="pagination-container" v-if="notifications.length > 0">
-                 <!-- 简易分页，实际应配合后端分页 -->
-                 <el-pagination layout="prev, pager, next" :total="100" />
-            </div>
-             <el-empty v-if="notifications.length === 0 && !loading" description="暂无通知" />
-        </el-tab-pane>
+      <div class="mc-body">
+        <div v-show="activeTab === 'alerts'" class="tab-body">
+          <el-row :gutter="12" class="stats-row">
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value">{{ alertStats.total }}</div>
+                <div class="stat-label">告警总数（本页缓存）</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value stat-value--danger">{{ alertStats.error }}</div>
+                <div class="stat-label">错误</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value stat-value--warning">{{ alertStats.warning }}</div>
+                <div class="stat-label">告警</div>
+              </el-card>
+            </el-col>
+          </el-row>
 
-        <!-- 消息设置 -->
-        <el-tab-pane label="推送设置" name="settings">
-            <div class="settings-container" v-loading="configLoading">
-                <el-form label-position="left" label-width="150px">
-                    <el-divider content-position="left">邮箱通知</el-divider>
-                    <el-form-item label="开启邮箱通知">
-                        <el-switch v-model="config.enable_email" />
+          <el-alert
+            v-if="wsStatus === 'forbidden'"
+            type="warning"
+            show-icon
+            title="无权限订阅实时告警"
+            class="mb-12"
+          />
+
+          <div class="toolbar">
+            <el-space wrap alignment="center">
+              <el-select v-model="alertsLevel" size="small" style="width: 140px">
+                <el-option label="全部级别" value="all" />
+                <el-option label="error" value="error" />
+                <el-option label="warning" value="warning" />
+                <el-option label="success" value="success" />
+                <el-option label="info" value="info" />
+              </el-select>
+              <el-input v-model="alertsKeyword" size="small" clearable placeholder="搜索来源/类型/描述" style="width: 260px" />
+              <el-radio-group v-model="alertsViewMode" size="small">
+                <el-radio-button label="timeline">时间轴</el-radio-button>
+                <el-radio-button label="table">表格</el-radio-button>
+              </el-radio-group>
+              <el-switch v-model="alertsPaused" inline-prompt active-text="暂停" inactive-text="实时" />
+              <el-button size="small" @click="clearAlerts">清空</el-button>
+            </el-space>
+          </div>
+
+          <div v-if="alertsViewMode === 'timeline'" class="timeline-wrap">
+            <el-card shadow="never" class="list-card">
+              <el-timeline>
+                <el-timeline-item
+                  v-for="a in timelineAlerts"
+                  :key="a.__rowKey"
+                  :timestamp="formatDateTime(a.time)"
+                  :type="getAlertLevelType(a.level)"
+                >
+                  <div class="timeline-item">
+                    <el-tag :type="getAlertLevelType(a.level)" effect="light" size="small">
+                      {{ String(a.level || '').toLowerCase() }}
+                    </el-tag>
+                    <div class="timeline-content">
+                      <div class="timeline-title">
+                        <span class="muted">{{ a.source }}</span>
+                        <span class="dot">·</span>
+                        <span class="muted">{{ a.type }}</span>
+                      </div>
+                      <div class="timeline-desc">{{ a.description }}</div>
+                    </div>
+                  </div>
+                </el-timeline-item>
+              </el-timeline>
+              <el-empty v-if="timelineAlerts.length === 0" description="暂无告警" />
+            </el-card>
+          </div>
+
+          <el-table
+            v-else
+            :data="filteredAlerts"
+            row-key="__rowKey"
+            stripe
+            height="520"
+            class="table"
+            :empty-text="wsStatus === 'connected' ? '暂无实时告警' : '未连接或无数据'"
+          >
+            <el-table-column prop="time" label="时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.time) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="level" label="级别" width="110">
+              <template #default="scope">
+                <el-tag :type="getAlertLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="source" label="来源" width="160" />
+            <el-table-column prop="type" label="类型" width="160" />
+            <el-table-column prop="description" label="描述" min-width="240" show-overflow-tooltip />
+          </el-table>
+        </div>
+
+        <div v-show="activeTab === 'notifications'" class="tab-body">
+          <el-row :gutter="12" class="stats-row">
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value">{{ notificationStats.total }}</div>
+                <div class="stat-label">通知总数（最近100条）</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value stat-value--danger">{{ notificationStats.error }}</div>
+                <div class="stat-label">错误</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value stat-value--warning">{{ notificationStats.warning }}</div>
+                <div class="stat-label">告警</div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <div class="toolbar">
+            <el-space wrap alignment="center">
+              <el-select v-model="notificationsLevel" size="small" style="width: 140px">
+                <el-option label="全部级别" value="all" />
+                <el-option label="error" value="error" />
+                <el-option label="warning" value="warning" />
+                <el-option label="info" value="info" />
+              </el-select>
+              <el-input v-model="notificationsKeyword" size="small" clearable placeholder="搜索设备/内容" style="width: 260px" />
+              <el-button size="small" :loading="loading" @click="fetchNotifications">刷新</el-button>
+            </el-space>
+          </div>
+
+          <el-table :data="filteredNotifications" stripe v-loading="loading" height="520" class="table" empty-text="暂无通知">
+            <el-table-column prop="created_at" label="时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.created_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="level" label="级别" width="110">
+              <template #default="scope">
+                <el-tag :type="getLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="device_name" label="设备" width="180" show-overflow-tooltip />
+            <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip />
+          </el-table>
+        </div>
+
+        <div v-show="activeTab === 'settings'" class="tab-body">
+          <el-row :gutter="12">
+            <el-col :xs="24" :lg="12">
+              <el-card shadow="never" class="settings-card" v-loading="configLoading">
+                <template #header>
+                  <div class="settings-card__header">
+                    <div class="settings-card__title">邮箱通知</div>
+                  </div>
+                </template>
+
+                <el-form label-position="top">
+                  <el-form-item label="开启邮箱通知">
+                    <el-switch v-model="config.enable_email" :disabled="!canEditConfig" />
+                  </el-form-item>
+
+                  <template v-if="config.enable_email">
+                    <el-form-item label="使用全局配置" v-if="canUseGlobal">
+                      <el-switch v-model="config.use_global_email" :disabled="!canEditConfig" />
                     </el-form-item>
-                    
-                    <template v-if="config.enable_email">
-                         <el-form-item label="使用全局配置" v-if="canUseGlobal">
-                            <el-switch v-model="config.use_global_email" />
-                            <div class="hint">开启后将使用系统统一配置的邮件服务器发送通知（需权限）</div>
+
+                    <el-row v-if="!config.use_global_email" :gutter="12">
+                      <el-col :span="12">
+                        <el-form-item label="SMTP 服务器">
+                          <el-input v-model="config.email_config.host" placeholder="smtp.example.com" :disabled="!canEditConfig" />
                         </el-form-item>
-                        
-                        <div v-if="!config.use_global_email" class="sub-config">
-                             <el-form-item label="SMTP服务器">
-                                <el-input v-model="config.email_config.host" placeholder="smtp.example.com" />
-                             </el-form-item>
-                             <el-form-item label="端口">
-                                <el-input v-model="config.email_config.port" placeholder="465" />
-                             </el-form-item>
-                             <el-form-item label="用户名">
-                                <el-input v-model="config.email_config.username" placeholder="user@example.com" />
-                             </el-form-item>
-                             <el-form-item label="授权码/密码">
-                                <el-input v-model="config.email_config.password" type="password" show-password />
-                             </el-form-item>
-                        </div>
-                        <el-form-item label="测试接收邮箱">
-                            <div class="test-row">
-                                <el-input v-model="testEmailTarget" placeholder="输入邮箱地址" style="width: 200px" />
-                                <el-button type="info" size="small" @click="handleTest('email')">发送测试邮件</el-button>
-                            </div>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="端口">
+                          <el-input v-model="config.email_config.port" placeholder="465" :disabled="!canEditConfig" />
                         </el-form-item>
-                    </template>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="用户名">
+                          <el-input v-model="config.email_config.username" placeholder="user@example.com" :disabled="!canEditConfig" />
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="12">
+                        <el-form-item label="授权码/密码">
+                          <el-input v-model="config.email_config.password" type="password" show-password :disabled="!canEditConfig" />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
 
-                    <el-divider content-position="left">PushPlus 推送</el-divider>
-                    <el-form-item label="开启PushPlus">
-                        <el-switch v-model="config.enable_pushplus" />
+                    <el-form-item label="测试接收邮箱">
+                      <el-row :gutter="12">
+                        <el-col :xs="24" :sm="16">
+                          <el-input v-model="testEmailTarget" placeholder="输入邮箱地址" :disabled="!canEditConfig" />
+                        </el-col>
+                        <el-col :xs="24" :sm="8">
+                          <el-button style="width: 100%" @click="handleTest('email')" :disabled="!canTest">发送测试</el-button>
+                        </el-col>
+                      </el-row>
                     </el-form-item>
-                    <el-form-item label="Token" v-if="config.enable_pushplus">
-                        <div class="test-row">
-                             <el-input v-model="config.pushplus_token" placeholder="PushPlus Token" />
-                             <el-button type="info" size="small" @click="handleTest('pushplus')">测试</el-button>
-                        </div>
-                    </el-form-item>
-
-                    <el-divider content-position="left">HTTP 回调</el-divider>
-                    <el-form-item label="开启HTTP回调">
-                        <el-switch v-model="config.enable_http" />
-                    </el-form-item>
-                    <el-form-item label="Webhook URL" v-if="config.enable_http">
-                        <div class="test-row">
-                            <el-input v-model="config.http_url" placeholder="http://your-api.com/callback" />
-                            <el-button type="info" size="small" @click="handleTest('http')">测试</el-button>
-                        </div>
-                    </el-form-item>
-
-                    <el-form-item>
-                        <el-button type="primary" @click="saveConfig">保存配置</el-button>
-                    </el-form-item>
+                  </template>
                 </el-form>
-            </div>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
+              </el-card>
+            </el-col>
+
+            <el-col :xs="24" :lg="12">
+              <el-card shadow="never" class="settings-card" v-loading="configLoading">
+                <template #header>
+                  <div class="settings-card__header">
+                    <div class="settings-card__title">推送渠道</div>
+                  </div>
+                </template>
+
+                <el-form label-position="top">
+                  <el-form-item label="开启 PushPlus">
+                    <el-switch v-model="config.enable_pushplus" :disabled="!canEditConfig" />
+                  </el-form-item>
+                  <el-form-item label="PushPlus Token" v-if="config.enable_pushplus">
+                    <el-row :gutter="12">
+                      <el-col :xs="24" :sm="16">
+                        <el-input v-model="config.pushplus_token" placeholder="PushPlus Token" :disabled="!canEditConfig" />
+                      </el-col>
+                      <el-col :xs="24" :sm="8">
+                        <el-button style="width: 100%" @click="handleTest('pushplus')" :disabled="!canTest">测试</el-button>
+                      </el-col>
+                    </el-row>
+                  </el-form-item>
+
+                  <el-form-item label="开启 HTTP 回调">
+                    <el-switch v-model="config.enable_http" :disabled="!canEditConfig" />
+                  </el-form-item>
+                  <el-form-item label="Webhook URL" v-if="config.enable_http">
+                    <el-row :gutter="12">
+                      <el-col :xs="24" :sm="16">
+                        <el-input v-model="config.http_url" placeholder="http://your-api.com/callback" :disabled="!canEditConfig" />
+                      </el-col>
+                      <el-col :xs="24" :sm="8">
+                        <el-button style="width: 100%" @click="handleTest('http')" :disabled="!canTest">测试</el-button>
+                      </el-col>
+                    </el-row>
+                  </el-form-item>
+
+                  <el-button type="primary" style="width: 100%" @click="saveConfig" :disabled="!canEditConfig">保存配置</el-button>
+                </el-form>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, reactive, computed, nextTick, watch } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
-import { jwtDecode } from 'jwt-decode';
 import Cookies from 'js-cookie';
+import { homeDataStore } from '@/components/home/home/data';
+import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus/icons-vue';
 
 const activeTab = ref('alerts'); // 默认显示告警
 const notifications = ref([]);
 const alerts = ref([]); // 实时告警列表
 const loading = ref(false);
 const configLoading = ref(false);
-const canUseGlobal = ref(false);
+const store = homeDataStore();
+const isSuper = computed(() => Boolean(store.isSuper));
+const perms = computed(() => (Array.isArray(store.permissions) ? store.permissions.map(String) : []));
+const hasPerm = (p) => (isSuper.value ? true : perms.value.includes(String(p)));
+const hasAnyPerm = (arr) => (isSuper.value ? true : (arr || []).some((p) => perms.value.includes(String(p))));
+
+const canViewHistory = computed(() => hasPerm('sys:notify:history'));
+const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
+const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
+const canTest = computed(() => hasPerm('sys:notify:test'));
+const canUseGlobal = computed(() => {
+    return hasPerm('sys:notify:global');
+});
+const canSubscribeAlerts = computed(() => {
+    return hasPerm('sys:alert:subscribe');
+});
 const testEmailTarget = ref('');
 let ws = null; // WebSocket 实例
+let wsReconnectAttempted = false;
+let wsReconnectTimer = null;
+const wsStatus = ref('disconnected');
+
+const alertsLevel = ref('all');
+const alertsKeyword = ref('');
+const alertsPaused = ref(false);
+const alertsViewMode = ref('table');
+
+const notificationsLevel = ref('all');
+const notificationsKeyword = ref('');
+
+const normalizeText = (v) => String(v ?? '').trim().toLowerCase();
+
+const formatDateTime = (value) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString();
+};
+
+const matchesKeyword = (row, keyword, keys) => {
+    const kw = normalizeText(keyword);
+    if (!kw) return true;
+    for (const k of keys) {
+        if (normalizeText(row?.[k]).includes(kw)) return true;
+    }
+    return false;
+};
+
+const filteredAlerts = computed(() => {
+    const level = normalizeText(alertsLevel.value);
+    return (alerts.value || [])
+        .filter((a) => (level === 'all' ? true : normalizeText(a?.level) === level))
+        .filter((a) => matchesKeyword(a, alertsKeyword.value, ['source', 'type', 'description']))
+        .slice(0, 200)
+        .map((a, idx) => ({ ...a, __rowKey: a?.id ?? `${a?.time ?? ''}-${idx}` }));
+});
+
+const timelineAlerts = computed(() => (filteredAlerts.value || []).slice(0, 50));
+
+const alertStats = computed(() => {
+    const list = alerts.value || [];
+    const stats = { total: list.length, error: 0, warning: 0, success: 0, info: 0 };
+    for (const a of list) {
+        const lv = normalizeText(a?.level);
+        if (lv && Object.prototype.hasOwnProperty.call(stats, lv)) stats[lv] += 1;
+    }
+    return stats;
+});
+
+const wsStatusText = computed(() => {
+    if (wsStatus.value === 'connected') return '已连接';
+    if (wsStatus.value === 'connecting') return '连接中';
+    if (wsStatus.value === 'forbidden') return '无权限';
+    if (wsStatus.value === 'error') return '异常';
+    return '未连接';
+});
+
+const wsStatusEmoji = computed(() => {
+    if (wsStatus.value === 'connected') return '🟢';
+    if (wsStatus.value === 'connecting') return '🟡';
+    if (wsStatus.value === 'forbidden') return '🟠';
+    if (wsStatus.value === 'error') return '🔴';
+    return '⚫';
+});
+
+const filteredNotifications = computed(() => {
+    const level = normalizeText(notificationsLevel.value);
+    return (notifications.value || [])
+        .filter((n) => (level === 'all' ? true : normalizeText(n?.level) === level))
+        .filter((n) => matchesKeyword(n, notificationsKeyword.value, ['device_name', 'message']))
+        .slice(0, 200);
+});
+
+const notificationStats = computed(() => {
+    const list = notifications.value || [];
+    const stats = { total: list.length, error: 0, warning: 0, info: 0 };
+    for (const n of list) {
+        const lv = normalizeText(n?.level);
+        if (lv && Object.prototype.hasOwnProperty.call(stats, lv)) stats[lv] += 1;
+    }
+    return stats;
+});
 
 const getAlertLevelType = (level) => {
     switch(level) {
@@ -149,45 +426,75 @@ const clearAlerts = () => {
     alerts.value = [];
 };
 
-// 连接 WebSocket 接收实时告警
 const initAlertWebSocket = () => {
+    if (ws) {
+        ws.__manualClose = true;
+        ws.close();
+        ws = null;
+    }
+
+    if (!canSubscribeAlerts.value) {
+        wsStatus.value = 'forbidden';
+        return;
+    }
+
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsHost = window.location.hostname
     const port = window.location.port === '5173' ? '8000' : window.location.port
     const wsPort = port ? `:${port}` : ''
     const token = Cookies.get('token')
-    
-    // 复用已有的 WS 接口，或者新建一个专门的 Alert WS
-    // 这里假设后端 notification 模块提供了一个 /ws/alerts
-    // 暂时如果没有，我们可以复用 device list 的 ws，或者在 notification.py 里加一个
-    // 为了简单，我们复用设备列表的 WS 通道，或者新建一个
-    // 由于后端 notification 还没有 WS，我们先用轮询模拟或者假设后端有 (需补充)
-    
-    // 补充：后端 Routers/User/notification.py 需要增加 WS 接口
     const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/notifications/ws/alerts?token=${token}`
     
     try {
+        wsStatus.value = 'connecting';
         ws = new WebSocket(wsUrl);
+        ws.__manualClose = false;
         ws.onopen = () => {
-            console.log('Alert WebSocket connected');
+            wsStatus.value = 'connected';
+            wsReconnectAttempted = false;
         };
         ws.onmessage = (event) => {
             try {
+                if (alertsPaused.value) return;
                 const alert = JSON.parse(event.data);
                 alerts.value.unshift(alert);
-                // 最多保留 50 条
-                if (alerts.value.length > 50) {
+                if (alerts.value.length > 500) {
                     alerts.value.pop();
                 }
             } catch (e) {
-                console.error('Alert WS parse error:', e);
+                wsStatus.value = 'error';
             }
         };
-        ws.onclose = () => {
-            console.log('Alert WebSocket closed');
+        ws.onclose = async (e) => {
+            if (ws?.__manualClose) return;
+
+            const closeCode = Number(e?.code || 0);
+            if (closeCode === 4003) {
+                wsStatus.value = 'forbidden';
+                ElMessage.warning('无权订阅实时告警');
+                return;
+            }
+            if (closeCode !== 4001) return;
+            if (wsReconnectAttempted) return;
+            wsReconnectAttempted = true;
+
+            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = setTimeout(async () => {
+                try {
+                    const res = await axios.post('/api/v1/auth/refresh');
+                    const nextToken = res?.data?.token;
+                    if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' });
+                    initAlertWebSocket();
+                } catch (err) {
+                    return;
+                }
+            }, 500);
+        };
+        ws.onerror = () => {
+            wsStatus.value = 'error';
         };
     } catch (e) {
-        console.error('Alert WS error:', e);
+        wsStatus.value = 'error';
     }
 }
 
@@ -290,57 +597,344 @@ const handleTest = async (channel) => {
     }
 };
 
-onMounted(() => {
-    const token = Cookies.get('token');
-    if (token) {
-        try {
-            const decoded = jwtDecode(token);
-            // 权限等级 <= 1 可以使用全局配置
-            canUseGlobal.value = Number(decoded.permission_level) <= 1;
-        } catch (e) {}
-    }
+const refreshAll = async () => {
+    if (canViewHistory.value) fetchNotifications();
+    if (canViewConfig.value) fetchConfig();
+    initAlertWebSocket();
+};
 
-    fetchNotifications();
-    fetchConfig();
+onMounted(async () => {
+    store.syncAuthFromToken();
+    await store.fetchPermissions();
+    if (canViewHistory.value) fetchNotifications();
+    if (canViewConfig.value) fetchConfig();
     initAlertWebSocket(); // 启动 WS
 });
 
 onUnmounted(() => {
     if (ws) {
+        ws.__manualClose = true;
         ws.close();
+    }
+    if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+    }
+});
+
+const tabSwitcherRef = ref(null);
+const indicatorLeft = ref(0);
+const indicatorWidth = ref(0);
+const tabEls = reactive({});
+let tabResizeObserver;
+
+const visibleTabs = computed(() => {
+    const tabs = [];
+    if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '实时告警', icon: WarningFilled });
+    if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
+    if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
+    return tabs.length > 0 ? tabs : [{ name: 'notifications', label: '设备通知', icon: Message }];
+});
+
+const indicatorStyle = computed(() => {
+    return {
+        width: `${indicatorWidth.value}px`,
+        transform: `translate3d(${indicatorLeft.value}px, 0, 0)`,
+    };
+});
+
+const setTabRef = (name, el) => {
+    if (!name) return;
+    if (el) tabEls[name] = el;
+    else delete tabEls[name];
+};
+
+const updateIndicator = async () => {
+    await nextTick();
+    const el = tabEls[activeTab.value];
+    const container = tabSwitcherRef.value;
+    if (!el || !container) return;
+    const c = container.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    indicatorLeft.value = Math.max(0, r.left - c.left);
+    indicatorWidth.value = Math.max(0, r.width);
+};
+
+watch(
+    () => perms.value.join('|') + `:${isSuper.value}`,
+    async () => {
+        await nextTick();
+        const names = visibleTabs.value.map(t => t.name);
+        if (!names.includes(activeTab.value)) activeTab.value = names[0];
+        await updateIndicator();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => activeTab.value,
+    async () => {
+        await updateIndicator();
+    }
+);
+
+onMounted(async () => {
+    await nextTick();
+    await updateIndicator();
+    if (tabSwitcherRef.value && typeof ResizeObserver !== 'undefined') {
+        tabResizeObserver = new ResizeObserver(() => {
+            updateIndicator();
+        });
+        tabResizeObserver.observe(tabSwitcherRef.value);
+    }
+});
+
+onUnmounted(() => {
+    if (tabResizeObserver) {
+        tabResizeObserver.disconnect();
+        tabResizeObserver = null;
     }
 });
 </script>
 
 <style scoped>
-.message-center {
-    padding: 20px;
+.mc-container {
+    --bg-dark: #f5f7fa;
+    --bg-card: #ffffff;
+    --bg-hover: #f0f2f5;
+    --primary-color: #409eff;
+    --text-primary: #303133;
+    --text-secondary: #909399;
+    --border-color: #dcdfe6;
+
+    height: calc(100vh - 100px);
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 }
-.settings-container {
-    max-width: 600px;
-    padding: 20px 0;
+
+.mc-header {
+    height: 60px;
+    background-color: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
 }
-.sub-config {
-    margin-left: 20px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 4px;
-    margin-bottom: 20px;
+
+.page-title {
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    color: var(--text-primary);
 }
-.hint {
+
+.mr-2 {
+    margin-right: 8px;
+}
+
+.info-icon {
+    margin-left: 8px;
+    color: var(--text-secondary);
+    cursor: help;
+    font-size: 16px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mc-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mc-topbar {
+    padding: 14px 16px 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.tab-switcher {
+    position: relative;
+    display: flex;
+    width: 420px;
+    max-width: 100%;
+    background-color: var(--bg-hover);
+    border-radius: 20px;
+    padding: 4px;
+}
+
+.tab-item {
+    flex: 1;
+    padding: 6px 16px;
+    cursor: pointer;
+    border-radius: 16px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    transition: all 0.22s;
+    z-index: 1;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.tab-item.active {
+    color: #fff;
+    font-weight: 500;
+}
+
+.tab-indicator {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 0;
+    background-color: var(--primary-color);
+    border-radius: 16px;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, width;
+    z-index: 0;
+    box-shadow: 0 2px 4px rgba(64, 158, 255, 0.3);
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    background: #ffffff;
+    border: 1px solid #ebeef5;
+}
+
+.status-emoji {
+    font-size: 14px;
+    line-height: 14px;
+}
+
+.status-text {
+    color: var(--text-secondary);
+    line-height: 14px;
+}
+
+.mc-body {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 16px 16px 16px;
+}
+
+.tab-body {
+    background: transparent;
+}
+
+.stats-row {
+    margin-bottom: 12px;
+}
+.stat-card {
+    border: 1px solid #ebeef5;
+    background: #ffffff;
+    border-radius: 10px;
+}
+.stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 28px;
+}
+.stat-value--danger {
+    color: #f56c6c;
+}
+.stat-value--warning {
+    color: #e6a23c;
+}
+.stat-label {
+    margin-top: 6px;
     font-size: 12px;
     color: #909399;
-    margin-top: 5px;
 }
-.test-row {
+.toolbar {
+    padding: 10px 12px;
+    background: #f7f8fa;
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+.table {
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+}
+.timeline-wrap {
+    margin-bottom: 12px;
+}
+.list-card {
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+}
+.timeline-item {
     display: flex;
+    align-items: flex-start;
     gap: 10px;
-    align-items: center;
-    width: 100%;
 }
-.pagination-container {
-    margin-top: 20px;
+.timeline-content {
+    flex: 1;
+    min-width: 0;
+}
+.timeline-title {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.timeline-desc {
+    margin-top: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 18px;
+    word-break: break-word;
+}
+.muted {
+    color: var(--text-secondary);
+}
+.dot {
+    color: var(--text-secondary);
+}
+.settings-card {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+.settings-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.settings-card__title {
+    font-weight: 600;
+}
+.mb-12 {
+    margin-bottom: 12px;
 }
 </style>
