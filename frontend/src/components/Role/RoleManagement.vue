@@ -147,6 +147,19 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <div class="pagination-container">
+                  <el-pagination
+                    v-model:current-page="roleMembersPage"
+                    v-model:page-size="roleMembersPageSize"
+                    :total="roleMembersTotal"
+                    :page-sizes="[10, 20, 50, 100]"
+                    layout="total, sizes, prev, pager, next, jumper"
+                    small
+                    background
+                    @current-change="handleRoleMembersPageChange"
+                    @size-change="handleRoleMembersPageSizeChange"
+                  />
+                </div>
               </div>
 
               <!-- B. 权限矩阵 -->
@@ -379,6 +392,9 @@
                 v-model="selectedUserIds"
                 multiple
                 filterable
+                remote
+                :remote-method="handleAvailableUsersRemoteSearch"
+                :reserve-keyword="false"
                 collapse-tags
                 collapse-tags-tooltip
                 placeholder="请选择要添加的用户"
@@ -447,11 +463,15 @@ const roleUsersData = ref([]);
 
 const roleMembersLoading = ref(false);
 const roleMembers = ref([]);
+const roleMembersPage = ref(1);
+const roleMembersPageSize = ref(20);
+const roleMembersTotal = ref(0);
 
 const addMembersDialogVisible = ref(false);
 const availableUsersLoading = ref(false);
 const availableUsers = ref([]);
 const selectedUserIds = ref([]);
+const availableUsersQuery = ref('');
 
 const currentUserId = ref(null);
 
@@ -898,6 +918,7 @@ const handleSelectRole = async (role) => {
     }
   } catch (e) { console.error(e); }
 
+  roleMembersPage.value = 1;
   await fetchRoleMembers(role.id);
   
   hasChanges.value = false;
@@ -999,13 +1020,17 @@ const handleSetDefaultRole = async (role) => {
 const fetchRoleMembers = async (roleId) => {
   if (!roleId || roleId === 'new') {
     roleMembers.value = [];
+    roleMembersTotal.value = 0;
     return;
   }
   roleMembersLoading.value = true;
   try {
-    const res = await axios.get(`/api/v1/rbac/roles/${roleId}/users`);
+    const res = await axios.get(`/api/v1/rbac/roles/${roleId}/users`, {
+      params: { page: roleMembersPage.value, page_size: roleMembersPageSize.value }
+    });
     if (res.data.code === 200) {
       roleMembers.value = res.data.data || [];
+      roleMembersTotal.value = Number(res.data?.meta?.total ?? roleMembers.value.length ?? 0);
     } else {
       ElMessage.error(res.data.message || '获取成员失败');
     }
@@ -1016,13 +1041,28 @@ const fetchRoleMembers = async (roleId) => {
   }
 };
 
-const openAddMembersDialog = async () => {
-  if (!currentRole.value || currentRole.value.id === 'new') return;
-  addMembersDialogVisible.value = true;
-  selectedUserIds.value = [];
+const handleRoleMembersPageChange = async (page) => {
+  roleMembersPage.value = Number(page || 1);
+  if (currentRole.value?.id && currentRole.value.id !== 'new') {
+    await fetchRoleMembers(currentRole.value.id);
+  }
+};
+
+const handleRoleMembersPageSizeChange = async (size) => {
+  roleMembersPageSize.value = Number(size || 20);
+  roleMembersPage.value = 1;
+  if (currentRole.value?.id && currentRole.value.id !== 'new') {
+    await fetchRoleMembers(currentRole.value.id);
+  }
+};
+
+const fetchAvailableUsers = async ({ q } = {}) => {
+  if (!currentRole.value?.id || currentRole.value.id === 'new') return;
   availableUsersLoading.value = true;
   try {
-    const res = await axios.get(`/api/v1/rbac/roles/${currentRole.value.id}/available_users`);
+    const res = await axios.get(`/api/v1/rbac/roles/${currentRole.value.id}/available_users`, {
+      params: { q: String(q ?? availableUsersQuery.value ?? ''), page: 1, page_size: 50 }
+    });
     if (res.data.code === 200) {
       availableUsers.value = res.data.data || [];
     } else {
@@ -1033,6 +1073,19 @@ const openAddMembersDialog = async () => {
   } finally {
     availableUsersLoading.value = false;
   }
+};
+
+const handleAvailableUsersRemoteSearch = async (query) => {
+  availableUsersQuery.value = String(query ?? '');
+  await fetchAvailableUsers({ q: availableUsersQuery.value });
+};
+
+const openAddMembersDialog = async () => {
+  if (!currentRole.value || currentRole.value.id === 'new') return;
+  addMembersDialogVisible.value = true;
+  selectedUserIds.value = [];
+  availableUsersQuery.value = '';
+  await fetchAvailableUsers({ q: '' });
 };
 
 const handleAddMembers = async () => {
@@ -1047,6 +1100,7 @@ const handleAddMembers = async () => {
     if (res.data.code === 200) {
       ElMessage.success(res.data.message || '添加成功');
       addMembersDialogVisible.value = false;
+      roleMembersPage.value = 1;
       await fetchRoleMembers(currentRole.value.id);
     } else {
       ElMessage.error(res.data.message || '添加失败');
@@ -1065,6 +1119,9 @@ const handleRemoveMember = async (user) => {
     const res = await axios.delete(`/api/v1/rbac/roles/${currentRole.value.id}/users/${user.id}`);
     if (res.data.code === 200) {
       ElMessage.success(res.data.message || '移除成功');
+      if (roleMembers.value.length <= 1 && roleMembersPage.value > 1) {
+        roleMembersPage.value -= 1;
+      }
       await fetchRoleMembers(currentRole.value.id);
     } else {
       ElMessage.error(res.data.message || '移除失败');
@@ -1489,6 +1546,12 @@ const handlePermDelete = async (perm) => {
   border-left: 4px solid var(--primary-color);
   padding-left: 10px;
   color: var(--text-primary);
+}
+
+.pagination-container {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* Permission Matrix */
