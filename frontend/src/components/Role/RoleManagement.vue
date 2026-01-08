@@ -185,11 +185,20 @@
                             <el-switch 
                               :model-value="currentRolePermIds.includes(perm.id)"
                               @change="() => togglePerm(perm.id)"
+                              :disabled="isGloballyDisabled(perm.code)"
                               size="small"
                             />
                           </div>
                           <div class="perm-label">
-                            <div class="name">{{ perm.name }}</div>
+                            <div class="name">
+                              <span>{{ perm.name }}</span>
+                              <el-tag 
+                                v-if="isGloballyDisabled(perm.code)" 
+                                size="small" 
+                                type="danger" 
+                                style="margin-left:6px;"
+                              >已全局禁用</el-tag>
+                            </div>
                             <div class="code">{{ perm.code }}</div>
                           </div>
                         </div>
@@ -224,7 +233,7 @@
         <div v-show="activeTab === 'permission'" class="view-container perm-view">
            <!-- 左侧：权限树/列表 -->
            <div class="left-panel">
-            <div class="panel-header">
+           <div class="panel-header">
               <span class="panel-title">权限目录</span>
               <div>
                 <el-button size="small" :loading="permSyncing" @click="handleSyncPermissions">一键同步</el-button>
@@ -247,10 +256,28 @@
                   >
                     <el-icon class="item-icon"><Connection /></el-icon>
                     <div class="item-content">
-                      <div class="item-title">{{ perm.name }}</div>
+                      <div class="item-title">
+                        <span>{{ perm.name }}</span>
+                        <el-tag 
+                          v-if="isGloballyDisabled(perm.code)" 
+                          size="small" 
+                          type="danger" 
+                          style="margin-left:6px;"
+                        >已全局禁用</el-tag>
+                      </div>
                       <div class="item-subtitle">{{ perm.code }}</div>
                     </div>
                     <div style="display:flex;align-items:center;gap:6px;">
+                      <el-button
+                        class="global-disable-btn"
+                        size="small"
+                        link
+                        :type="isGloballyDisabled(perm.code) ? 'success' : 'danger'"
+                        :loading="disabledSavingCode === String(perm.code || '').trim()"
+                        @click.stop="toggleGlobalDisabledForPerm(perm.code)"
+                      >
+                        {{ isGloballyDisabled(perm.code) ? '启用' : '禁用' }}
+                      </el-button>
                       <el-tag size="small" :type="perm.in_directory ? 'success' : 'info'">{{ perm.in_directory ? '系统' : '自定义' }}</el-tag>
                       <el-tag v-if="perm.exists === false" size="small" type="warning">未同步</el-tag>
                     </div>
@@ -285,6 +312,13 @@
                     </el-form-item>
                     <el-form-item label="描述">
                       <el-input v-model="currentPermForm.description" type="textarea" :rows="3" :disabled="!currentPerm?.id" />
+                    </el-form-item>
+                    <el-form-item label="全局禁用">
+                      <el-switch
+                        :model-value="isGloballyDisabled(currentPermForm.code)"
+                        :disabled="!currentPerm?.id"
+                        @change="(val) => setGlobalDisabledForPerm(currentPermForm.code, val)"
+                      />
                     </el-form-item>
                     <!-- <el-form-item label="类型">
                       <el-radio-group v-model="currentPermForm.type">
@@ -405,6 +439,8 @@ const currentPerm = ref(null);
 const currentPermForm = reactive({ name: '', code: '', description: '', type: 'button' });
 const permFilterText = ref(''); // 角色详情里的权限搜索
 const permListFilter = ref(''); // 权限管理里的列表搜索
+const disabledPermCodes = ref([]); // 被全局禁用的权限编码集合
+const disabledSavingCode = ref('');
 
 const roleUsersLoading = ref(false);
 const roleUsersData = ref([]);
@@ -426,6 +462,7 @@ const permissionDepsByCode = {
   'sys:device:edit': ['sys:device:list'],
   'sys:device:del': ['sys:device:list'],
   'sys:user:manage': ['sys:user:view'],
+  'sys:user:import': ['sys:user:manage'],
   'sys:config:edit': ['sys:config:view'],
   'sys:repair:create': ['sys:repair:view'],
   'sys:repair:handle': ['sys:repair:view'],
@@ -443,6 +480,7 @@ const getPermModuleKey = (code) => {
 const moduleNameMap = {
   auth: '认证授权',
   email: '认证授权',
+  dashboard: '系统概览',
   monitor: '监控告警',
   alert: '监控告警',
   message: '消息中心',
@@ -639,6 +677,7 @@ onMounted(() => {
   }
   fetchRoles();
   fetchPermissions();
+  fetchDisabledPermissions();
   fetchPermissionDirectory();
   updateIndicator();
 
@@ -731,6 +770,18 @@ const fetchPermissions = async () => {
   finally { permissionLoading.value = false; }
 };
 
+const fetchDisabledPermissions = async () => {
+  try {
+    const res = await axios.get('/api/v1/rbac/permissions/disabled');
+    if (res.data.code === 200) {
+      const codes = res.data.data?.codes || [];
+      disabledPermCodes.value = codes.map(c => String(c || '').trim()).filter(Boolean);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 const fetchPermissionDirectory = async () => {
   permissionLoading.value = true;
   try {
@@ -745,6 +796,56 @@ const fetchPermissionDirectory = async () => {
   } finally {
     permissionLoading.value = false;
   }
+};
+
+const isGloballyDisabled = (code) => {
+  const c = String(code || '').trim();
+  if (!c) return false;
+  return disabledPermCodes.value.includes(c);
+};
+
+const setDisabledCodes = (codes) => {
+  disabledPermCodes.value = (codes || [])
+    .map(c => String(c || '').trim())
+    .filter(Boolean);
+};
+
+const updateDisabledOnServer = async (codes, loadingCode = '') => {
+  disabledSavingCode.value = loadingCode;
+  try {
+    const payload = {
+      codes: (codes || []).map(c => String(c || '').trim()).filter(Boolean),
+    };
+    const res = await axios.put('/api/v1/rbac/permissions/disabled', payload);
+    if (res.data.code === 200) {
+      setDisabledCodes(res.data.data?.codes || []);
+      ElMessage.success(res.data.message || '保存成功');
+    } else {
+      ElMessage.error(res.data.message || '保存失败');
+    }
+  } catch (e) {
+    ElMessage.error('保存失败');
+  } finally {
+    disabledSavingCode.value = '';
+  }
+};
+
+const toggleGlobalDisabledForPerm = async (code) => {
+  const c = String(code || '').trim();
+  if (!c) return;
+  const set = new Set(disabledPermCodes.value || []);
+  if (set.has(c)) set.delete(c);
+  else set.add(c);
+  await updateDisabledOnServer(Array.from(set), c);
+};
+
+const setGlobalDisabledForPerm = async (code, disabled) => {
+  const c = String(code || '').trim();
+  if (!c) return;
+  const set = new Set(disabledPermCodes.value || []);
+  if (disabled) set.add(c);
+  else set.delete(c);
+  await updateDisabledOnServer(Array.from(set), c);
 };
 
 const handleSyncPermissions = async () => {
@@ -973,6 +1074,9 @@ const handleRemoveMember = async (user) => {
 
 const togglePerm = (id) => {
   const code = permCodeById.value.get(id);
+  if (code && isGloballyDisabled(code)) {
+    return;
+  }
   if (!code) {
     const index = currentRolePermIds.value.indexOf(id);
     if (index > -1) currentRolePermIds.value.splice(index, 1);
@@ -1538,7 +1642,8 @@ const handlePermDelete = async (perm) => {
   transition: opacity 0.2s;
 }
 
-.perm-tree-item:hover .delete-btn {
+.perm-tree-item:hover .delete-btn,
+.perm-tree-item:hover .global-disable-btn {
   opacity: 1;
 }
 

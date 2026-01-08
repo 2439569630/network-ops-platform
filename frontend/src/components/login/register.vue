@@ -6,105 +6,100 @@
 
     <el-card class="auth-card" shadow="never">
       <div class="auth-header">
-        <div class="auth-title">登录</div>
-        <div class="auth-subtitle">使用账号密码登录系统</div>
+        <div class="auth-title">注册</div>
+        <div class="auth-subtitle">创建账号后需管理员审核</div>
       </div>
 
-      <el-form :model="form" label-position="top" @keyup.enter="submitLogin">
+      <el-form :model="form" label-position="top" @keyup.enter="submitRegister">
         <el-form-item label="账号">
           <el-input v-model="form.username" placeholder="请输入账号" :prefix-icon="User" />
         </el-form-item>
 
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" :prefix-icon="Lock" />
+        <el-form-item label="昵称">
+          <el-input v-model="form.nickname" placeholder="可选" :prefix-icon="UserFilled" />
         </el-form-item>
 
-        <div class="auth-row">
-          <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
-        </div>
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" placeholder="可选" :prefix-icon="Message" />
+        </el-form-item>
+
+        <el-form-item label="密码">
+          <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" :prefix-icon="Lock" />
+        </el-form-item>
+
+        <el-form-item label="确认密码">
+          <el-input v-model="form.password2" type="password" show-password placeholder="再次输入密码" :prefix-icon="Lock" />
+        </el-form-item>
       </el-form>
 
       <div class="auth-actions">
-        <el-button @click="goRegister">去注册</el-button>
-        <el-button type="primary" :loading="loading" @click="submitLogin">登录</el-button>
+        <el-button @click="goLogin">返回登录</el-button>
+        <el-button type="primary" :loading="loading" @click="submitRegister">注册</el-button>
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from '@/axios/axios'
-import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { User, Lock, Message, UserFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
-const route = useRoute()
+const loading = ref(false)
 
 const form = reactive({
   username: '',
+  nickname: '',
+  email: '',
   password: '',
+  password2: '',
 })
 
-const rememberPassword = ref(false)
-const loading = ref(false)
-
-onMounted(() => {
-  const cachedUser = localStorage.getItem('username')
-  const cachedPwd = localStorage.getItem('password')
-  if (cachedUser && cachedPwd) {
-    form.username = cachedUser
-    form.password = cachedPwd
-    rememberPassword.value = true
-    return
-  }
-  const qUser = route.query?.username
-  if (typeof qUser === 'string' && qUser.trim()) {
-    form.username = qUser.trim()
-  }
-})
-
-const goRegister = () => {
-  router.push('/register')
+const goLogin = () => {
+  router.push('/login')
 }
 
-const submitLogin = async () => {
+const submitRegister = async () => {
   const username = String(form.username || '').trim()
+  const nickname = String(form.nickname || '').trim()
+  const email = String(form.email || '').trim()
   const password = String(form.password || '')
+  const password2 = String(form.password2 || '')
+
   if (!username || !password) {
     ElNotification({ title: 'Error', message: '账号或密码不能为空', type: 'error' })
+    return
+  }
+  if (password.length < 6) {
+    ElNotification({ title: 'Error', message: '密码长度至少 6 位', type: 'error' })
+    return
+  }
+  if (password !== password2) {
+    ElNotification({ title: 'Error', message: '两次密码不一致', type: 'error' })
     return
   }
 
   loading.value = true
   try {
-    const res = await axios.post('/api/v1/auth/login', { username, password })
-
-    if (rememberPassword.value) {
-      localStorage.setItem('username', username)
-      localStorage.setItem('password', password)
-    } else {
-      localStorage.removeItem('username')
-      localStorage.removeItem('password')
-    }
-
-    if (res.data?.token) {
-      Cookies.set('token', res.data.token, { sameSite: 'lax' })
-    }
-
-    await router.push('/user/dashboard')
-
+    const res = await axios.post('/api/v1/auth/register', {
+      username,
+      password,
+      nickname: nickname || null,
+      email: email || null,
+    })
     ElNotification({
       title: 'Success',
-      message: res.data?.message || '登录成功',
+      message: res.data?.message || '注册成功',
       type: 'success',
     })
+    router.push({ path: '/login', query: { username } })
   } catch (err) {
     ElNotification({
       title: 'Error',
-      message: err.response?.data?.message || err.message || '登录失败',
+      message: err.response?.data?.message || err.message || '注册失败',
       type: 'error',
     })
   } finally {
@@ -112,6 +107,7 @@ const submitLogin = async () => {
   }
 }
 </script>
+
 <style scoped>
 .auth-page {
   width: 100%;
@@ -169,18 +165,11 @@ const submitLogin = async () => {
   color: #6b7280;
 }
 
-.auth-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: -4px;
-}
-
 .auth-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 .auth-page::before {

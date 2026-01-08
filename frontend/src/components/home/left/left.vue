@@ -11,7 +11,7 @@
                     :unique-opened="true"
                 >
                     <!-- 1. 系统概览 (所有人可见) -->
-                    <el-menu-item index="dashboard" @click="goto('/user/dashboard')">
+                    <el-menu-item index="dashboard" @click="goto('/user/dashboard')" v-if="hasPerm('sys:dashboard:view')">
                         <el-icon><Odometer /></el-icon>
                         <span>系统概览</span>
                     </el-menu-item>
@@ -66,7 +66,7 @@
                     </el-sub-menu>
 
                     <!-- 5. 系统管理 (仅管理员) -->
-                    <el-sub-menu index="system" v-if="hasAnyPerm(['sys:user:view', 'sys:config:view'])">
+                    <el-sub-menu index="system" v-if="hasAnyPerm(['sys:user:view', 'sys:user:import', 'sys:config:view'])">
                         <template #title>
                             <el-icon><Setting /></el-icon>
                             <span>系统管理</span>
@@ -74,6 +74,10 @@
                         <el-menu-item index="role" @click="goto('/user/role')" v-if="isSuper">
                             <el-icon><Avatar /></el-icon>
                             <span>角色与权限管理</span>
+                        </el-menu-item>
+                        <el-menu-item index="user-import" @click="goto('/user/user-import')" v-if="hasPerm('sys:user:import')">
+                            <el-icon><User /></el-icon>
+                            <span>批量导入用户</span>
                         </el-menu-item>
                          <el-menu-item index="config" @click="goto('/user/config')" v-if="hasPerm('sys:config:view')">
                             <el-icon><Tools /></el-icon>
@@ -138,6 +142,7 @@ const activeMenu = computed(() => {
     if (path.includes('/user/organization')) return 'organization';
     if (path.includes('/user/role')) return 'role';
     if (path.includes('/user/permission')) return 'role';
+    if (path.includes('/user/user-import')) return 'user-import';
     if (path.includes('/user/config')) return 'config';
 
     return 'dashboard';

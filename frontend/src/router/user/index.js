@@ -20,7 +20,7 @@ const homeRoutes = [
                 path: 'dashboard',
                 name: 'dashboard',
                 component: Dashboard,
-                meta: { title: '系统概览' }
+                meta: { title: '系统概览', perms: ['sys:dashboard:view'] }
             },
             {
                 path: 'home',
@@ -60,6 +60,12 @@ const homeRoutes = [
                 name: 'role',
                 component: RoleManagement,
                 meta: { title: '角色与权限管理', roleCodes: ['admin', 'superadmin', 'super_admin'] } // 仅管理员可见
+            },
+            {
+                path: 'user-import',
+                name: 'user-import',
+                component: () => import('@/components/System/UserImport.vue'),
+                meta: { title: '批量导入用户', perms: ['sys:user:import'] }
             },
             {
                 path: 'permission',

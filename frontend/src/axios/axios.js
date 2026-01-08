@@ -4,7 +4,7 @@ import Cookies from "js-cookie";
 import { ElNotification } from "element-plus";
 
 // 基础配置
-axios.defaults.baseURL = 'http://127.0.0.1:8000';
+axios.defaults.baseURL = '';
 axios.defaults.headers.post['Content-Type'] = 'application/json;charset=UTF-8';
 
 // 允许跨域携带 Cookie

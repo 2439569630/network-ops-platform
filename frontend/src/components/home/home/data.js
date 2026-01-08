@@ -119,7 +119,7 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const fetchPermissions = async (options = {}) => {
-    const force = Boolean(options.force);
+    let force = Boolean(options.force);
     const token = Cookies.get('token');
     if (!token) {
       clearAuthCache();
@@ -127,6 +127,17 @@ export const homeDataStore = defineStore('homeData', () => {
     }
 
     if (permissionsLoading.value) return permissions.value;
+
+    try {
+      const decoded = jwtDecode(token);
+      const tokenPermVer = decoded?.perm_ver ?? null;
+      if (tokenPermVer !== null && permVer.value !== null && String(tokenPermVer) !== String(permVer.value)) {
+        force = true;
+      }
+    } catch {
+      clearAuthCache();
+      return [];
+    }
 
     if (!force && permissions.value.length > 0 && Date.now() - permissionsLoadedAt.value < 5 * 60 * 1000) {
       return permissions.value;
