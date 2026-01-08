@@ -47,3 +47,6 @@ class PermissionOut(PermissionBase):
 class RolePermissionsSet(BaseModel):
     permission_ids: List[int]
 
+
+class DisabledPermissionsSet(BaseModel):
+    codes: List[str]

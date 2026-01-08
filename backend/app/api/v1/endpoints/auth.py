@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.core.redis import redis_manager
-from app.core.security import create_access_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_token
+from app.core.security import create_access_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_token, get_disabled_permission_codes_cached
 from app.core.config import settings
 from app.services.rbac_service import RbacService
 import json
@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 class LoginForm(BaseModel):
     username: str
     password: str
+
+class RegisterForm(BaseModel):
+    username: str
+    password: str
+    nickname: Optional[str] = None
+    email: Optional[str] = None
 
 def _normalize_permissions(value) -> list[str]:
     if value is None:
@@ -41,6 +47,21 @@ def _normalize_permissions(value) -> list[str]:
         except Exception:
             return []
     return []
+
+def _looks_like_bcrypt_hash(value: str) -> bool:
+    s = str(value or "")
+    return s.startswith("$2a$") or s.startswith("$2b$") or s.startswith("$2y$")
+
+def _verify_password_compat(plain_password: str, stored_password: str) -> bool:
+    if stored_password is None:
+        return False
+    stored = str(stored_password)
+    if _looks_like_bcrypt_hash(stored):
+        try:
+            return bool(verify_password(plain_password, stored))
+        except Exception:
+            return False
+    return stored == str(plain_password)
 
 async def _get_or_init_perm_ver(user_id: int) -> int:
     redis_client = redis_manager.get_client()
@@ -72,13 +93,10 @@ async def login(data: LoginForm, response: Response):
     if user['is_approved'] is False:
         return JSONResponse(
             status_code=403,
-            content={"code": 403, "message": "账户已被封禁，请联系管理员", "status": "error"}
+            content={"code": 403, "message": "账户未审核或已封禁，请联系管理员", "status": "error"}
         )
 
-    # 2. 验证密码 (这里假设数据库是明文，如果需要哈希验证，请改用 verify_password)
-    # 注意：原始代码是明文比较 if rule['password'] != loginForm.password:
-    # 如果要保持一致：
-    if user['password'] != data.password:
+    if not _verify_password_compat(data.password, user.get("password")):
          return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
@@ -97,11 +115,16 @@ async def login(data: LoginForm, response: Response):
         pass
     
     is_super = user_is_super({"roles": user_roles})
-    if not is_super and "sys:auth:login" not in set(user_permissions):
-        return JSONResponse(
-            status_code=403,
-            content={"code": 403, "message": "登录权限已关闭", "status": "error"},
-        )
+    if not is_super:
+        try:
+            disabled = await get_disabled_permission_codes_cached()
+            if "sys:auth:login" in {str(c) for c in (disabled or [])}:
+                return JSONResponse(
+                    status_code=403,
+                    content={"code": 403, "message": "登录权限已关闭", "status": "error"},
+                )
+        except Exception:
+            pass
 
     perm_ver = await _get_or_init_perm_ver(user["id"])
     token_data = {
@@ -166,7 +189,7 @@ async def refresh_token(response: Response, token: str = Cookie(None)):
     if user.get("is_approved") is False:
         return JSONResponse(
             status_code=403,
-            content={"code": 403, "message": "账户已被封禁，请联系管理员", "status": "error"},
+            content={"code": 403, "message": "账户未审核或已封禁，请联系管理员", "status": "error"},
         )
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -181,12 +204,17 @@ async def refresh_token(response: Response, token: str = Cookie(None)):
         pass
     
     is_super = user_is_super(token_payload) or user_is_super({"roles": user_roles})
-    if not is_super and "sys:auth:login" not in set(user_permissions):
-        response.delete_cookie(key="token")
-        return JSONResponse(
-            status_code=403,
-            content={"code": 403, "message": "登录权限已关闭", "status": "error"},
-        )
+    if not is_super:
+        try:
+            disabled = await get_disabled_permission_codes_cached()
+            if "sys:auth:login" in {str(c) for c in (disabled or [])}:
+                response.delete_cookie(key="token")
+                return JSONResponse(
+                    status_code=403,
+                    content={"code": 403, "message": "登录权限已关闭", "status": "error"},
+                )
+        except Exception:
+            pass
 
     perm_ver = await _get_or_init_perm_ver(user["id"])
     token_data = {
@@ -208,6 +236,79 @@ async def refresh_token(response: Response, token: str = Cookie(None)):
     )
 
     return {"code": 200, "status": "success", "token": access_token}
+
+@router.post("/register")
+async def register(data: RegisterForm):
+    try:
+        disabled = await get_disabled_permission_codes_cached()
+        if "sys:auth:register" in {str(c) for c in (disabled or [])}:
+            return JSONResponse(
+                status_code=403,
+                content={"code": 403, "status": "error", "message": "注册权限已关闭"},
+            )
+    except Exception:
+        pass
+    username = (data.username or "").strip()
+    password = str(data.password or "")
+    if not username or not password:
+        return JSONResponse(
+            status_code=400,
+            content={"code": 400, "status": "error", "message": "用户名与密码不能为空"},
+        )
+
+    exists = await db.fetch_val("SELECT id FROM users WHERE username = $1", username)
+    if exists:
+        return JSONResponse(
+            status_code=400,
+            content={"code": 400, "status": "error", "message": "用户名已存在"},
+        )
+
+    nickname = (data.nickname or "").strip() or username
+    email = (data.email or "").strip() or None
+    hashed_pw = get_password_hash(password)
+    perms_json = ["sys:monitor:view"]
+
+    user_id = await db.fetch_val(
+        """
+        INSERT INTO users (username, password, nickname, email, is_approved, permissions)
+        VALUES ($1, $2, $3, $4, false, $5::jsonb)
+        RETURNING id
+        """,
+        username,
+        hashed_pw,
+        nickname,
+        email,
+        perms_json,
+    )
+
+    role_id: Optional[int] = None
+    try:
+        role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
+    except Exception:
+        role_id = None
+
+    if role_id is None:
+        try:
+            role_id = await db.fetch_val("SELECT id FROM roles WHERE lower(code) = 'shisheng' LIMIT 1")
+        except Exception:
+            role_id = None
+
+    if role_id is not None:
+        try:
+            await db.execute(
+                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                int(user_id),
+                int(role_id),
+            )
+        except Exception:
+            pass
+
+    try:
+        await _get_or_init_perm_ver(int(user_id))
+    except Exception:
+        pass
+
+    return {"code": 200, "status": "success", "message": "注册成功，请等待管理员审核", "data": {"id": user_id}}
 
 @router.get("/permissions")
 async def get_my_permissions(token_payload: dict = Depends(verify_token)):

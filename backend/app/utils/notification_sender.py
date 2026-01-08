@@ -1,7 +1,5 @@
-import aiosmtplib
 from email.mime.text import MIMEText
 from email.header import Header
-import httpx
 import logging
 import json
 
@@ -10,6 +8,11 @@ logger = logging.getLogger(__name__)
 async def send_email(host, port, username, password, to_email, subject, content):
     """发送邮件"""
     try:
+        try:
+            import aiosmtplib  # type: ignore
+        except Exception:
+            return False, "邮件依赖未安装：aiosmtplib"
+
         message = MIMEText(content, 'plain', 'utf-8')
         message['From'] = username
         message['To'] = to_email
@@ -39,6 +42,11 @@ async def send_email(host, port, username, password, to_email, subject, content)
 async def send_pushplus(token, content, title="系统通知"):
     """发送 PushPlus 通知"""
     try:
+        try:
+            import httpx  # type: ignore
+        except Exception:
+            return False, "HTTP 依赖未安装：httpx"
+
         url = "http://www.pushplus.plus/send"
         data = {
             "token": token,
@@ -60,6 +68,11 @@ async def send_pushplus(token, content, title="系统通知"):
 async def send_http(url, content, title="系统通知"):
     """发送 HTTP 回调"""
     try:
+        try:
+            import httpx  # type: ignore
+        except Exception:
+            return False, "HTTP 依赖未安装：httpx"
+
         data = {
             "title": title,
             "message": content,

@@ -8,22 +8,16 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/auth.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/devices.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/devices.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/notifications.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/notifications.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/rbac.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/rbac.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/repair_orders.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/repair_orders.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/system.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/system.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/api/v1/endpoints/users.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/v1/endpoints/users.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/core/security.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/core/security.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/models/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/models/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/schemas/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/notification_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/notification_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/schemas/rbac.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/rbac.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/rbac_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/rbac_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/repair_order_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/repair_order_service.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/user_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/user_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/utils/notification_sender.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/notification_sender.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/logs/app.log" beforeDir="false" afterPath="$PROJECT_DIR$/logs/app.log" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/logs/drivers.log" beforeDir="false" afterPath="$PROJECT_DIR$/logs/drivers.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/fix_roles_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/fix_roles_schema.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/init_rbac_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/init_rbac_db.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -286,6 +280,7 @@
       <workItem from="1767443235785" duration="2702000" />
       <workItem from="1767603976999" duration="11142000" />
       <workItem from="1767688528631" duration="11836000" />
+      <workItem from="1767767987871" duration="13387000" />
     </task>
     <task id="LOCAL-00001" summary="保存">
       <option name="closed" value="true" />
@@ -329,7 +324,7 @@
     <SUITE FILE_PATH="coverage/Server$.coverage" NAME=" 覆盖结果" MODIFIED="1767026697272" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/FastAPIProject$FastAPIProject.coverage" NAME="FastAPIProject 覆盖结果" MODIFIED="1761914570686" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/Server$snmp.coverage" NAME="snmp 覆盖结果" MODIFIED="1767026602846" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/app/Test" />
-    <SUITE FILE_PATH="coverage/Server$FastAPIProject.coverage" NAME="FastAPIProject 覆盖结果" MODIFIED="1767710621593" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/Server$FastAPIProject.coverage" NAME="FastAPIProject 覆盖结果" MODIFIED="1767792447376" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/FastAPIProject$jwt_handler.coverage" NAME="jwt_handler 覆盖结果" MODIFIED="1760774891158" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/auth" />
   </component>
 </project>

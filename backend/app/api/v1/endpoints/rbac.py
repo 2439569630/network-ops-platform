@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Body
+import json
 from app.api import deps
 from app.schemas.rbac import (
     RoleCreate,
@@ -6,9 +7,17 @@ from app.schemas.rbac import (
     PermissionCreate,
     PermissionUpdate,
     RolePermissionsSet,
+    DisabledPermissionsSet,
 )
 from app.services.rbac_service import RbacService
-from app.core.security import user_is_super
+from app.core.security import (
+    user_is_super,
+    get_disabled_permission_codes_cached,
+    DISABLED_PERMISSIONS_CONFIG_KEY,
+    DISABLED_PERMISSIONS_REDIS_KEY,
+)
+from app.core.redis import redis_manager
+from app.core.system_config import SystemConfig
 
 
 router = APIRouter()
@@ -91,6 +100,42 @@ async def list_permission_directory(current_user: dict = Depends(deps.get_curren
         return {"code": 200, "data": data}
     except Exception as e:
         return {"code": 500, "message": f"获取权限目录失败: {str(e)}"}
+
+
+@router.get("/permissions/disabled", response_model=dict)
+async def get_disabled_permissions(current_user: dict = Depends(deps.get_current_user)):
+    if not check_super_admin(current_user):
+        return {"code": 403, "message": "权限不足"}
+    try:
+        codes = await get_disabled_permission_codes_cached()
+        return {"code": 200, "data": {"codes": codes}}
+    except Exception as e:
+        return {"code": 500, "message": f"获取失败: {str(e)}"}
+
+
+@router.put("/permissions/disabled", response_model=dict)
+async def set_disabled_permissions(
+    data: DisabledPermissionsSet,
+    current_user: dict = Depends(deps.get_current_user),
+):
+    if not check_super_admin(current_user):
+        return {"code": 403, "message": "权限不足"}
+    try:
+        raw_codes = [str(c).strip() for c in (data.codes or []) if str(c).strip()]
+        target = sorted(list(set(raw_codes)))
+        existing = set([str(c).strip() for c in (await RbacService.get_all_permission_codes()) if str(c).strip()])
+        target = [c for c in target if c in existing]
+
+        await SystemConfig.set(DISABLED_PERMISSIONS_CONFIG_KEY, json.dumps(target))
+        try:
+            redis_client = redis_manager.get_client()
+            await redis_client.set(DISABLED_PERMISSIONS_REDIS_KEY, json.dumps(target), ex=60)
+        except Exception:
+            pass
+        return {"code": 200, "message": "更新成功", "data": {"codes": target}}
+    except Exception as e:
+        return {"code": 500, "message": f"更新失败: {str(e)}"}
+
 
 @router.post("/permissions/sync", response_model=dict)
 async def sync_system_permissions(current_user: dict = Depends(deps.get_current_user)):

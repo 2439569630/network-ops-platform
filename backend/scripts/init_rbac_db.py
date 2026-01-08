@@ -85,6 +85,7 @@ async def init_rbac_db():
             {"name": "登录", "code": "sys:auth:login", "description": ""},
             {"name": "注册", "code": "sys:auth:register", "description": ""},
             {"name": "邮箱验证", "code": "sys:email:verify", "description": ""},
+            {"name": "系统概览", "code": "sys:dashboard:view", "description": ""},
             {"name": "查看监控", "code": "sys:monitor:view", "description": ""},
             {"name": "消息中心", "code": "sys:message:access", "description": ""},
             {"name": "订阅实时告警", "code": "sys:alert:subscribe", "description": ""},
@@ -100,6 +101,7 @@ async def init_rbac_db():
             {"name": "SSH连接", "code": "sys:ssh:connect", "description": ""},
             {"name": "查看用户", "code": "sys:user:view", "description": ""},
             {"name": "管理用户", "code": "sys:user:manage", "description": ""},
+            {"name": "批量导入用户", "code": "sys:user:import", "description": ""},
             {"name": "查看配置", "code": "sys:config:view", "description": ""},
             {"name": "编辑配置", "code": "sys:config:edit", "description": ""},
             {"name": "全局通知", "code": "sys:notify:global", "description": ""},
@@ -134,6 +136,7 @@ async def init_rbac_db():
             "admin": [p["code"] for p in permissions_seed],
             "yunwei": [
                 "sys:auth:login",
+                "sys:dashboard:view",
                 "sys:monitor:view",
                 "sys:message:access",
                 "sys:alert:subscribe",
@@ -151,6 +154,7 @@ async def init_rbac_db():
             ],
             "shisheng": [
                 "sys:auth:login",
+                "sys:dashboard:view",
                 "sys:monitor:view",
                 "sys:message:access",
                 "sys:notify:history",

@@ -67,7 +67,10 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
     if not user:
         return
     if not user_is_super(user):
-        if not await user_has_permission(user, "sys:device:list"):
+        allowed = await user_has_permission(user, "sys:device:list")
+        if not allowed:
+            allowed = await user_has_permission(user, "sys:dashboard:view")
+        if not allowed:
             await websocket.close(code=4003, reason="权限不足")
             return
 

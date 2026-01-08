@@ -15,6 +15,71 @@ logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+DISABLED_PERMISSIONS_CONFIG_KEY = "rbac:disabled_permissions"
+DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
+
+
+def _normalize_permission_codes(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            if item is None:
+                continue
+            s = str(item).strip()
+            if s:
+                out.append(s)
+        return out
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return _normalize_permission_codes(parsed)
+        except Exception:
+            return []
+        return []
+    return []
+
+
+async def get_disabled_permission_codes_cached() -> list[str]:
+    redis_client = redis_manager.get_client()
+    cached = None
+    try:
+        cached = await redis_client.get(DISABLED_PERMISSIONS_REDIS_KEY)
+    except Exception:
+        cached = None
+    if cached:
+        try:
+            parsed = json.loads(cached)
+            codes = _normalize_permission_codes(parsed)
+            return sorted(list(set(codes)))
+        except Exception:
+            pass
+
+    row = await db.fetch_one(
+        "SELECT value FROM system_settings WHERE key = $1",
+        DISABLED_PERMISSIONS_CONFIG_KEY,
+    )
+    codes = _normalize_permission_codes(row.get("value") if row else None)
+    codes = sorted(list(set(codes)))
+    try:
+        await redis_client.set(DISABLED_PERMISSIONS_REDIS_KEY, json.dumps(codes), ex=60)
+    except Exception:
+        pass
+    return codes
+
+
+async def apply_disabled_permissions(perms: list[str]) -> list[str]:
+    disabled = await get_disabled_permission_codes_cached()
+    if not disabled:
+        return perms
+    disabled_set = {str(c) for c in disabled}
+    return [str(p) for p in (perms or []) if str(p) not in disabled_set]
+
 class UnicornException(Exception):
     def __init__(self, code: int, message: str, error_code: Optional[str] = None):
         self.code = code
@@ -154,7 +219,8 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
         try:
             parsed = json.loads(cached)
             if isinstance(parsed, list):
-                return [str(x) for x in parsed if x is not None]
+                perms = [str(x) for x in parsed if x is not None]
+                return await apply_disabled_permissions(perms)
         except Exception:
             cached = None
 
@@ -168,7 +234,7 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
         await redis_client.set(cache_key, json.dumps(merged), ex=3600)
     except Exception:
         pass
-    return merged
+    return await apply_disabled_permissions(merged)
 
 async def user_has_permission(user: dict, perm: str) -> bool:
     if user_is_super(user):

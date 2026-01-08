@@ -65,15 +65,10 @@ class UserService:
 
         sql = """
             INSERT INTO users (username, password, nickname, email, is_approved, permissions)
-            VALUES ($1, $2, $3, $4, true, $5)
+            VALUES ($1, $2, $3, $4, true, $5::jsonb)
             RETURNING id
         """
-        # asyncpg handles list to jsonb/json automatically if configured, but safe to dump if text column
-        # Assuming permissions column is text or jsonb. If text, need json.dumps.
-        # Based on old code: await PostgreSQL.execute(sql, ..., json.dumps(perms))
-        perms_json = json.dumps(perms)
-        
-        user_id = await db.fetch_val(sql, data.username, hashed_pw, nickname, data.email, perms_json)
+        user_id = await db.fetch_val(sql, data.username, hashed_pw, nickname, data.email, perms)
 
         default_role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
         if default_role_id:
@@ -87,12 +82,12 @@ class UserService:
     @staticmethod
     async def update_user_role(user_id: int, data: RoleUpdate):
         if data.permissions is not None:
-             await db.execute("UPDATE users SET permissions = $1 WHERE id = $2", json.dumps(data.permissions), user_id)
+             await db.execute("UPDATE users SET permissions = $1::jsonb WHERE id = $2", data.permissions, user_id)
              try:
                  from app.services.rbac_service import RbacService
                  await RbacService.bump_user_perm_version(int(user_id))
              except Exception:
-                 pass
+                  pass
 
     @staticmethod
     async def delete_user(user_id: int):
