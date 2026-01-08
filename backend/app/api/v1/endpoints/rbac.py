@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, Query
 import json
 from app.api import deps
 from app.schemas.rbac import (
@@ -242,23 +242,34 @@ async def set_default_role(role_id: int, current_user: dict = Depends(deps.get_c
 
 
 @router.get("/roles/{role_id}/users", response_model=dict)
-async def get_role_users(role_id: int, current_user: dict = Depends(deps.get_current_user)):
+async def get_role_users(
+    role_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    current_user: dict = Depends(deps.get_current_user),
+):
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
-        users = await RbacService.get_role_users(role_id)
-        return {"code": 200, "data": users}
+        result = await RbacService.get_role_users(role_id, page=page, page_size=page_size)
+        return {"code": 200, "data": result.get("items") or [], "meta": {"total": result.get("total") or 0, "page": result.get("page") or page, "page_size": result.get("page_size") or page_size}}
     except Exception as e:
         return {"code": 500, "message": f"获取成员失败: {str(e)}"}
 
 
 @router.get("/roles/{role_id}/available_users", response_model=dict)
-async def get_available_users(role_id: int, current_user: dict = Depends(deps.get_current_user)):
+async def get_available_users(
+    role_id: int,
+    q: str = Query("", max_length=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(deps.get_current_user),
+):
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
-        users = await RbacService.get_users_not_in_role(role_id)
-        return {"code": 200, "data": users}
+        result = await RbacService.get_users_not_in_role(role_id, q=q, page=page, page_size=page_size)
+        return {"code": 200, "data": result.get("items") or [], "meta": {"total": result.get("total") or 0, "page": result.get("page") or page, "page_size": result.get("page_size") or page_size, "q": result.get("q") or str(q or "").strip()}}
     except Exception as e:
         return {"code": 500, "message": f"获取用户失败: {str(e)}"}
 

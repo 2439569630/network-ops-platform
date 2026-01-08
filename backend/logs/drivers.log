@@ -115448,3 +115448,2613 @@ Common causes of this problem are:
 Device settings: huawei 192.168.112.254:22
 
 ，正在重试...
+2026-01-08 14:44:16 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:18 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:19 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:21 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:22 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:23 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:24 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:24 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:26 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:27 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:29 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:29 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:31 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:44:32 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:34 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:35 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:35 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:37 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:38 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:38 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:40 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:41 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:43 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:43 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:44:44 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:44 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:46 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:47 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:49 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:50 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:52 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:53 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:44:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:55 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:44:56 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:57 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:44:58 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:44:58 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:00 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:45:01 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:02 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:04 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:45:04 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:05 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:05 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:45:07 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: 
+2026-01-08 14:45:08 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:10 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: 
+2026-01-08 14:45:11 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:13 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: 
+A paramiko SSHException occurred during connection creation:
+
+Error reading SSH protocol banner
+
+，正在重试...
+2026-01-08 14:45:14 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:45:17 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:45:18 - app.drivers.base - INFO - 已连接到设备 154.36.187.86
+2026-01-08 14:45:26 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:45:29 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:45:38 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:45:39 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:45:43 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:45:45 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:45:47 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:45:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:45:51 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:45:52 - app.drivers.base - ERROR - 设备 154.36.187.86 执行命令出错: 
+
+Pattern not detected: '[\\$\\#]' in output.
+
+Things you might try to fix this:
+1. Adjust the regex pattern to better identify the terminating string. Note, in
+many situations the pattern is automatically based on the network device's prompt.
+2. Increase the read_timeout to a larger value.
+
+You can also look at the Netmiko session_log or debug log for more information.
+
+
+2026-01-08 14:45:52 - app.drivers.base - WARNING - 设备 154.36.187.86 连接因命令执行错误而断开
+2026-01-08 14:45:55 - app.drivers.base - INFO - 已连接到设备 154.36.187.86
+2026-01-08 14:45:59 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:03 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:46:11 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:46:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:46:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:26 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:46:33 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:38 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:46:45 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:46:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:46:54 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:54 - app.drivers.base - ERROR - 设备 154.36.187.86 执行命令出错: Socket is closed
+2026-01-08 14:46:54 - app.drivers.base - WARNING - 设备 154.36.187.86 连接因命令执行错误而断开
+2026-01-08 14:46:54 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: linux 154.36.187.86:22
+
+，正在重试...
+2026-01-08 14:46:56 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:56 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: linux 154.36.187.86:22
+
+，正在重试...
+2026-01-08 14:46:58 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:46:58 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:46:58 - app.drivers.base - ERROR - 连接设备 154.36.187.86 失败: TCP connection to device failed.
+2026-01-08 14:46:58 - app.drivers.linux - WARNING - 获取内存使用率失败: 无法连接到 154.36.187.86
+2026-01-08 14:46:58 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: linux 154.36.187.86:22
+
+，正在重试...
+2026-01-08 14:47:00 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:47:00 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:47:00 - app.drivers.base - WARNING - 设备 154.36.187.86 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: linux 154.36.187.86:22
+
+，正在重试...
+2026-01-08 14:47:35 - app.drivers.base - INFO - 已连接到设备 154.36.187.86
+2026-01-08 14:47:38 - app.drivers.linux - INFO - Linux 服务器 154.36.187.86 静态信息采集完毕: {'os_version': 'Ubuntu 22.04.5 LTS', 'vendor': 'Canonical', 'model': 'Ubuntu Server', 'kernel': '5.15.0-164-generic'}
+2026-01-08 14:47:40 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:47:40 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:47:52 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:47:52 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:48:04 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:48:04 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:48:14 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:48:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:48:26 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:48:26 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:48:38 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:48:38 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:48:48 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:48:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:49:00 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:49:00 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:49:12 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:49:12 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:49:22 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:49:22 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:49:34 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:49:34 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:49:46 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:49:46 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:49:56 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:49:56 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:50:08 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:50:08 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:50:20 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:50:20 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:50:31 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:50:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:50:43 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:50:43 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:50:55 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:50:55 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:51:05 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:51:05 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:51:17 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:51:17 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:51:29 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:51:29 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:51:39 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:51:39 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:51:51 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:51:51 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:52:03 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:52:03 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:52:13 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:52:13 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:52:25 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:52:25 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:52:37 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:52:37 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:52:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:52:47 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:52:59 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:52:59 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:53:11 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:53:11 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:53:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:53:22 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:53:33 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:53:34 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:53:45 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:53:46 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:53:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:53:56 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:54:07 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:54:08 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:54:19 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:54:20 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:54:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:54:30 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:54:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:54:42 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:54:53 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:54:54 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:55:04 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:55:04 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:55:16 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:55:16 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:55:28 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:55:28 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:55:38 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:55:38 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:55:50 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:55:50 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:56:02 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:56:02 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:56:12 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:56:12 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:56:24 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:56:24 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:56:36 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:56:37 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:56:46 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:56:47 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:56:58 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:56:59 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:57:10 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:57:11 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:57:20 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:57:21 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:57:32 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:57:33 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:57:44 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:57:45 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:57:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:57:55 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:58:07 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:58:07 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:58:19 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:58:19 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:58:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:58:29 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:58:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:58:41 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:58:53 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:58:53 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:59:03 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:59:04 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:59:15 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:59:16 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:59:27 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 14:59:28 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 14:59:37 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:59:38 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 14:59:49 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 14:59:50 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:00:01 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:00:02 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:00:11 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:00:12 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:00:23 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:00:24 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:00:35 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:00:36 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:00:45 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:00:46 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:00:57 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:00:58 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:01:09 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:01:10 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:01:19 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:01:20 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:01:31 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:01:32 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:01:43 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:01:44 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:01:54 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:01:54 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:02:06 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:02:06 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:02:18 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:02:18 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:02:28 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:02:28 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:02:40 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:02:40 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:02:52 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:02:52 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:03:02 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:03:03 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:03:14 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:03:15 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:03:26 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:03:27 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:03:36 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:03:37 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:03:48 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:03:49 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:04:00 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:04:01 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:04:11 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:04:11 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:04:23 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:04:23 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:04:35 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:04:35 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:04:45 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:04:45 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:04:57 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:04:57 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:05:09 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:05:09 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:05:19 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:05:19 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:05:31 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:05:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:05:43 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:05:43 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:05:53 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:05:54 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:06:05 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:06:06 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:06:17 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:06:18 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:06:27 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:06:28 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:06:39 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:06:40 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:06:51 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:06:52 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:07:01 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:07:02 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:07:13 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:07:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:07:25 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:07:26 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:07:35 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:07:36 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:07:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:07:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:07:59 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:08:00 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:08:10 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:08:11 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:08:22 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:08:23 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:08:34 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:08:35 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:08:44 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:08:45 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:08:56 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:08:57 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:09:08 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:09:09 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:09:18 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:09:19 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:09:30 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:09:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:09:42 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:09:43 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:09:52 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:09:53 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:10:04 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:10:05 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:10:16 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:10:17 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:10:26 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:10:27 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:10:38 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:10:39 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:10:50 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:10:51 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:11:00 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:11:02 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:11:12 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:11:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:11:24 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:11:26 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:11:35 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:11:36 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:11:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:11:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:11:59 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:12:00 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:12:09 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:12:10 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:12:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:12:22 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:12:33 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:12:34 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:12:43 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:12:44 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:12:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:12:56 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:13:07 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:13:08 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:13:17 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:13:18 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:13:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:13:30 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:13:41 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:13:42 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:13:51 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:13:53 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:14:03 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:14:05 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:15:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:15:55 - app.drivers.base - INFO - 已连接到设备 154.36.187.86
+2026-01-08 15:15:58 - app.drivers.linux - INFO - Linux 服务器 154.36.187.86 静态信息采集完毕: {'os_version': 'Ubuntu 22.04.5 LTS', 'vendor': 'Canonical', 'model': 'Ubuntu Server', 'kernel': '5.15.0-164-generic'}
+2026-01-08 15:15:58 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:16:07 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:16:10 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:16:19 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:16:22 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:16:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:16:32 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:16:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:16:44 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:16:53 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:16:56 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-08 15:17:03 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:17:06 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:17:15 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.1.1:22
+
+，正在重试...
+2026-01-08 15:17:18 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: huawei 192.168.112.254:22
+
+，正在重试...
+2026-01-08 15:17:27 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-08 15:17:30 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.

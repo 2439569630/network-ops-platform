@@ -224,7 +224,15 @@ class RbacService:
                 await conn.execute("UPDATE roles SET is_default = TRUE WHERE id = $1", role_id)
 
     @staticmethod
-    async def get_role_users(role_id: int) -> List[dict]:
+    async def get_role_users(role_id: int, page: int = 1, page_size: int = 20) -> dict:
+        page_norm = max(1, int(page or 1))
+        page_size_norm = max(1, min(200, int(page_size or 20)))
+        offset = (page_norm - 1) * page_size_norm
+
+        total = await db.fetch_val(
+            "SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = $1",
+            role_id,
+        )
         rows = await db.fetch_all(
             """
             SELECT u.id, u.username, u.nickname, u.email, u.is_approved, u.created_at
@@ -232,10 +240,14 @@ class RbacService:
             JOIN users u ON u.id = ur.user_id
             WHERE ur.role_id = $1
             ORDER BY u.username
+            LIMIT $2 OFFSET $3
             """,
             role_id,
+            page_size_norm,
+            offset,
         )
-        return [dict(r) for r in rows] if rows else []
+        items = [dict(r) for r in rows] if rows else []
+        return {"items": items, "total": int(total or 0), "page": page_norm, "page_size": page_size_norm}
 
     @staticmethod
     async def add_users_to_role(role_id: int, user_ids: List[int]) -> None:
@@ -259,17 +271,50 @@ class RbacService:
         await RbacService.bump_user_perm_version(user_id)
 
     @staticmethod
-    async def get_users_not_in_role(role_id: int) -> List[dict]:
+    async def get_users_not_in_role(
+        role_id: int,
+        q: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict:
+        page_norm = max(1, int(page or 1))
+        page_size_norm = max(1, min(200, int(page_size or 50)))
+        offset = (page_norm - 1) * page_size_norm
+
+        where_clauses = [
+            "u.id NOT IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id = $1)"
+        ]
+        values: List[Any] = [role_id]
+        idx = 2
+
+        q_norm = str(q or "").strip()
+        if q_norm:
+            where_clauses.append(
+                f"(u.username ILIKE ${idx} OR u.nickname ILIKE ${idx} OR u.email ILIKE ${idx})"
+            )
+            values.append(f"%{q_norm}%")
+            idx += 1
+
+        where_sql = " AND ".join(where_clauses)
+
+        total = await db.fetch_val(
+            f"SELECT COUNT(*) FROM users u WHERE {where_sql}",
+            *values,
+        )
+
+        values_with_page = [*values, page_size_norm, offset]
         rows = await db.fetch_all(
-            """
+            f"""
             SELECT u.id, u.username, u.nickname, u.email
             FROM users u
-            WHERE u.id NOT IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id = $1)
+            WHERE {where_sql}
             ORDER BY u.username
+            LIMIT ${idx} OFFSET ${idx + 1}
             """,
-            role_id,
+            *values_with_page,
         )
-        return [dict(r) for r in rows] if rows else []
+        items = [dict(r) for r in rows] if rows else []
+        return {"items": items, "total": int(total or 0), "page": page_norm, "page_size": page_size_norm, "q": q_norm}
 
     @staticmethod
     async def list_permissions() -> List[dict]:
