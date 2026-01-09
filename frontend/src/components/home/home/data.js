@@ -10,7 +10,6 @@ export const homeDataStore = defineStore('homeData', () => {
   const summaryLoading = ref(false);
   const ordersLoading = ref(false);
   const historyLoading = ref(false);
-  const notifyLoading = ref(false);
 
   const profileSaving = ref(false);
   const emailSaving = ref(false);
@@ -39,16 +38,6 @@ export const homeDataStore = defineStore('homeData', () => {
 
   const recentOrders = ref([]);
   const notificationHistory = ref([]);
-
-  const notifyConfig = reactive({
-    enable_email: false,
-    use_global_email: false,
-    email_config: {},
-    enable_pushplus: false,
-    pushplus_token: '',
-    enable_http: false,
-    http_url: ''
-  });
 
   const profileForm = reactive({
     nickname: ''
@@ -329,18 +318,6 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
-  const fetchNotifyConfig = async () => {
-    notifyLoading.value = true;
-    try {
-      const res = await axios.get('/api/v1/notifications/config');
-      if (res.data.code === 200) Object.assign(notifyConfig, res.data.data || {});
-    } catch (e) {
-      return;
-    } finally {
-      notifyLoading.value = false;
-    }
-  };
-
   const refreshAll = async (options = {}) => {
     const activePage = String(options.activePage || 'overview');
     await Promise.all([
@@ -348,7 +325,6 @@ export const homeDataStore = defineStore('homeData', () => {
       fetchSummary(),
       fetchRecentOrders(),
       fetchNotificationHistory(),
-      fetchNotifyConfig(),
       fetchEmailVerifyPending()
     ]);
   };
@@ -449,7 +425,6 @@ export const homeDataStore = defineStore('homeData', () => {
     summaryLoading,
     ordersLoading,
     historyLoading,
-    notifyLoading,
     profileSaving,
     emailSaving,
     pwdLoading,
@@ -458,7 +433,6 @@ export const homeDataStore = defineStore('homeData', () => {
     summary,
     recentOrders,
     notificationHistory,
-    notifyConfig,
     profileForm,
     emailForm,
     emailVerify,
@@ -492,7 +466,6 @@ export const homeDataStore = defineStore('homeData', () => {
     fetchSummary,
     fetchRecentOrders,
     fetchNotificationHistory,
-    fetchNotifyConfig,
     refreshAll,
     saveProfile,
     unlockEmailVerify,
@@ -500,4 +473,3 @@ export const homeDataStore = defineStore('homeData', () => {
     changePassword
   };
 });
-

@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+const backendTarget = process.env.BACKEND_TARGET || 'http://127.0.0.1:8000'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -20,9 +22,20 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true
-      }
+        target: backendTarget,
+        changeOrigin: true,
+        ws: true,
+      },
+      '/api/v1': {
+        target: backendTarget,
+        changeOrigin: true,
+        ws: true,
+      },
+      '/ws': {
+        target: backendTarget,
+        changeOrigin: true,
+        ws: true,
+      },
     }
   }
 })

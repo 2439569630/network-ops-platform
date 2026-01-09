@@ -1256,7 +1256,7 @@ const handlePermDelete = async (perm) => {
   --text-secondary: #909399; /* 次级文本 */
   --border-color: #dcdfe6; /* 边框颜色 */
   
-  height: calc(100vh - 100px); /* 减去顶部导航高度 */
+  height: 100%;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-dark);
@@ -1393,11 +1393,15 @@ const handlePermDelete = async (perm) => {
   flex: 1;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .view-container {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 
@@ -1409,6 +1413,7 @@ const handlePermDelete = async (perm) => {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
 }
 
 .right-panel {
@@ -1417,6 +1422,7 @@ const handlePermDelete = async (perm) => {
   display: flex;
   flex-direction: column;
   min-width: 0; /* 防止内容撑开 */
+  min-height: 0;
 }
 
 .panel-header {
@@ -1523,6 +1529,7 @@ const handlePermDelete = async (perm) => {
 .panel-body {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 20px;
   background-color: #fcfcfc;
 }

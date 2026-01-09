@@ -154,15 +154,14 @@ const connectSSH = (item) => {
 };
 
 const showDeviceDetail = (item) => {
-    // 优先使用 ID，如果没有则使用 IP（根据后端 API 和路由配置调整）
-    const id = item.id || item.ipv4; 
+    const id = item?.id
     if (id) {
         router.push({
             name: 'device-detail',
             params: { id: id }
         });
     } else {
-        ElMessage.warning('设备 ID 无效');
+        ElMessage.warning('设备 ID 无效')
     }
 };
 
@@ -188,7 +187,7 @@ const handleDelete = (item) => {
         }
     )
         .then(async () => {
-            const success = await store.deleteDevice(item.id);
+            const success = await store.deleteDevice(item);
             if (success) {
                 ElMessage({
                     type: 'success',

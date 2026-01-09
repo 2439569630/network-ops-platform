@@ -23,7 +23,6 @@ import { homeDataStore } from './data';
 import PcEmail from './PcEmail.vue';
 import PcHero from './PcHero.vue';
 import PcNav from './PcNav.vue';
-import PcNotification from './PcNotification.vue';
 import PcOverview from './PcOverview.vue';
 import PcProfile from './PcProfile.vue';
 import PcSecurity from './PcSecurity.vue';
@@ -34,7 +33,7 @@ const store = homeDataStore();
 
 const activePage = computed(() => {
   const p = String(route.query.page || 'overview');
-  const allow = ['overview', 'profile', 'email', 'security', 'notification'];
+  const allow = ['overview', 'profile', 'email', 'security'];
   return allow.includes(p) ? p : 'overview';
 });
 
@@ -46,7 +45,6 @@ const pageComponent = computed(() => {
   if (activePage.value === 'profile') return PcProfile;
   if (activePage.value === 'email') return PcEmail;
   if (activePage.value === 'security') return PcSecurity;
-  if (activePage.value === 'notification') return PcNotification;
   return PcOverview;
 });
 

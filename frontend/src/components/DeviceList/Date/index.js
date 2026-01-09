@@ -25,6 +25,8 @@ export const dveiceDateStore = defineStore('data', () => {
     // 数据卡片切换
     const dataCard = ref(0);
 
+    const filterType = ref(0)
+
     // loading状态
     const loading = ref(false)
 
@@ -44,7 +46,7 @@ export const dveiceDateStore = defineStore('data', () => {
         if (ws.value && ws.value.readyState === WebSocket.OPEN) {
             const command = {
                 command: 'get_list',
-                type: dataCard.value === 0 ? 0 : dataCard.value, // 这里的 dataCard 其实被用作了 type，根据组件逻辑调整
+                type: filterType.value,
                 search: searchQuery.value
             }
             console.log('Sending command:', command)
@@ -161,11 +163,7 @@ export const dveiceDateStore = defineStore('data', () => {
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsHost = window.location.hostname
-        // 动态获取端口
-        // 如果是开发环境(5173)，则后端通常在 8000
-        // 否则(生产环境)，使用当前端口(空代表80/443)
-        const port = window.location.port === '5173' ? '8000' : window.location.port
-        const wsPort = port ? `:${port}` : ''
+        const wsPort = window.location.port ? `:${window.location.port}` : ''
 
         const token = Cookies.get('token')
         
@@ -175,7 +173,7 @@ export const dveiceDateStore = defineStore('data', () => {
             return
         }
 
-        const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/list?token=${token}`
+        const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/list?token=${encodeURIComponent(token)}`
         
         console.log('Connecting to WebSocket:', wsUrl)
 
@@ -244,9 +242,10 @@ export const dveiceDateStore = defineStore('data', () => {
 
     const getServerDveiceData = async (urlType = 0) => {
         try {
-            // 更新 type
-            // 如果 urlType 是字符串（来自 element-plus tabs），转为 int
-            // 注意：store 中的 dataCard 可能也需要同步
+            const nextType = Number.parseInt(String(urlType ?? 0), 10)
+            if (!Number.isNaN(nextType)) {
+                filterType.value = nextType
+            }
             
             // 初始化 WebSocket 连接 (如果已连接，则复用)
             if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
@@ -274,9 +273,19 @@ export const dveiceDateStore = defineStore('data', () => {
 
     const deleteDevice = async (device) => {
         try {
-            // 假设删除接口为 /user/device/delete，参数为设备ID或IP
-            // 这里优先使用ID，如果没有则使用IP
-            const payload = device.id ? { id: device.id } : { ip: device.ipv4 }
+            let payload = null
+            if (device && typeof device === 'object') {
+                payload = device.id ? { id: device.id } : { ip: device.ipv4 }
+            } else if (typeof device === 'number') {
+                payload = { id: device }
+            } else if (typeof device === 'string' && device.trim()) {
+                const maybeId = Number.parseInt(device, 10)
+                payload = Number.isNaN(maybeId) ? { ip: device } : { id: maybeId }
+            }
+
+            if (!payload || (!payload.id && !payload.ip)) {
+                throw new Error('删除参数无效')
+            }
             
             const response = await axios.post('/api/v1/user/device/delete', payload)
             
@@ -309,6 +318,7 @@ export const dveiceDateStore = defineStore('data', () => {
         addData,
         loading,
         dataCard,
+        filterType,
         clearData,
         setdataCardType,
         getdataCardType,

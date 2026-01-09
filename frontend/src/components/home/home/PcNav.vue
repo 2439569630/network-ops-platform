@@ -34,7 +34,6 @@
       <el-menu-item index="profile">资料设置</el-menu-item>
       <el-menu-item index="email">邮箱设置</el-menu-item>
       <el-menu-item index="security">安全设置</el-menu-item>
-      <el-menu-item index="notification">通知策略</el-menu-item>
     </el-menu>
   </el-card>
 </template>
@@ -143,4 +142,3 @@ const customColors = [
   border-right: none;
 }
 </style>
-

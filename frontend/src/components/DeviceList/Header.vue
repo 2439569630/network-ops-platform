@@ -284,7 +284,7 @@ const submitForm = () => {
         if (valid) {
             submitting.value = true
             try {
-                const res = await axios.post('/user/device/add', deviceForm)
+                const res = await axios.post('/api/v1/user/device/add', deviceForm)
                 if (res.data.code === 200) {
                     ElMessage.success('设备添加成功')
                     closeDialog()
@@ -313,7 +313,7 @@ const testConnect = async () => {
 
     testing.value = true
     try {
-        const res = await axios.post('/user/device/test_connect', {
+        const res = await axios.post('/api/v1/user/device/test_connect', {
             ipv4: deviceForm.ipv4,
             ssh_port: deviceForm.ssh_port,
             user_name: deviceForm.user_name,

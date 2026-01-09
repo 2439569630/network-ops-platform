@@ -73,11 +73,10 @@ const handleConnect = (options = {}) => {
     // 动态获取 WebSocket 地址
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
-    const port = window.location.port === '5173' ? '8000' : window.location.port;
-    const wsPort = port ? `:${port}` : '';
+    const wsPort = window.location.port ? `:${window.location.port}` : '';
 
     // 将 token 作为 query 参数传递
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${ip.value}?token=${token}`;
+    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${ip.value}?token=${encodeURIComponent(token)}`;
     
     console.log('Connecting to SSH WebSocket:', wsUrl);
 
@@ -116,7 +115,8 @@ const handleConnect = (options = {}) => {
             isConnected.value = false;
             if (ws?.__manualClose) return;
 
-            terminalContent.value += `\n连接已断开 (Code: ${e.code}).\n`;
+            const reason = e?.reason ? ` Reason: ${e.reason}` : '';
+            terminalContent.value += `\n连接已断开 (Code: ${e.code}).${reason}\n`;
             scrollToBottom();
 
             const closeCode = Number(e?.code || 0);

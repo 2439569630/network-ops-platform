@@ -308,32 +308,44 @@ const getHealthColor = (percentage) => {
 }
 
 // 模拟获取数据
+const applyListItemToModel = (item) => {
+  if (!item) return
+  deviceData.id = item.id
+  deviceData.name = item.device_name || ''
+  deviceData.ip = item.ipv4 || ''
+  deviceData.status = item.status || ''
+  deviceData.type = item.type || ''
+  deviceData.location = item.location || ''
+  deviceData.sshPort = item.ssh_port || 22
+  deviceData.cpuUsage = parseFloat(item.cpu_usage || 0)
+  deviceData.memoryUsage = parseFloat(item.memory_usage || 0)
+  deviceData.diskUsage = parseFloat(item.disk_usage || 0)
+}
+
 const fetchDeviceData = async (isSilent = false) => {
   if (!isSilent) {
     loading.value = true
   }
   try {
-    const response = await axios.get(`/user/device/detail/${deviceId}`)
-    const data = response.data
-    
-    if (data) {
-        // 只在第一次加载或数据结构变化时切换 Tab
-        if (!deviceData.type && data.type) {
-             const newIsNetwork = ['router', 'switch', 'firewall', '路由器', '交换机', '防火墙', 'huawei'].includes(data.type.toLowerCase());
-             if (!newIsNetwork) {
-                activeTab.value = 'processes'
-             } else {
-                activeTab.value = 'interfaces'
-             }
-        }
-        
-        Object.assign(deviceData, data)
-        if (!isSilent) {
-            ElMessage.success('数据刷新成功')
-        }
+    const local = (store.data || []).find(d => d.id == deviceId)
+    if (local) {
+      applyListItemToModel(local)
     } else {
-        throw new Error('未获取到数据')
+      const response = await axios.get('/api/v1/user/device/get', { params: { type: 0 } })
+      const list = Array.isArray(response.data) ? response.data : []
+      const remote = list.find(d => d.id == deviceId)
+      if (!remote) throw new Error('未找到该设备')
+      applyListItemToModel(remote)
     }
+
+    if (!deviceData.type) {
+      activeTab.value = 'interfaces'
+    } else {
+      const newIsNetwork = ['router', 'switch', 'firewall', '路由器', '交换机', '防火墙', 'huawei'].includes(String(deviceData.type).toLowerCase())
+      activeTab.value = newIsNetwork ? 'interfaces' : 'processes'
+    }
+
+    if (!isSilent) ElMessage.success('数据刷新成功')
   } catch (error) {
     console.error('获取设备详情失败:', error)
     if (!isSilent) {
@@ -403,10 +415,7 @@ const connectDedicatedWebSocket = () => {
 
   // 构建 WebSocket URL
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  // 动态获取主机名，支持远程访问
-  const wsHost = window.location.hostname
-  const port = window.location.port === '5173' ? '8000' : window.location.port
-  const wsPort = port ? `:${port}` : ''
+  const wsBase = `${wsProtocol}//${window.location.host}`
   
   // 从 Cookie 获取 Token 用于鉴权
   const token = Cookies.get('token')
@@ -416,7 +425,7 @@ const connectDedicatedWebSocket = () => {
     return
   }
 
-  const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/user/device/ws/detail/${deviceId}?token=${token}`
+  const wsUrl = `${wsBase}/api/v1/user/device/ws/detail/${deviceId}?token=${encodeURIComponent(token)}`
   
   console.log('Connecting to Detail WebSocket:', wsUrl)
 

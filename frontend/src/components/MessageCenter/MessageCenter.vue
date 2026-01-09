@@ -87,57 +87,187 @@
             </el-space>
           </div>
 
-          <div v-if="alertsViewMode === 'timeline'" class="timeline-wrap">
-            <el-card shadow="never" class="list-card">
-              <el-timeline>
-                <el-timeline-item
-                  v-for="a in timelineAlerts"
-                  :key="a.__rowKey"
-                  :timestamp="formatDateTime(a.time)"
-                  :type="getAlertLevelType(a.level)"
-                >
-                  <div class="timeline-item">
-                    <el-tag :type="getAlertLevelType(a.level)" effect="light" size="small">
-                      {{ String(a.level || '').toLowerCase() }}
-                    </el-tag>
-                    <div class="timeline-content">
-                      <div class="timeline-title">
-                        <span class="muted">{{ a.source }}</span>
-                        <span class="dot">·</span>
-                        <span class="muted">{{ a.type }}</span>
+          <div class="tab-main">
+            <div v-if="alertsViewMode === 'timeline'" class="timeline-wrap">
+              <el-card shadow="never" class="list-card list-card--fill">
+                <el-timeline>
+                  <el-timeline-item
+                    v-for="a in timelineAlerts"
+                    :key="a.__rowKey"
+                    :timestamp="formatDateTime(a.time)"
+                    :type="getAlertLevelType(a.level)"
+                  >
+                    <div class="timeline-item">
+                      <el-tag :type="getAlertLevelType(a.level)" effect="light" size="small">
+                        {{ String(a.level || '').toLowerCase() }}
+                      </el-tag>
+                      <div class="timeline-content">
+                        <div class="timeline-title">
+                          <span class="muted">{{ a.source }}</span>
+                          <span class="dot">·</span>
+                          <span class="muted">{{ a.type }}</span>
+                        </div>
+                        <div class="timeline-desc">{{ a.description }}</div>
                       </div>
-                      <div class="timeline-desc">{{ a.description }}</div>
                     </div>
-                  </div>
-                </el-timeline-item>
-              </el-timeline>
-              <el-empty v-if="timelineAlerts.length === 0" description="暂无告警" />
-            </el-card>
+                  </el-timeline-item>
+                </el-timeline>
+                <el-empty v-if="timelineAlerts.length === 0" description="暂无告警" />
+              </el-card>
+            </div>
+
+            <el-table
+              v-else
+              :data="filteredAlerts"
+              row-key="__rowKey"
+              stripe
+              height="100%"
+              class="table table--fill"
+              :empty-text="wsStatus === 'connected' ? '暂无实时告警' : '未连接或无数据'"
+            >
+              <el-table-column prop="time" label="时间" width="180">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.time) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="level" label="级别" width="110">
+                <template #default="scope">
+                  <el-tag :type="getAlertLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="source" label="来源" width="160" />
+              <el-table-column prop="type" label="类型" width="160" />
+              <el-table-column prop="description" label="描述" min-width="240" show-overflow-tooltip />
+            </el-table>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'site'" class="tab-body">
+          <el-row :gutter="12" class="stats-row">
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value">{{ siteMessageStats.total }}</div>
+                <div class="stat-label">站内消息总数（最近200条）</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value stat-value--warning">{{ siteMessageStats.unread }}</div>
+                <div class="stat-label">未读</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8">
+              <el-card shadow="never" class="stat-card">
+                <div class="stat-value">{{ siteMessageStats.read }}</div>
+                <div class="stat-label">已读</div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <div class="toolbar">
+            <el-space wrap alignment="center">
+              <el-select v-model="siteMessagesLevel" size="small" style="width: 140px">
+                <el-option label="全部级别" value="all" />
+                <el-option label="error" value="error" />
+                <el-option label="warning" value="warning" />
+                <el-option label="success" value="success" />
+                <el-option label="info" value="info" />
+              </el-select>
+              <el-input v-model="siteMessagesKeyword" size="small" clearable placeholder="搜索标题/内容/来源" style="width: 260px" />
+              <el-switch v-model="siteMessagesUnreadOnly" inline-prompt active-text="未读" inactive-text="全部" @change="fetchSiteMessages" />
+              <el-button size="small" :loading="siteLoading" @click="fetchSiteMessages">刷新</el-button>
+              <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="openPublishDialog">发布</el-button>
+            </el-space>
           </div>
 
-          <el-table
-            v-else
-            :data="filteredAlerts"
-            row-key="__rowKey"
-            stripe
-            height="520"
-            class="table"
-            :empty-text="wsStatus === 'connected' ? '暂无实时告警' : '未连接或无数据'"
-          >
-            <el-table-column prop="time" label="时间" width="180">
-              <template #default="scope">
-                {{ formatDateTime(scope.row.time) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="level" label="级别" width="110">
-              <template #default="scope">
-                <el-tag :type="getAlertLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="source" label="来源" width="160" />
-            <el-table-column prop="type" label="类型" width="160" />
-            <el-table-column prop="description" label="描述" min-width="240" show-overflow-tooltip />
-          </el-table>
+          <div class="tab-main">
+            <el-table
+              :data="filteredSiteMessages"
+              stripe
+              v-loading="siteLoading"
+              height="100%"
+              class="table table--fill"
+              empty-text="暂无站内消息"
+            >
+              <el-table-column prop="created_at" label="时间" width="180">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="level" label="级别" width="110">
+                <template #default="scope">
+                  <el-tag :type="getSiteMessageLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="110">
+                <template #default="scope">
+                  <el-tag :type="scope.row.is_read ? 'info' : 'warning'" effect="plain">
+                    {{ scope.row.is_read ? '已读' : '未读' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="source" label="来源" width="160" show-overflow-tooltip />
+              <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
+              <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
+              <el-table-column label="操作" width="140" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    v-if="!scope.row.is_read"
+                    size="small"
+                    type="primary"
+                    link
+                    @click="markSiteMessageRead(scope.row)"
+                  >
+                    标记已读
+                  </el-button>
+                  <el-button
+                    v-else
+                    size="small"
+                    link
+                    @click="markSiteMessageUnread(scope.row)"
+                  >
+                    标记未读
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <el-dialog v-model="publishDialogVisible" title="发布站内消息" width="560px">
+            <el-form label-position="top">
+              <el-form-item label="标题">
+                <el-input v-model="publishForm.title" maxlength="120" show-word-limit />
+              </el-form-item>
+              <el-form-item label="级别">
+                <el-select v-model="publishForm.level" style="width: 180px">
+                  <el-option label="info" value="info" />
+                  <el-option label="success" value="success" />
+                  <el-option label="warning" value="warning" />
+                  <el-option label="error" value="error" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="范围">
+                <el-space wrap alignment="center">
+                  <el-switch v-model="publishForm.is_global" inline-prompt active-text="全站" inactive-text="指定用户" />
+                  <el-input
+                    v-if="!publishForm.is_global"
+                    v-model="publishForm.target_user_id"
+                    placeholder="用户ID"
+                    style="width: 180px"
+                  />
+                </el-space>
+              </el-form-item>
+              <el-form-item label="内容">
+                <el-input v-model="publishForm.content" type="textarea" :rows="6" maxlength="2000" show-word-limit />
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-space>
+                <el-button @click="publishDialogVisible = false">取消</el-button>
+                <el-button type="primary" :loading="publishSubmitting" @click="submitPublish">发布</el-button>
+              </el-space>
+            </template>
+          </el-dialog>
         </div>
 
         <div v-show="activeTab === 'notifications'" class="tab-body">
@@ -175,20 +305,22 @@
             </el-space>
           </div>
 
-          <el-table :data="filteredNotifications" stripe v-loading="loading" height="520" class="table" empty-text="暂无通知">
-            <el-table-column prop="created_at" label="时间" width="180">
-              <template #default="scope">
-                {{ formatDateTime(scope.row.created_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="level" label="级别" width="110">
-              <template #default="scope">
-                <el-tag :type="getLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="device_name" label="设备" width="180" show-overflow-tooltip />
-            <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip />
-          </el-table>
+          <div class="tab-main">
+            <el-table :data="filteredNotifications" stripe v-loading="loading" height="100%" class="table table--fill" empty-text="暂无通知">
+              <el-table-column prop="created_at" label="时间" width="180">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="level" label="级别" width="110">
+                <template #default="scope">
+                  <el-tag :type="getLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="device_name" label="设备" width="180" show-overflow-tooltip />
+              <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip />
+            </el-table>
+          </div>
         </div>
 
         <div v-show="activeTab === 'settings'" class="tab-body">
@@ -308,7 +440,9 @@ import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus
 const activeTab = ref('alerts'); // 默认显示告警
 const notifications = ref([]);
 const alerts = ref([]); // 实时告警列表
+const siteMessages = ref([]);
 const loading = ref(false);
+const siteLoading = ref(false);
 const configLoading = ref(false);
 const store = homeDataStore();
 const isSuper = computed(() => Boolean(store.isSuper));
@@ -320,6 +454,8 @@ const canViewHistory = computed(() => hasPerm('sys:notify:history'));
 const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
 const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
 const canTest = computed(() => hasPerm('sys:notify:test'));
+const canViewSiteMessages = computed(() => hasPerm('sys:message:access'));
+const canSendSiteMessages = computed(() => hasPerm('sys:notify:global'));
 const canUseGlobal = computed(() => {
     return hasPerm('sys:notify:global');
 });
@@ -327,6 +463,7 @@ const canSubscribeAlerts = computed(() => {
     return hasPerm('sys:alert:subscribe');
 });
 const testEmailTarget = ref('');
+const isDev = Boolean(import.meta?.env?.DEV);
 let ws = null; // WebSocket 实例
 let wsReconnectAttempted = false;
 let wsReconnectTimer = null;
@@ -339,6 +476,19 @@ const alertsViewMode = ref('table');
 
 const notificationsLevel = ref('all');
 const notificationsKeyword = ref('');
+
+const siteMessagesLevel = ref('all');
+const siteMessagesKeyword = ref('');
+const siteMessagesUnreadOnly = ref(false);
+const publishDialogVisible = ref(false);
+const publishSubmitting = ref(false);
+const publishForm = reactive({
+    title: '',
+    content: '',
+    level: 'info',
+    is_global: true,
+    target_user_id: '',
+});
 
 const normalizeText = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -403,6 +553,14 @@ const filteredNotifications = computed(() => {
         .slice(0, 200);
 });
 
+const filteredSiteMessages = computed(() => {
+    const level = normalizeText(siteMessagesLevel.value);
+    return (siteMessages.value || [])
+        .filter((m) => (level === 'all' ? true : normalizeText(m?.level) === level))
+        .filter((m) => matchesKeyword(m, siteMessagesKeyword.value, ['title', 'content', 'source', 'sender_name']))
+        .slice(0, 200);
+});
+
 const notificationStats = computed(() => {
     const list = notifications.value || [];
     const stats = { total: list.length, error: 0, warning: 0, info: 0 };
@@ -413,6 +571,17 @@ const notificationStats = computed(() => {
     return stats;
 });
 
+const siteMessageStats = computed(() => {
+    const list = siteMessages.value || [];
+    let unread = 0;
+    let read = 0;
+    for (const m of list) {
+        if (m?.is_read) read += 1;
+        else unread += 1;
+    }
+    return { total: list.length, unread, read };
+});
+
 const getAlertLevelType = (level) => {
     switch(level) {
         case 'error': return 'danger';
@@ -420,6 +589,14 @@ const getAlertLevelType = (level) => {
         case 'success': return 'success';
         default: return 'info';
     }
+};
+
+const getSiteMessageLevelType = (level) => {
+    const v = normalizeText(level);
+    if (v === 'error') return 'danger';
+    if (v === 'warning') return 'warning';
+    if (v === 'success') return 'success';
+    return 'info';
 };
 
 const clearAlerts = () => {
@@ -440,10 +617,9 @@ const initAlertWebSocket = () => {
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsHost = window.location.hostname
-    const port = window.location.port === '5173' ? '8000' : window.location.port
-    const wsPort = port ? `:${port}` : ''
+    const wsPort = window.location.port ? `:${window.location.port}` : ''
     const token = Cookies.get('token')
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/notifications/ws/alerts?token=${token}`
+    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/notifications/ws/alerts?token=${encodeURIComponent(token)}`
     
     try {
         wsStatus.value = 'connecting';
@@ -522,6 +698,68 @@ const getLevelType = (level) => {
     }
 };
 
+const buildTestNotifications = () => {
+    const now = Date.now();
+    const levels = ['info', 'warning', 'error'];
+    return Array.from({ length: 12 }).map((_, idx) => {
+        const createdAt = new Date(now - idx * 6 * 60 * 1000).toISOString();
+        const level = levels[idx % levels.length];
+        const deviceName = `DemoDevice-${String((idx % 5) + 1).padStart(2, '0')}`;
+        const messageMap = {
+            info: '配置已同步，设备状态正常',
+            warning: '接口丢包升高，请关注链路质量',
+            error: '设备离线，无法拉取监控数据',
+        };
+        return {
+            id: `demo-notify-${idx}`,
+            created_at: createdAt,
+            level,
+            device_name: deviceName,
+            message: `${messageMap[level]}（测试消息 #${idx + 1}）`,
+        };
+    });
+};
+
+const buildTestSiteMessages = () => {
+    const now = Date.now();
+    const levels = ['info', 'warning', 'error', 'success'];
+    const sources = ['系统', '管理员'];
+    return Array.from({ length: 10 }).map((_, idx) => {
+        const createdAt = new Date(now - idx * 10 * 60 * 1000).toISOString();
+        const level = levels[idx % levels.length];
+        const source = sources[idx % sources.length];
+        return {
+            id: `demo-site-${idx}`,
+            created_at: createdAt,
+            level,
+            source,
+            title: `站内消息标题 #${idx + 1}`,
+            content: `这是一条站内消息（测试 #${idx + 1}）`,
+            is_read: idx % 3 === 0,
+            read_at: idx % 3 === 0 ? createdAt : null,
+        };
+    });
+};
+
+const buildTestAlerts = () => {
+    const now = Date.now();
+    const levels = ['warning', 'error', 'info', 'success'];
+    const sources = ['SNMP', 'SSH', 'Sys', 'Collector'];
+    const types = ['threshold', 'heartbeat', 'auth', 'latency'];
+    return Array.from({ length: 18 }).map((_, idx) => {
+        const time = new Date(now - idx * 2 * 60 * 1000).toISOString();
+        const level = levels[idx % levels.length];
+        return {
+            id: `demo-alert-${idx}`,
+            time,
+            level,
+            source: sources[idx % sources.length],
+            type: types[idx % types.length],
+            description: `模拟告警：${sources[idx % sources.length]} 检测到 ${types[idx % types.length]} 异常（测试 #${idx + 1}）`,
+        };
+    });
+};
+
 const fetchNotifications = async () => {
     loading.value = true;
     try {
@@ -532,7 +770,101 @@ const fetchNotifications = async () => {
     } catch (error) {
         ElMessage.error('获取通知失败');
     } finally {
+        if (isDev && (!Array.isArray(notifications.value) || notifications.value.length === 0)) {
+            notifications.value = buildTestNotifications();
+        }
         loading.value = false;
+    }
+};
+
+const fetchSiteMessages = async () => {
+    siteLoading.value = true;
+    try {
+        const res = await axios.get('/api/v1/notifications/site-messages', {
+            params: {
+                limit: 200,
+                offset: 0,
+                unread_only: siteMessagesUnreadOnly.value ? 1 : 0,
+            },
+        });
+        if (res.data.code === 200) {
+            siteMessages.value = res.data.data;
+        }
+    } catch (error) {
+        ElMessage.error('获取站内消息失败');
+    } finally {
+        if (isDev && (!Array.isArray(siteMessages.value) || siteMessages.value.length === 0)) {
+            siteMessages.value = buildTestSiteMessages();
+        }
+        siteLoading.value = false;
+    }
+};
+
+const markSiteMessageRead = async (row) => {
+    const id = row?.id;
+    if (!id) return;
+    try {
+        const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/read`);
+        if (res?.data?.code === 200) {
+            row.is_read = true;
+            row.read_at = new Date().toISOString();
+        } else {
+            ElMessage.error(res?.data?.message || '操作失败');
+        }
+    } catch (e) {
+        ElMessage.error('操作失败');
+    }
+};
+
+const markSiteMessageUnread = async (row) => {
+    const id = row?.id;
+    if (!id) return;
+    try {
+        const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/unread`);
+        if (res?.data?.code === 200) {
+            row.is_read = false;
+            row.read_at = null;
+        } else {
+            ElMessage.error(res?.data?.message || '操作失败');
+        }
+    } catch (e) {
+        ElMessage.error('操作失败');
+    }
+};
+
+const openPublishDialog = () => {
+    publishForm.title = '';
+    publishForm.content = '';
+    publishForm.level = 'info';
+    publishForm.is_global = true;
+    publishForm.target_user_id = '';
+    publishDialogVisible.value = true;
+};
+
+const submitPublish = async () => {
+    if (publishSubmitting.value) return;
+    publishSubmitting.value = true;
+    try {
+        const payload = {
+            title: publishForm.title,
+            content: publishForm.content,
+            level: publishForm.level,
+            is_global: !!publishForm.is_global,
+            target_user_id: publishForm.is_global ? null : (publishForm.target_user_id ? Number(publishForm.target_user_id) : null),
+            source: '管理员',
+        };
+        const res = await axios.post('/api/v1/notifications/site-messages', payload);
+        if (res?.data?.code === 200) {
+            ElMessage.success('发布成功');
+            publishDialogVisible.value = false;
+            await fetchSiteMessages();
+        } else {
+            ElMessage.error(res?.data?.message || '发布失败');
+        }
+    } catch (e) {
+        ElMessage.error('发布失败');
+    } finally {
+        publishSubmitting.value = false;
     }
 };
 
@@ -599,6 +931,7 @@ const handleTest = async (channel) => {
 
 const refreshAll = async () => {
     if (canViewHistory.value) fetchNotifications();
+    if (canViewSiteMessages.value) fetchSiteMessages();
     if (canViewConfig.value) fetchConfig();
     initAlertWebSocket();
 };
@@ -607,8 +940,16 @@ onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     if (canViewHistory.value) fetchNotifications();
+    if (canViewSiteMessages.value) fetchSiteMessages();
     if (canViewConfig.value) fetchConfig();
     initAlertWebSocket(); // 启动 WS
+    if (isDev) {
+        setTimeout(() => {
+            if (!Array.isArray(alerts.value) || alerts.value.length === 0) {
+                alerts.value = buildTestAlerts();
+            }
+        }, 250);
+    }
 });
 
 onUnmounted(() => {
@@ -631,9 +972,12 @@ let tabResizeObserver;
 const visibleTabs = computed(() => {
     const tabs = [];
     if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '实时告警', icon: WarningFilled });
+    if (canViewSiteMessages.value) tabs.push({ name: 'site', label: '站内消息', icon: Bell });
     if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
-    return tabs.length > 0 ? tabs : [{ name: 'notifications', label: '设备通知', icon: Message }];
+    if (tabs.length > 0) return tabs;
+    if (canViewSiteMessages.value) return [{ name: 'site', label: '站内消息', icon: Bell }];
+    return [{ name: 'notifications', label: '设备通知', icon: Message }];
 });
 
 const indicatorStyle = computed(() => {
@@ -707,7 +1051,7 @@ onUnmounted(() => {
     --text-secondary: #909399;
     --border-color: #dcdfe6;
 
-    height: calc(100vh - 100px);
+    height: 100%;
     display: flex;
     flex-direction: column;
     background-color: var(--bg-dark);
@@ -758,6 +1102,7 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
 }
 
 .mc-topbar {
@@ -843,12 +1188,19 @@ onUnmounted(() => {
 
 .mc-body {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
     padding: 12px 16px 16px 16px;
 }
 
 .tab-body {
     background: transparent;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .stats-row {
@@ -886,12 +1238,37 @@ onUnmounted(() => {
     border: 1px solid #ebeef5;
     border-radius: 6px;
 }
-.timeline-wrap {
-    margin-bottom: 12px;
+
+.table--fill {
+    height: 100%;
 }
+
+.tab-main {
+    flex: 1;
+    min-height: 0;
+}
+
+.timeline-wrap {
+    height: 100%;
+    margin-bottom: 0;
+}
+
 .list-card {
     border: 1px solid #ebeef5;
     border-radius: 10px;
+}
+
+.list-card--fill {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.list-card--fill :deep(.el-card__body) {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 .timeline-item {
     display: flex;
