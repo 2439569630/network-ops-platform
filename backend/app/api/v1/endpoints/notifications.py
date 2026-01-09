@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
 from app.core.security import PermissionChecker, verify_token_ws, user_is_super, user_has_permission
 from app.services.notification_service import NotificationService
-from app.schemas.notification import NotificationConfig, TestNotification
+from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate
 from app.core.redis import redis_manager
 import logging
 import json
@@ -9,6 +9,68 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+@router.get("/site-messages", response_model=dict)
+async def list_site_messages(
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    unread_only: bool = Query(False),
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        rows = await NotificationService.list_site_messages(
+            user_id=int(user.get("id")),
+            limit=int(limit),
+            offset=int(offset),
+            unread_only=bool(unread_only),
+        )
+        return {"code": 200, "data": rows}
+    except Exception as e:
+        return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
+
+@router.post("/site-messages", response_model=dict)
+async def create_site_message(
+    data: SiteMessageCreate,
+    user: dict = Depends(PermissionChecker("sys:notify:global")),
+):
+    try:
+        row = await NotificationService.create_site_message(
+            sender_id=int(user.get("id")) if user.get("id") is not None else None,
+            sender_name=str(user.get("username") or user.get("name") or ""),
+            title=data.title,
+            content=data.content,
+            level=data.level or "info",
+            source=data.source or "管理员",
+            target_user_id=data.target_user_id,
+            is_global=bool(data.is_global) if data.target_user_id is None else False,
+        )
+        return {"code": 200, "data": row, "message": "发布成功"}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"发布失败: {str(e)}"}
+
+@router.post("/site-messages/{message_id}/read", response_model=dict)
+async def mark_site_message_read(
+    message_id: int,
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        await NotificationService.mark_site_message_read(user_id=int(user.get("id")), message_id=int(message_id))
+        return {"code": 200, "message": "已读"}
+    except Exception as e:
+        return {"code": 500, "message": f"操作失败: {str(e)}"}
+
+@router.post("/site-messages/{message_id}/unread", response_model=dict)
+async def mark_site_message_unread(
+    message_id: int,
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        await NotificationService.mark_site_message_unread(user_id=int(user.get("id")), message_id=int(message_id))
+        return {"code": 200, "message": "未读"}
+    except Exception as e:
+        return {"code": 500, "message": f"操作失败: {str(e)}"}
 
 @router.get("/history", response_model=dict)
 async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history"))):

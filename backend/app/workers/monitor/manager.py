@@ -8,6 +8,7 @@ from app.core.redis import redis_manager
 from app.drivers.factory import create_device
 from app.drivers.base import BaseDevice
 from app.core.config import settings
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -212,13 +213,13 @@ class MonitorManager:
                             last_collection_time = current_time
                         elif not device.connected:
                             logger.warning(f"设备 {device_id} 在采集过程中断开")
-                            await self._set_device_offline(device_id)
+                            await self._set_device_offline(device_id, "采集过程中断开")
                     else:
                         # 未到采集时间，仅更新心跳，保持在线状态
                         await self._update_heartbeat(device_id)
                 else:
                     # 设备离线处理
-                    await self._set_device_offline(device_id)
+                    await self._set_device_offline(device_id, "在线检测失败")
                     # check_online 内部通常会尝试重连，这里无需额外操作
             
             except asyncio.CancelledError:
@@ -226,7 +227,7 @@ class MonitorManager:
                 break
             except Exception as e:
                 logger.error(f"设备 {device_id} 监控循环发生未捕获异常: {e}")
-                await self._set_device_offline(device_id)
+                await self._set_device_offline(device_id, str(e).splitlines()[0] if str(e) else "未捕获异常")
             
             # 4. 消除时间漂移：
             # 计算本次业务逻辑执行耗时
@@ -305,6 +306,7 @@ class MonitorManager:
             async with redis_client.pipeline(transaction=True) as pipe:
                 await pipe.hset(key, mapping={
                     "status": "online",
+                    "ever_online": "1",
                     "last_updated": str(time.time()) # 使用 wall clock time 供前端显示
                 })
                 # 续期 key
@@ -331,6 +333,7 @@ class MonitorManager:
                 "memory_usage": str(data.get('memory_usage', 0)),
                 "disk_usage": str(data.get('disk_usage', 0)),
                 "status": "online",
+                "ever_online": "1",
                 "last_updated": str(time.time())
             }
             if data.get('uptime'):
@@ -349,14 +352,24 @@ class MonitorManager:
         except Exception as e:
             logger.error(f"保存设备 {device_id} 数据到 Redis 失败: {e}")
 
-    async def _set_device_offline(self, device_id: int):
+    async def _set_device_offline(self, device_id: int, reason: Optional[str] = None):
         """将设备标记为离线"""
         try:
             redis_client = self.redis.get_client()
             key = f"device_status:{device_id}"
-            await redis_client.hset(key, "status", "offline")
-            # 发布更新事件
+            current_status = await redis_client.hget(key, "status")
+            if current_status == "offline":
+                return
+
+            ever_online = await redis_client.hget(key, "ever_online")
+            await redis_client.hset(key, mapping={
+                "status": "offline",
+                "last_updated": str(time.time())
+            })
             await redis_client.publish(f"device_update:{device_id}", "offline")
+
+            if ever_online == "1":
+                await NotificationService.notify_device_offline(device_id, reason)
         except Exception as e:
             logger.error(f"更新设备 {device_id} 离线状态失败: {e}")
 

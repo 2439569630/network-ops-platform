@@ -23,3 +23,25 @@ class NotificationHistory(BaseModel):
     level: Optional[str]
     message: str
     created_at: datetime
+
+class SiteMessageCreate(BaseModel):
+    title: str
+    content: str
+    level: Optional[str] = "info"
+    target_user_id: Optional[int] = None
+    is_global: Optional[bool] = True
+    source: Optional[str] = "管理员"
+
+class SiteMessageRow(BaseModel):
+    id: int
+    sender_id: Optional[int]
+    sender_name: Optional[str]
+    source: Optional[str]
+    level: Optional[str]
+    title: str
+    content: str
+    is_global: bool
+    target_user_id: Optional[int]
+    created_at: datetime
+    is_read: bool
+    read_at: Optional[datetime] = None

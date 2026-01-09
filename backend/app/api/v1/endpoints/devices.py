@@ -227,12 +227,20 @@ def _pick_netmiko_device_type(value) -> str:
         return "linux"
     if s in {"linux", "huawei", "cisco_ios", "cisco_xe", "cisco_xr", "juniper", "arista_eos"}:
         return s
+    if s in {"server", "服务器"}:
+        return "linux"
     if s in {"router", "switch", "firewall"}:
         return "huawei"
     if s in {"路由器", "交换机", "防火墙"}:
         return "huawei"
     if "huawei" in s or "华为" in s:
         return "huawei"
+    if "cisco" in s or "ios" in s:
+        return "cisco_ios"
+    if "juniper" in s or "junos" in s:
+        return "juniper"
+    if "arista" in s or "eos" in s:
+        return "arista_eos"
     return "linux"
 
 @ssh_router.websocket("/ws/ssh/{ip}")
@@ -245,6 +253,10 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     if not user_is_super(user):
         if not await user_has_permission(user, "sys:ssh:connect"):
+            try:
+                await websocket.send_text("系统: 权限不足\r\n")
+            except Exception:
+                pass
             await websocket.close(code=4003, reason="权限不足")
             return
 
@@ -258,8 +270,24 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         str(ip),
     )
 
-    username = (row.get("user_name") if row else None) or "root"
-    password = (row.get("password") if row else None) or "password"
+    if not row:
+        await websocket.send_text(f"系统: 未找到设备 {ip}，请先在设备管理录入\r\n")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    username = str(row.get("user_name") or "").strip()
+    password = str(row.get("password") or "").strip()
+    if not username or not password:
+        await websocket.send_text(f"系统: 设备 {ip} 未配置 SSH 账号或密码\r\n")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
     try:
         port = int((row.get("ssh_port") if row else None) or 22)
     except Exception:
@@ -268,18 +296,32 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     await websocket.send_text(f"系统: 正在连接 {ip}...\r\n")
 
+    device_params = {
+        "device_type": device_type,
+        "host": str(ip),
+        "username": username,
+        "password": password,
+        "port": int(port),
+        "timeout": 30,
+        "auth_timeout": 30,
+        "banner_timeout": 100,
+        "global_delay_factor": 2,
+        "allow_agent": False,
+        "use_keys": False,
+    }
+
     try:
-        conn = await asyncio.to_thread(
-            ConnectHandler,
-            device_type=device_type,
-            host=str(ip),
-            username=str(username),
-            password=str(password),
-            port=int(port),
-            timeout=30,
-            auth_timeout=30,
-            banner_timeout=100,
-        )
+        last_err: Exception | None = None
+        conn = None
+        for _ in range(3):
+            try:
+                conn = await asyncio.to_thread(ConnectHandler, **device_params)
+                break
+            except Exception as e:
+                last_err = e
+                await asyncio.sleep(1)
+        if conn is None:
+            raise last_err or Exception("连接失败")
     except Exception as e:
         msg = str(e).splitlines()[0] if str(e) else "连接失败"
         await websocket.send_text(f"系统: 连接失败: {msg}\r\n")
@@ -297,6 +339,10 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     try:
         try:
+            try:
+                await asyncio.to_thread(conn.write_channel, "\n")
+            except Exception:
+                pass
             initial = await asyncio.to_thread(conn.read_channel)
             if initial:
                 await websocket.send_text(str(initial))

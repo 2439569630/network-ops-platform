@@ -101,6 +101,14 @@ async def login(data: LoginForm, response: Response):
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
         )
+
+    stored_pw = user.get("password")
+    if stored_pw and not _looks_like_bcrypt_hash(stored_pw):
+        try:
+            hashed_pw = get_password_hash(str(data.password or ""))
+            await db.execute("UPDATE users SET password = $1 WHERE id = $2", hashed_pw, int(user["id"]))
+        except Exception:
+            pass
         
     # 3. 生成 Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

@@ -3,8 +3,11 @@ from typing import Optional
 from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, OrderReviewCreate
 from app.services.repair_order_service import RepairOrderService
 from app.core.security import user_is_super, user_has_role, PermissionChecker
+from app.services.notification_service import NotificationService
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/", response_model=dict)
 async def create_order(
@@ -14,6 +17,17 @@ async def create_order(
     """提交报修工单"""
     try:
         order_id = await RepairOrderService.create_order(order_in, current_user['id'])
+        try:
+            await NotificationService.notify_repair_order_submitted(
+                order_id=int(order_id),
+                title=str(order_in.title or "").strip(),
+                priority=str(order_in.priority or "").strip(),
+                submitter_id=int(current_user["id"]),
+                submitter_name=current_user.get("username") or current_user.get("name"),
+                device_id=order_in.device_id,
+            )
+        except Exception as e:
+            logger.error(f"发布工单提交通知失败: {e}")
         return {"code": 200, "message": "工单提交成功", "data": {"id": order_id}}
     except Exception as e:
         return {"code": 500, "message": f"提交失败: {str(e)}"}
