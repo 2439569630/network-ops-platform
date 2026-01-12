@@ -14,19 +14,33 @@ router = APIRouter()
 
 @router.get("/site-messages", response_model=dict)
 async def list_site_messages(
-    limit: int = Query(100, ge=1, le=200),
-    offset: int = Query(0, ge=0),
     unread_only: bool = Query(False),
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
     try:
         rows = await NotificationService.list_site_messages(
             user_id=int(user.get("id")),
-            limit=int(limit),
-            offset=int(offset),
+            limit=20,
+            offset=0,
             unread_only=bool(unread_only),
         )
         return {"code": 200, "data": rows}
+    except Exception as e:
+        return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
+
+@router.get("/site-messages/{message_id}", response_model=dict)
+async def get_site_message_detail(
+    message_id: int,
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        row = await NotificationService.get_site_message_detail(
+            user_id=int(user.get("id")),
+            message_id=int(message_id),
+        )
+        if not row:
+            return {"code": 404, "message": "消息不存在"}
+        return {"code": 200, "data": row}
     except Exception as e:
         return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
 
@@ -36,13 +50,14 @@ async def create_site_message(
     user: dict = Depends(PermissionChecker("sys:notify:global")),
 ):
     try:
+        if not user_is_super(user):
+            return {"code": 403, "message": "权限不足"}
         row = await NotificationService.create_site_message(
             sender_id=int(user.get("id")) if user.get("id") is not None else None,
             sender_name=str(user.get("username") or user.get("name") or ""),
             title=data.title,
             content=data.content,
-            level=data.level or "info",
-            source=data.source or "管理员",
+            source="管理员",
             target_user_id=data.target_user_id,
             is_global=bool(data.is_global) if data.target_user_id is None else False,
         )
@@ -224,6 +239,22 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message and message.get("type") == "message":
+                    payload = None
+                    try:
+                        raw = message.get("data")
+                        if isinstance(raw, bytes):
+                            raw = raw.decode("utf-8")
+                        payload = json.loads(raw) if raw else None
+                    except Exception:
+                        payload = None
+
+                    if isinstance(payload, dict):
+                        msg_type = str(payload.get("type") or "")
+                        if msg_type == "site_message_created":
+                            yield f"event: message\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                        elif msg_type == "site_message_read_state":
+                            yield f"event: read_state\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
                     next_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
                     yield f"event: unread\ndata: {json.dumps({'count': int(next_count)}, ensure_ascii=False)}\n\n"
 

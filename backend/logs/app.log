@@ -274454,3 +274454,1706 @@ starlette.websockets.WebSocketDisconnect: (<CloseCode.NO_STATUS_RCVD: 1005>, '')
 2026-01-12 21:49:10 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
 2026-01-12 21:49:11 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
 2026-01-12 21:49:12 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:49:17 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:23 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:49:24 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:49:24 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:31 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:33 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:49:34 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:49:38 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:45 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:49:45 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:46 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:49:52 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:49:57 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:49:58 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:49:59 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:06 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:07 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:08 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:13 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:19 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:20 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:20 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:27 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:31 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:50:32 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:50:34 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:41 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:42 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:48 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:53 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:54 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:50:55 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:50:57 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 21:50:57 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 21:51:02 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:05 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:51:06 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:51:09 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:15 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:16 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:16 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:23 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:27 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:28 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:30 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:37 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:39 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:51:40 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:51:44 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:49 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:50 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:51:51 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:51:58 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:01 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:02 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:05 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:12 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:13 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:52:14 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:52:19 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:23 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:24 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:26 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:33 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:35 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:36 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:40 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:47 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:52:47 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:48 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:52:54 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:52:57 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:52:58 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:01 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:08 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:09 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:10 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:15 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:21 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:53:22 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:53:22 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:29 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:31 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:32 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:36 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:43 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:43 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:44 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:53:50 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:53:55 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:53:56 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:53:57 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:04 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:05 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:06 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:11 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:17 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:18 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:18 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:25 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:29 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:54:30 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:54:32 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:39 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:39 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:40 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:46 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:54:51 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:52 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:54:53 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:00 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:03 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:55:04 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:55:07 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:13 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:14 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:21 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:25 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:26 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:28 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:35 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:37 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:55:38 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:55:42 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:55:49 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:55 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:55:59 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:00 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:02 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:09 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:11 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:56:12 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:56:16 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:22 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:23 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:30 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:33 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:34 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:37 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:44 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:45 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:56:46 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:56:51 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:56:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:56 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:56:58 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:05 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:07 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:08 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:12 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:19 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:57:19 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:20 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:57:26 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:30 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:33 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:40 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:41 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:42 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:57:47 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:57:53 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:57:54 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:57:54 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:01 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:03 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:04 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:08 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:15 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:15 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:16 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:22 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:27 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:58:28 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:58:29 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:36 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:37 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:38 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:43 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:49 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:50 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:58:50 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:58:57 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:01 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:59:02 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:59:04 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:11 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:11 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:12 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:18 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:23 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:24 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:25 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:32 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:35 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 21:59:36 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 21:59:39 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:45 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:46 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:46 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:53 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 21:59:57 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 21:59:58 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:00 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:07 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:09 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:00:10 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:00:14 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:19 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:20 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:21 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:28 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:31 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:32 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:35 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:42 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:43 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:00:44 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:00:49 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:00:53 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:54 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:00:56 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:03 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:05 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:06 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:10 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:17 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:17 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:01:18 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:01:24 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:27 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:28 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:31 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:38 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:39 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:40 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:01:45 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:51 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:01:52 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:01:52 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:01:59 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:01 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:02 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:06 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:13 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:13 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:14 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:20 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:25 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:02:26 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:02:27 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:34 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:35 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:36 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:41 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:47 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:48 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:48 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:02:55 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:02:57 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-102' coro=<ssh_websocket.<locals>.ws_to_ssh() done, defined at /home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py:552> exception=WebSocketDisconnect(1001, '')>
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py", line 554, in ws_to_ssh
+    data = await websocket.receive_text()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 120, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 114, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+2026-01-12 22:02:59 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:03:00 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:03:02 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:03 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:03 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:04 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:04 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:09 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:09 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:10 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:14 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:14 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:16 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:21 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:22 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:23 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:03:26 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:26 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:03:26 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:03:26 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:03:26 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:03:28 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 22:03:28 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 22:03:29 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:30 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:30 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:33 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:03:34 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:03:37 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:39 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:03:39 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:03:43 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:43 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:44 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:50 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:03:55 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:56 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:03:57 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:03 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:04:04 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:04:04 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:07 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:04:08 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:04:11 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:17 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:18 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-546' coro=<ssh_websocket.<locals>.ws_to_ssh() done, defined at /home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py:552> exception=WebSocketDisconnect(1012, None)>
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py", line 554, in ws_to_ssh
+    data = await websocket.receive_text()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 120, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 114, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1012, None)
+2026-01-12 22:04:18 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:18 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:25 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:29 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:30 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:32 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:39 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:41 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:04:42 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:04:46 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:04:51 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:52 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:04:53 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:00 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:03 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:04 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:07 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:14 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:15 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:05:16 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:05:21 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:25 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:26 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:28 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:35 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:37 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:38 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:05:42 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:49 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:05:49 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:50 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:05:56 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:05:59 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:06:00 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:06:03 - asgi - INFO - 服务初始化...
+2026-01-12 22:06:03 - app.core.redis - INFO - 正在初始化 Redis 连接池...
+2026-01-12 22:06:03 - app.core.redis - INFO - Redis 初始化完成
+2026-01-12 22:06:03 - app.core.database - INFO - 正在连接 PostgreSQL 数据库...
+2026-01-12 22:06:03 - app.core.database - INFO - 数据库连接成功
+2026-01-12 22:06:03 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:06:04 - asgi - INFO - 数据库连接成功
+2026-01-12 22:06:04 - __main__ - INFO - Monitor daemon stopping...
+2026-01-12 22:06:04 - app.workers.monitor.manager - INFO - 正在停止监控服务...
+2026-01-12 22:06:04 - app.workers.monitor.manager - INFO - 设备 11 监控任务被取消
+2026-01-12 22:06:04 - app.workers.monitor.manager - INFO - 设备 13 监控任务被取消
+2026-01-12 22:06:04 - app.workers.monitor.manager - INFO - 设备 3 监控任务被取消
+2026-01-12 22:06:04 - app.core.redis - INFO - Redis 连接已断开
+2026-01-12 22:06:04 - app.core.database - INFO - 数据库连接已断开
+2026-01-12 22:06:04 - app.drivers.base - ERROR - 设备 154.36.187.86 执行命令出错: Socket is closed
+2026-01-12 22:06:11 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:06:12 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:06:38 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:06:39 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:13:11 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:13:11 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:14:15 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:14:16 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:14:49 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:14:49 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:37:12 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:37:12 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:37:13 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:37:13 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:37:31 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-489' coro=<ssh_websocket.<locals>.ws_to_ssh() done, defined at /home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py:552> exception=WebSocketDisconnect(<CloseCode.NO_STATUS_RCVD: 1005>, '')>
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py", line 554, in ws_to_ssh
+    data = await websocket.receive_text()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 120, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 114, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (<CloseCode.NO_STATUS_RCVD: 1005>, '')
+2026-01-12 22:37:32 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:37:32 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:37:33 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:33 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:34 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:34 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:37:34 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:34 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:37:34 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:34 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:37:37 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:06 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:07 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:08 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:37 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:38:38 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:07 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:08 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:39:39 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:06 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:09 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:35 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:36 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:40:39 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:41:09 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:41:38 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:41:39 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:42:04 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:42:05 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:42:09 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:42:28 - app.core.security - ERROR - Token验证异常: Too many connections
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 324, in verify_token
+    redis_auth_ver = await get_or_init_user_auth_version(uid)
+  File "/home/lhq2439569630/bise/FastAPIProject/app/core/security.py", line 210, in get_or_init_user_auth_version
+    raw = await redis_client.get(key)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/client.py", line 720, in execute_command
+    conn = self.connection or await pool.get_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1196, in get_connection
+    connection = self.get_available_connection()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/redis/asyncio/connection.py", line 1211, in get_available_connection
+    raise ConnectionError("Too many connections") from None
+redis.exceptions.ConnectionError: Too many connections
+2026-01-12 22:42:29 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-541' coro=<ssh_websocket.<locals>.ws_to_ssh() done, defined at /home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py:552> exception=WebSocketDisconnect(1001, '')>
+Traceback (most recent call last):
+  File "/home/lhq2439569630/bise/FastAPIProject/app/api/v1/endpoints/devices.py", line 554, in ws_to_ssh
+    data = await websocket.receive_text()
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 120, in receive_text
+    self._raise_on_disconnect(message)
+  File "/home/lhq2439569630/.local/lib/python3.10/site-packages/starlette/websockets.py", line 114, in _raise_on_disconnect
+    raise WebSocketDisconnect(message["code"], message.get("reason"))
+starlette.websockets.WebSocketDisconnect: (1001, '')
+2026-01-12 22:51:28 - asgi - INFO - 服务关闭中...
+2026-01-12 22:51:28 - app.core.redis - INFO - Redis 连接已断开
+2026-01-12 22:51:28 - app.core.database - INFO - 数据库连接已断开
+2026-01-12 22:52:57 - asgi - INFO - 服务初始化...
+2026-01-12 22:52:57 - app.core.redis - INFO - 正在初始化 Redis 连接池...
+2026-01-12 22:52:57 - app.core.redis - INFO - Redis 初始化完成
+2026-01-12 22:52:57 - app.core.database - INFO - 正在连接 PostgreSQL 数据库...
+2026-01-12 22:52:58 - app.core.database - INFO - 数据库连接成功
+2026-01-12 22:52:58 - asgi - INFO - 数据库连接成功
+2026-01-12 22:53:02 - __main__ - INFO - Monitor daemon starting...
+2026-01-12 22:53:02 - app.core.redis - INFO - 正在初始化 Redis 连接池...
+2026-01-12 22:53:02 - app.core.redis - INFO - Redis 初始化完成
+2026-01-12 22:53:02 - app.core.database - INFO - 正在连接 PostgreSQL 数据库...
+2026-01-12 22:53:03 - app.core.database - INFO - 数据库连接成功
+2026-01-12 22:53:04 - app.workers.monitor.manager - INFO - 正在启动监控服务...
+2026-01-12 22:53:04 - app.workers.monitor.manager - INFO - 初始化清理: 无旧设备状态缓存
+2026-01-12 22:53:04 - app.workers.monitor.manager - INFO - 初始化清理: 已重置所有设备数据库在线状态为离线
+2026-01-12 22:53:05 - app.workers.monitor.manager - INFO - 发现新设备并启动监控: 日本 (154.36.187.86)
+2026-01-12 22:53:05 - app.workers.monitor.manager - INFO - 发现新设备并启动监控: AR151-S2 (192.168.1.1)
+2026-01-12 22:53:05 - app.workers.monitor.manager - INFO - 发现新设备并启动监控: 核心路由器 (192.168.112.254)
+2026-01-12 22:53:05 - app.workers.monitor.manager - INFO - 启动设备列表热更新守护任务
+2026-01-12 22:53:06 - app.workers.monitor.manager - INFO - 设备 13 (192.168.1.1) 开始监控循环 (Jitter: 0.71s)
+2026-01-12 22:53:07 - app.workers.monitor.manager - INFO - 设备 11 (154.36.187.86) 开始监控循环 (Jitter: 1.67s)
+2026-01-12 22:53:07 - app.workers.monitor.manager - INFO - 设备 3 (192.168.112.254) 开始监控循环 (Jitter: 1.68s)
+2026-01-12 22:53:09 - app.drivers.base - INFO - 已连接到设备 154.36.187.86
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:53:10 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:53:10 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:53:10 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:53:10 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:53:10 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:53:11 - app.drivers.linux - INFO - Linux 服务器 154.36.187.86 静态信息采集完毕: {'os_version': 'Ubuntu 22.04.5 LTS', 'vendor': 'Canonical', 'model': 'Ubuntu Server', 'kernel': '5.15.0-164-generic'}
+2026-01-12 22:53:11 - app.workers.monitor.manager - INFO - 设备 11 静态信息采集成功: {'os_version': 'Ubuntu 22.04.5 LTS', 'vendor': 'Canonical', 'model': 'Ubuntu Server', 'kernel': '5.15.0-164-generic'}
+2026-01-12 22:53:12 - app.workers.monitor.manager - INFO - 更新设备 11 静态信息到数据库成功
+2026-01-12 22:53:12 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:16 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:16 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 22:53:16 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 22:53:17 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:17 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:53:17 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:53:19 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:26 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:27 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:53:27 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:53:28 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:29 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:33 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:35 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:53:35 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:53:40 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:53:40 - app.workers.monitor.manager - WARNING - 设备 13 (192.168.1.1) 初始连接失败，将在循环中重试
+2026-01-12 22:53:40 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:41 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:53:41 - app.workers.monitor.manager - WARNING - 设备 3 (192.168.112.254) 初始连接失败，将在循环中重试
+2026-01-12 22:53:47 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:53:50 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:51 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:53:54 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:01 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:02 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:03 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:07 - app.services.notification_service - ERROR - 发布站内消息实时事件失败: Object of type datetime is not JSON serializable
+2026-01-12 22:54:08 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:14 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:54:15 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:15 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:54:22 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:24 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:25 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:29 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:35 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:36 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:37 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:42 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:48 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:54:49 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:54:49 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:56 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:54:58 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:54:59 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:03 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:10 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:10 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:11 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:17 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:22 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:55:23 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:55:24 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:31 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:32 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:33 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:38 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:44 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:45 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:55:45 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:52 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:55:56 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:55:57 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:55:59 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:06 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:06 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:07 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:12 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:56:12 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:56:13 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:56:17 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:56:17 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:56:17 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:56:17 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:56:17 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:18 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:19 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:19 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 22:56:19 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 22:56:20 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:56:20 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:56:20 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:27 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:56:29 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:56:29 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:56:29 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:56:29 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:56:29 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:30 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:56:31 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:56:32 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 22:56:32 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 22:56:34 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:56:36 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:56:36 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:56:36 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:56:36 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:56:36 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:56:40 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:41 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:41 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:48 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:56:52 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:53 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:56:55 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:02 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:04 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:57:05 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:57:09 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:14 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:15 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:16 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:23 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:26 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:27 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:30 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:37 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:38 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:57:39 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:57:44 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:48 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:49 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:57:51 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:55 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 22:57:55 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 22:57:55 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:57:56 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:57:58 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:57:58 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 22:57:58 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 22:57:58 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 22:57:59 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:57:59 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 22:57:59 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:57:59 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:00 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:01 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:05 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:09 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:09 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:09 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:09 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:09 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:09 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:09 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:12 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:12 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:58:13 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:58:19 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:19 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:19 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:19 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:19 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:19 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:19 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:19 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:22 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:23 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:26 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:29 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:29 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:29 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:29 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:29 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:29 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:29 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:33 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:34 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:35 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:39 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:39 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:39 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:39 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:39 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:39 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:39 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:40 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:46 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:58:47 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:47 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:58:49 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:49 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:49 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:49 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:49 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:49 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:49 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:58:54 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:58:56 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:57 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:58:59 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 22:58:59 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 22:58:59 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 22:58:59 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 22:58:59 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 22:58:59 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 22:58:59 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 22:59:01 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:08 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:08 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:09 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:15 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:20 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:59:21 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:59:22 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:29 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:30 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:36 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:42 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:43 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:43 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 22:59:50 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 22:59:54 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 22:59:55 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 22:59:57 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:04 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:04 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:04 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:04 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:04 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:04 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:04 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:04 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:04 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:05 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:11 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:11 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:00:11 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:00:16 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:00:17 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:00:17 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:17 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:17 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:00:17 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:17 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:18 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:25 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:28 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:28 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:28 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:28 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:28 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:28 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:28 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:28 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:00:29 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:00:29 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:00:29 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:00:32 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:00:35 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:00:35 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:35 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:00:35 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:35 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:38 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:39 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:39 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:45 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:45 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:45 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:45 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:45 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:45 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:45 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:00:46 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:50 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:51 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:00:53 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:00:55 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:00:55 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:00:55 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:00:55 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:00:55 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:00:55 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:00:55 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:01:00 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:02 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:01:03 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:01:05 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:01:05 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:01:05 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:01:05 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:01:05 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:01:05 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:01:05 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:01:06 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:12 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:13 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:14 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:15 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:01:15 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:01:15 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:01:15 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:01:15 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:01:15 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:01:15 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:01:21 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:24 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:25 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:01:25 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:01:25 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:01:25 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:01:25 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:01:25 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:01:25 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:01:25 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:28 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:34 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:35 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:01:35 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:01:35 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:01:35 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:01:35 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:01:35 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:01:35 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:01:36 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:01:37 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:01:41 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:46 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:47 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:48 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:55 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:01:58 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:01:59 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:02 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:04 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:02:04 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:02:04 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:02:04 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:02:04 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:02:04 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:02:04 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:02:09 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:10 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:02:11 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:02:16 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:20 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:21 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:23 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:30 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:32 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:33 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:33 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:02:33 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:02:33 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:02:33 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:02:33 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:02:33 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:02:33 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:02:34 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:02:34 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:02:34 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:02:34 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:02:34 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:02:34 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:02:34 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:02:35 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:02:35 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:02:36 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:02:36 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:02:37 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:02:44 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:02:44 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:02:44 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:02:44 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:02:44 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:02:44 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:02:44 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:45 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:02:47 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:02:47 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:02:48 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:02:48 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:02:51 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:02:51 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:02:52 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:02:54 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:55 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:02:56 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:02:56 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:02:58 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:05 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:05 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:03:06 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:03:06 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:07 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:11 - app.services.device_service - INFO - Start get_device_list: type=0, search=None
+2026-01-12 23:03:11 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:03:12 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:18 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:03:19 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:03:19 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:26 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:28 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:29 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:33 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:40 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:40 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:41 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:03:47 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:03:52 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:03:53 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:03:54 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:01 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:02 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:03 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:08 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:14 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:15 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:15 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:22 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:26 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:04:27 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:04:29 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:36 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:36 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:37 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:43 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:04:43 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:04:43 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:48 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:49 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:04:50 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:04:57 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:00 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:05:01 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:05:04 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:10 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:11 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:11 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:18 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:22 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:23 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:05:24 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:05:24 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:05:24 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:05:24 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:05:25 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:05:25 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:05:25 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:05:25 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:05:25 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:27 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:05:27 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:05:30 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:05:30 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:05:32 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:34 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:05:35 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:05:39 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:44 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:45 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:46 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:53 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:05:56 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:05:57 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:06:00 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:06:03 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:06:03 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:06:03 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:06:03 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:06:03 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:06:06 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:06:06 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:06:06 - app.api.v1.endpoints.devices - INFO - New WebSocket connection request to /ws/list
+2026-01-12 23:06:06 - app.api.v1.endpoints.devices - INFO - WebSocket accepted
+2026-01-12 23:06:06 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:06:07 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - WebSocket authenticated for user: 1
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Redis client obtained
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Entering WS main loop
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Received WS message: {'command': 'get_list', 'type': 0, 'search': ''}
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - WS Command: get_list type=0, search=''
+2026-01-12 23:06:07 - app.services.device_service - INFO - Start get_device_list: type=0, search=
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Starting Redis listener
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Subscribed to device_update:*
+2026-01-12 23:06:07 - app.services.device_service - INFO - Returning 3 devices
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Got device list data, len: 3
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Sent list data to WS
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - Waiting for WS message...
+2026-01-12 23:06:07 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:07 - app.api.v1.endpoints.devices - INFO - WebSocket disconnected for device 11
+2026-01-12 23:06:08 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:06:09 - app.api.v1.endpoints.devices - INFO - WS Disconnected
+2026-01-12 23:06:09 - app.api.v1.endpoints.devices - INFO - Cleaning up WS resources
+2026-01-12 23:06:09 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.
+2026-01-12 23:06:10 - app.core.security - INFO - WS Auth: Verifying token (len=235)
+2026-01-12 23:06:10 - app.core.security - INFO - WS Auth: Success for user 1
+2026-01-12 23:06:14 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:18 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:06:19 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 1/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:06:21 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:28 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:30 - app.drivers.base - WARNING - 设备 192.168.1.1 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:06:31 - app.drivers.base - WARNING - 设备 192.168.112.254 连接尝试 2/3 失败: TCP connection to device failed.，正在重试...
+2026-01-12 23:06:35 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:42 - app.workers.monitor.manager - INFO - 开始巡检设备: 154.36.187.86 (协议: SSH)
+2026-01-12 23:06:42 - app.drivers.base - ERROR - 连接设备 192.168.1.1 失败: TCP connection to device failed.
+2026-01-12 23:06:43 - app.drivers.base - ERROR - 连接设备 192.168.112.254 失败: TCP connection to device failed.

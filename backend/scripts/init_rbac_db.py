@@ -150,7 +150,6 @@ async def init_rbac_db():
                 "sys:device:edit",
                 "sys:device:del",
                 "sys:ssh:connect",
-                "sys:notify:global",
             ],
             "shisheng": [
                 "sys:auth:login",
