@@ -17,6 +17,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 DISABLED_PERMISSIONS_CONFIG_KEY = "rbac:disabled_permissions"
 DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
+USER_AUTH_VERSION_REDIS_KEY_PREFIX = "auth:ver:user:"
+USER_AUTH_SESSION_REDIS_KEY_PREFIX = "auth:session:user:"
 
 
 def _normalize_permission_codes(value) -> list[str]:
@@ -81,10 +83,11 @@ async def apply_disabled_permissions(perms: list[str]) -> list[str]:
     return [str(p) for p in (perms or []) if str(p) not in disabled_set]
 
 class UnicornException(Exception):
-    def __init__(self, code: int, message: str, error_code: Optional[str] = None):
+    def __init__(self, code: int, message: str, error_code: Optional[str] = None, data: Optional[dict] = None):
         self.code = code
         self.message = message
         self.error_code = error_code
+        self.data = data
         self.status = "error"
 
 def unicorn_exception_handler(request: Request, exc: UnicornException):
@@ -95,6 +98,7 @@ def unicorn_exception_handler(request: Request, exc: UnicornException):
             "status": exc.status,
             "message": exc.message,
             **({"error": exc.error_code} if getattr(exc, "error_code", None) else {}),
+            **({"data": exc.data} if getattr(exc, "data", None) is not None else {}),
         }
     )
 
@@ -200,6 +204,66 @@ async def _get_or_init_user_perm_version(user_id: int) -> int:
     await redis_client.set(key, "1")
     return 1
 
+async def get_or_init_user_auth_version(user_id: int) -> int:
+    redis_client = redis_manager.get_client()
+    key = f"{USER_AUTH_VERSION_REDIS_KEY_PREFIX}{int(user_id)}"
+    raw = await redis_client.get(key)
+    if raw is None:
+        await redis_client.set(key, "1")
+        return 1
+    try:
+        v = int(raw)
+        if v > 0:
+            return v
+    except Exception:
+        pass
+    await redis_client.set(key, "1")
+    return 1
+
+async def bump_user_auth_version(user_id: int) -> int:
+    redis_client = redis_manager.get_client()
+    key = f"{USER_AUTH_VERSION_REDIS_KEY_PREFIX}{int(user_id)}"
+    try:
+        v = await redis_client.incr(key)
+        if int(v) > 0:
+            return int(v)
+    except Exception:
+        pass
+    await redis_client.set(key, "1")
+    return 1
+
+async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optional[str] = None, user_agent: Optional[str] = None, device: Optional[str] = None) -> None:
+    redis_client = redis_manager.get_client()
+    key = f"{USER_AUTH_SESSION_REDIS_KEY_PREFIX}{int(user_id)}"
+    payload = {
+        "auth_ver": int(auth_ver),
+        "ip": (str(ip).strip() if ip else None),
+        "device": (str(device).strip() if device else None),
+        "user_agent": (str(user_agent).strip() if user_agent else None),
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await redis_client.set(key, json.dumps(payload, ensure_ascii=False), ex=60 * 60 * 24 * 30)
+    except Exception:
+        pass
+
+async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
+    redis_client = redis_manager.get_client()
+    key = f"{USER_AUTH_SESSION_REDIS_KEY_PREFIX}{int(user_id)}"
+    try:
+        raw = await redis_client.get(key)
+    except Exception:
+        raw = None
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
 async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> list[str]:
     uid = int(user_id)
     ver = perm_ver
@@ -257,6 +321,18 @@ async def verify_token(token: str = Cookie(None)):
         user_id = payload.get("id")
         if user_id is not None:
             uid = int(user_id)
+            redis_auth_ver = await get_or_init_user_auth_version(uid)
+            token_auth_ver = payload.get("auth_ver")
+            if token_auth_ver is None:
+                raise UnicornException(401, "Token版本过旧，请重新登录", error_code="AUTH_TOKEN_TOO_OLD")
+            try:
+                token_auth_ver_int = int(token_auth_ver)
+            except Exception:
+                raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
+            if token_auth_ver_int != int(redis_auth_ver):
+                new_login = await get_user_auth_session_info(uid)
+                raise UnicornException(401, "会话已失效，请重新登录", error_code="AUTH_SESSION_REVOKED", data={"new_login": new_login})
+
             redis_ver = await _get_or_init_user_perm_version(uid)
             token_ver = payload.get("perm_ver")
             if token_ver is None:
@@ -303,6 +379,20 @@ async def verify_token_ws(
         user_id = payload.get("id")
         if user_id is not None:
             uid = int(user_id)
+            redis_auth_ver = await get_or_init_user_auth_version(uid)
+            token_auth_ver = payload.get("auth_ver")
+            if token_auth_ver is None:
+                await websocket.close(code=4001, reason="Token版本过旧，请重新登录")
+                return None
+            try:
+                token_auth_ver_int = int(token_auth_ver)
+            except Exception:
+                await websocket.close(code=4001, reason="Token无效")
+                return None
+            if token_auth_ver_int != int(redis_auth_ver):
+                await websocket.close(code=4001, reason="会话已失效，请重新登录")
+                return None
+
             redis_ver = await _get_or_init_user_perm_version(uid)
             token_ver = payload.get("perm_ver")
             if token_ver is None:

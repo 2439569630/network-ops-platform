@@ -17,7 +17,9 @@ class DeviceCreate(DeviceBase):
 
 class DeviceUpdate(BaseModel):
     device_name: Optional[str] = None
+    type: Optional[str] = None
     location: Optional[str] = None
+    ssh_port: Optional[int] = None
     # ...其他可更新字段
 
 class DeviceResponse(DeviceBase):
@@ -28,6 +30,9 @@ class DeviceResponse(DeviceBase):
     disk_usage: str = '0%'
     uptime: str = '未知'
     os_version: str = 'Unknown'
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    ops_admin_name: Optional[str] = None
     
     class Config:
         from_attributes = True

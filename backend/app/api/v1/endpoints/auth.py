@@ -3,6 +3,10 @@
 import asyncio
 import logging
 from datetime import timedelta
+import hashlib
+import hmac
+import re
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Cookie
@@ -12,9 +16,11 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.core.redis import redis_manager
-from app.core.security import create_access_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_token, get_disabled_permission_codes_cached
+from app.core.security import create_access_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_token, get_disabled_permission_codes_cached, get_or_init_user_auth_version, bump_user_auth_version, set_user_auth_session_info, get_user_auth_session_info
 from app.core.config import settings
+from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
+from app.utils.notification_sender import send_email
 import json
 
 router = APIRouter()
@@ -30,6 +36,75 @@ class RegisterForm(BaseModel):
     password: str
     nickname: Optional[str] = None
     email: Optional[str] = None
+
+class PasswordResetRequestForm(BaseModel):
+    email: str
+    captcha_id: str
+    captcha_answer: str
+
+class PasswordResetConfirmForm(BaseModel):
+    token: str
+    new_password: str
+
+def _is_valid_email(email: str) -> bool:
+    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", str(email or "")))
+
+def _get_request_ip(request: Request) -> Optional[str]:
+    xff = request.headers.get("x-forwarded-for")
+    return (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
+
+def _captcha_key(captcha_id: str) -> str:
+    return f"captcha:{str(captcha_id or '').strip()}"
+
+def _hash_text(value: str) -> str:
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+def _infer_device_label(user_agent: Optional[str]) -> str:
+    ua = str(user_agent or "").strip()
+    if not ua:
+        return "未知设备"
+    u = ua.lower()
+
+    os_name = "未知系统"
+    if "windows" in u:
+        os_name = "Windows"
+    elif "android" in u:
+        os_name = "Android"
+    elif "iphone" in u or "ipad" in u or "ios" in u:
+        os_name = "iOS"
+    elif "mac os x" in u or "macintosh" in u:
+        os_name = "macOS"
+    elif "linux" in u:
+        os_name = "Linux"
+
+    browser = "未知浏览器"
+    if "edg/" in u:
+        browser = "Edge"
+    elif "chrome/" in u and "chromium" not in u and "edg/" not in u:
+        browser = "Chrome"
+    elif "firefox/" in u:
+        browser = "Firefox"
+    elif "safari/" in u and "chrome/" not in u:
+        browser = "Safari"
+
+    return f"{os_name} · {browser}"
+
+@router.get("/captcha")
+async def get_captcha():
+    redis_client = redis_manager.get_client()
+    ttl_seconds = SystemConfig.get_int("auth:captcha:ttl_seconds", 300)
+    a = secrets.randbelow(9) + 1
+    b = secrets.randbelow(9) + 1
+    captcha_id = secrets.token_urlsafe(16)
+    await redis_client.set(_captcha_key(captcha_id), _hash_text(str(a + b)), ex=int(ttl_seconds))
+    return {
+        "code": 200,
+        "data": {
+            "captcha_id": captcha_id,
+            "question": f"{a} + {b} = ?",
+            "ttl_seconds": int(ttl_seconds),
+        },
+    }
 
 def _normalize_permissions(value) -> list[str]:
     if value is None:
@@ -77,8 +152,25 @@ async def _get_or_init_perm_ver(user_id: int) -> int:
         await redis_client.set(key, "1")
         return 1
 
+async def _get_or_init_auth_ver(user_id: int) -> int:
+    try:
+        return await get_or_init_user_auth_version(int(user_id))
+    except Exception:
+        redis_client = redis_manager.get_client()
+        key = f"auth:ver:user:{int(user_id)}"
+        raw = await redis_client.get(key)
+        if raw is None:
+            await redis_client.set(key, "1")
+            return 1
+        try:
+            v = int(raw)
+            return v if v > 0 else 1
+        except Exception:
+            await redis_client.set(key, "1")
+            return 1
+
 @router.post("/login")
-async def login(data: LoginForm, response: Response):
+async def login(data: LoginForm, response: Response, request: Request):
     # 1. 查询用户
     sql = "SELECT id, username, password, is_approved, permissions FROM users WHERE username = $1"
     user = await db.fetch_one(sql, data.username)
@@ -135,12 +227,25 @@ async def login(data: LoginForm, response: Response):
             pass
 
     perm_ver = await _get_or_init_perm_ver(user["id"])
+    try:
+        auth_ver = await bump_user_auth_version(int(user["id"]))
+    except Exception:
+        auth_ver = await _get_or_init_auth_ver(user["id"])
+
+    ip = _get_request_ip(request)
+    ua = request.headers.get("user-agent")
+    device = _infer_device_label(ua)
+    try:
+        await set_user_auth_session_info(int(user["id"]), auth_ver=int(auth_ver), ip=ip, user_agent=ua, device=device)
+    except Exception:
+        pass
     token_data = {
         "id": user['id'],
         "username": user['username'],
         "roles": user_roles,
         "is_super": bool(is_super),
         "perm_ver": int(perm_ver),
+        "auth_ver": int(auth_ver),
     }
     
     access_token = create_access_token(
@@ -164,6 +269,147 @@ async def login(data: LoginForm, response: Response):
         "token": access_token 
     }
 
+@router.post("/password/reset/request")
+async def password_reset_request(data: PasswordResetRequestForm, request: Request):
+    email = str(data.email or "").strip()
+    if not _is_valid_email(email):
+        return JSONResponse(status_code=400, content={"code": 400, "message": "邮箱格式不正确"})
+
+    captcha_id = str(data.captcha_id or "").strip()
+    captcha_answer = str(data.captcha_answer or "").strip()
+    if not captcha_id or not captcha_answer:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "请完成验证码校验"})
+
+    email_norm = email.strip().lower()
+    redis_client = redis_manager.get_client()
+
+    captcha_raw = await redis_client.get(_captcha_key(captcha_id))
+    if not captcha_raw:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "验证码已过期，请刷新"})
+    if not hmac.compare_digest(str(captcha_raw), _hash_text(captcha_answer)):
+        return JSONResponse(status_code=400, content={"code": 400, "message": "验证码不正确"})
+    await redis_client.delete(_captcha_key(captcha_id))
+
+    cooldown_seconds = SystemConfig.get_int("auth:pwdreset:cooldown_seconds", 60)
+    email_hour_limit = SystemConfig.get_int("auth:pwdreset:email_hour_limit", 5)
+    ip_hour_limit = SystemConfig.get_int("auth:pwdreset:ip_hour_limit", 30)
+    token_ttl_minutes = SystemConfig.get_int("auth:pwdreset:token_ttl_minutes", 30)
+
+    cooldown_key = f"pwdreset:cooldown:{email_norm}"
+    hour_email_key = f"pwdreset:email:{email_norm}:h"
+
+    if await redis_client.exists(cooldown_key):
+        return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
+
+    raw_hour_email = await redis_client.get(hour_email_key)
+    try:
+        hour_email_cnt = int(raw_hour_email or 0)
+    except Exception:
+        hour_email_cnt = 0
+    if hour_email_cnt >= int(email_hour_limit):
+        return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
+
+    ip = _get_request_ip(request)
+    if ip:
+        hour_ip_key = f"pwdreset:ip:{ip}:h"
+        raw_hour_ip = await redis_client.get(hour_ip_key)
+        try:
+            hour_ip_cnt = int(raw_hour_ip or 0)
+        except Exception:
+            hour_ip_cnt = 0
+        if hour_ip_cnt >= int(ip_hour_limit):
+            return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
+        ip_next = await redis_client.incr(hour_ip_key)
+        if int(ip_next) == 1:
+            await redis_client.expire(hour_ip_key, 3600)
+
+    email_next = await redis_client.incr(hour_email_key)
+    if int(email_next) == 1:
+        await redis_client.expire(hour_email_key, 3600)
+
+    await redis_client.set(cooldown_key, "1", ex=int(cooldown_seconds))
+
+    user = await db.fetch_one("SELECT id, is_approved FROM users WHERE lower(email) = lower($1)", email_norm)
+    if not user or user.get("is_approved") is False:
+        return {"code": 200, "message": "如果邮箱已绑定，将发送重置链接", "data": {"cooldown_seconds": int(cooldown_seconds)}}
+
+    host = SystemConfig.get("email_host")
+    port = SystemConfig.get("email_port")
+    username = SystemConfig.get("email_username")
+    password = SystemConfig.get("email_password")
+    if not all([host, port, username, password]):
+        await SystemConfig.load()
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+    if not all([host, port, username, password]):
+        return JSONResponse(status_code=500, content={"code": 500, "message": "系统未配置邮箱服务，无法发送邮件"})
+
+    origin = request.headers.get("origin")
+    base_url = (str(origin).rstrip("/") if origin else str(request.base_url).rstrip("/"))
+    token = secrets.token_urlsafe(32)
+    token_key = f"pwdreset:token:{token}"
+    token_payload = {"user_id": int(user["id"]), "email": email_norm}
+    await redis_client.set(token_key, json.dumps(token_payload, ensure_ascii=False), ex=int(token_ttl_minutes) * 60)
+
+    reset_url = f"{base_url}/forgot-password?token={token}"
+    subject = "重置密码链接"
+    content = (
+        "你正在重置账号密码。\n\n"
+        f"请点击以下链接继续（{int(token_ttl_minutes)} 分钟内有效，仅可使用一次）：\n"
+        f"{reset_url}\n\n"
+        "如非本人操作，请忽略本邮件。"
+    )
+    ok, msg = await send_email(host, port, username, password, email_norm, subject, content)
+    if not ok:
+        await redis_client.delete(token_key)
+        return JSONResponse(status_code=500, content={"code": 500, "message": f"邮件发送失败: {msg}"})
+
+    return {"code": 200, "message": "如果邮箱已绑定，将发送重置链接", "data": {"cooldown_seconds": int(cooldown_seconds)}}
+
+@router.post("/password/reset/confirm")
+async def password_reset_confirm(data: PasswordResetConfirmForm):
+    token = str(data.token or "").strip()
+    new_password = str(data.new_password or "")
+
+    if not token:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
+    if len(new_password) < 6:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "密码长度至少 6 位"})
+
+    redis_client = redis_manager.get_client()
+    token_key = f"pwdreset:token:{token}"
+    raw = await redis_client.get(token_key)
+    if not raw:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
+
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        await redis_client.delete(token_key)
+        return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
+
+    user_id = payload.get("user_id")
+    email_norm = str(payload.get("email") or "").strip().lower()
+    if not user_id:
+        await redis_client.delete(token_key)
+        return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
+
+    user = await db.fetch_one("SELECT id FROM users WHERE id = $1 AND lower(email) = lower($2)", int(user_id), email_norm)
+    if not user:
+        await redis_client.delete(token_key)
+        return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
+
+    hashed_pw = get_password_hash(new_password)
+    await db.execute("UPDATE users SET password = $1 WHERE id = $2", hashed_pw, int(user_id))
+    try:
+        await bump_user_auth_version(int(user_id))
+    except Exception:
+        pass
+    await redis_client.delete(token_key)
+    return {"code": 200, "message": "密码已重置"}
+
 @router.post("/refresh")
 async def refresh_token(response: Response, token: str = Cookie(None)):
     if token is None:
@@ -183,6 +429,37 @@ async def refresh_token(response: Response, token: str = Cookie(None)):
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "未登录", "status": "error"},
+        )
+
+    token_auth_ver = token_payload.get("auth_ver")
+    if token_auth_ver is None:
+        response.delete_cookie(key="token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "Token版本过旧，请重新登录", "status": "error", "error": "AUTH_TOKEN_TOO_OLD"},
+        )
+    try:
+        token_auth_ver_int = int(token_auth_ver)
+    except Exception:
+        response.delete_cookie(key="token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
+        )
+    try:
+        redis_auth_ver = await get_or_init_user_auth_version(int(user_id))
+    except Exception:
+        redis_auth_ver = 1
+    if int(token_auth_ver_int) != int(redis_auth_ver):
+        response.delete_cookie(key="token")
+        new_login = None
+        try:
+            new_login = await get_user_auth_session_info(int(user_id))
+        except Exception:
+            new_login = None
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "会话已失效，请重新登录", "status": "error", "error": "AUTH_SESSION_REVOKED", "data": {"new_login": new_login}},
         )
 
     user = await db.fetch_one(
@@ -225,12 +502,14 @@ async def refresh_token(response: Response, token: str = Cookie(None)):
             pass
 
     perm_ver = await _get_or_init_perm_ver(user["id"])
+    auth_ver = await _get_or_init_auth_ver(user["id"])
     token_data = {
         "id": user["id"],
         "username": user["username"],
         "roles": user_roles,
         "is_super": bool(is_super),
         "perm_ver": int(perm_ver),
+        "auth_ver": int(auth_ver),
     }
 
     access_token = create_access_token(subject=token_data, expires_delta=access_token_expires)

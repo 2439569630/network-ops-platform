@@ -15,6 +15,8 @@ class NotificationService:
     SYSTEM_ALERTS_RECENT_KEY = "system_alerts:recent"
     SYSTEM_ALERTS_RECENT_LIMIT = 500
     SYSTEM_ALERTS_RECENT_TTL_SECONDS = 7 * 24 * 60 * 60
+    SITE_MESSAGES_CHANNEL_GLOBAL = "site_messages:global"
+    SITE_MESSAGES_CHANNEL_USER_PREFIX = "site_messages:user:"
     _site_message_tables_ready = False
 
     @staticmethod
@@ -162,7 +164,14 @@ class NotificationService:
             global_flag,
             tg,
         )
-        return dict(row) if row else {}
+        result = dict(row) if row else {}
+
+        try:
+            await NotificationService.publish_site_message_changed(target_user_id=tg, is_global=global_flag)
+        except Exception as e:
+            logger.error(f"发布站内消息实时事件失败: {e}")
+
+        return result
 
     @staticmethod
     async def mark_site_message_read(*, user_id: int, message_id: int) -> bool:
@@ -176,6 +185,10 @@ class NotificationService:
             int(message_id),
             int(user_id),
         )
+        try:
+            await NotificationService.publish_site_message_changed(target_user_id=int(user_id), is_global=False)
+        except Exception as e:
+            logger.error(f"发布站内消息已读事件失败: {e}")
         return True
 
     @staticmethod
@@ -186,7 +199,48 @@ class NotificationService:
             int(message_id),
             int(user_id),
         )
+        try:
+            await NotificationService.publish_site_message_changed(target_user_id=int(user_id), is_global=False)
+        except Exception as e:
+            logger.error(f"发布站内消息未读事件失败: {e}")
         return True
+
+    @staticmethod
+    def get_site_messages_user_channel(user_id: int) -> str:
+        return f"{NotificationService.SITE_MESSAGES_CHANNEL_USER_PREFIX}{int(user_id)}"
+
+    @staticmethod
+    async def publish_site_message_changed(*, target_user_id: Optional[int], is_global: bool) -> None:
+        redis_client = redis_manager.get_client()
+        payload = {
+            "type": "site_message_changed",
+            "target_user_id": int(target_user_id) if target_user_id is not None else None,
+            "is_global": bool(is_global),
+        }
+        payload_str = json.dumps(payload, ensure_ascii=False)
+        if is_global:
+            await redis_client.publish(NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL, payload_str)
+        elif target_user_id is not None:
+            await redis_client.publish(NotificationService.get_site_messages_user_channel(int(target_user_id)), payload_str)
+
+    @staticmethod
+    async def get_site_message_unread_count(*, user_id: int) -> int:
+        await NotificationService._ensure_site_message_tables()
+        row = await db.fetch_one(
+            """
+            SELECT COUNT(1) AS cnt
+            FROM site_messages m
+            LEFT JOIN site_message_reads r
+                ON r.message_id = m.id AND r.user_id = $1
+            WHERE (m.is_global = TRUE OR m.target_user_id = $1)
+              AND r.read_at IS NULL
+            """,
+            int(user_id),
+        )
+        try:
+            return int(row["cnt"]) if row and row.get("cnt") is not None else 0
+        except Exception:
+            return 0
 
     @staticmethod
     async def notify(

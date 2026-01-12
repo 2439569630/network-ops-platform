@@ -2,8 +2,10 @@
 import asyncio
 import logging
 import json
-from fastapi import APIRouter, Depends, Response, HTTPException, WebSocket, WebSocketDisconnect
-from typing import List
+import time
+from fastapi import APIRouter, Depends, Response, HTTPException, WebSocket, WebSocketDisconnect, Query
+from typing import List, Optional
+from pydantic import BaseModel
 from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission
 from app.core.redis import redis_manager
 from app.core.database import db
@@ -14,6 +16,25 @@ from netmiko import ConnectHandler
 router = APIRouter()
 ssh_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+class MonitorBoostRequest(BaseModel):
+    device_id: int
+    ttl_seconds: int = 60
+    interval: Optional[float] = None
+    monitor_interval: Optional[float] = None
+
+class MonitorRestoreRequest(BaseModel):
+    device_id: int
+
+class DeviceRecycleActionRequest(BaseModel):
+    device_id: int
+
+class DeviceUpdateRequest(BaseModel):
+    device_id: int
+    device_name: Optional[str] = None
+    type: Optional[str] = None
+    location: Optional[str] = None
+    ssh_port: Optional[int] = None
 
 # 获取设备列表
 @router.get("/get", response_model=List[DeviceResponse])
@@ -40,13 +61,50 @@ async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionC
 @router.post("/delete")
 async def delete_device(data: DeviceDelete, user_data: dict = Depends(PermissionChecker(["sys:device:del"]))):
     try:
-        await device_service.delete_device(data.id, data.ip)
-        return {"message": "设备删除成功", "code": 200}
+        deleted_by = str(user_data.get("id") or "")
+        await device_service.delete_device(data.id, data.ip, deleted_by=deleted_by)
+        return {"message": "设备已移入回收站", "code": 200}
     except ValueError as e:
          raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"删除设备失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/recycle/list")
+async def list_recycled_devices(
+    user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
+):
+    return {"code": 200, "data": await device_service.get_deleted_devices()}
+
+@router.post("/recycle/restore")
+async def restore_recycled_device(
+    data: DeviceRecycleActionRequest,
+    user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
+):
+    await device_service.restore_device(int(data.device_id), restored_by=str(user_data.get("id") or ""))
+    return {"code": 200}
+
+@router.post("/recycle/purge")
+async def purge_recycled_device(
+    data: DeviceRecycleActionRequest,
+    user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
+):
+    await device_service.purge_device(int(data.device_id))
+    return {"code": 200}
+
+@router.post("/update")
+async def update_device(
+    data: DeviceUpdateRequest,
+    user_data: dict = Depends(PermissionChecker(["sys:device:edit"])),
+):
+    patch = DeviceUpdate(
+        device_name=data.device_name,
+        type=data.type,
+        location=data.location,
+        ssh_port=data.ssh_port,
+    )
+    await device_service.update_device(int(data.device_id), patch, updated_by=str(user_data.get("id") or ""))
+    return {"code": 200}
 
 # 测试连接
 @router.post("/test_connect")
@@ -57,6 +115,122 @@ async def test_connect(device: DeviceTest, user_data: dict = Depends(PermissionC
     except Exception as e:
         logger.error(f"连接测试失败: {e}")
         return {"message": f"连接失败: {str(e)}", "code": 500}
+
+@router.get("/status/{device_id}")
+async def get_device_status(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    redis_client = redis_manager.get_client()
+    status_data = await redis_client.hgetall(f"device_status:{device_id}")
+    if status_data:
+        return format_ws_data(status_data)
+    return format_ws_data({})
+
+@router.get("/detail/{device_id}")
+async def get_device_detail(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    sql = """
+        SELECT
+            nd.id,
+            nd.device_name,
+            nd.ipv4,
+            nd.ipv6,
+            nd.mac,
+            nd.device_type,
+            nd.location,
+            nd.ssh_port,
+            nd.vendor,
+            nd.model,
+            nd.serial_number,
+            nd.created_by,
+            nd.is_active,
+            nd.created_at,
+            u.username AS created_by_name
+        FROM network_devices nd
+        LEFT JOIN users u ON u.id::text = nd.created_by
+        WHERE nd.id = $1
+          AND COALESCE(nd.is_active, true) = true
+    """
+    if await device_service.has_deleted_at():
+        sql += " AND nd.deleted_at IS NULL"
+    row = await db.fetch_one(sql, int(device_id))
+    if not row:
+        raise HTTPException(status_code=404, detail="设备不存在")
+
+    data = dict(row)
+    data["created_by"] = str(data.get("created_by") or "")
+    data["created_by_name"] = str(data.get("created_by_name") or "未知")
+    data["ops_admin_name"] = str(data.get("created_by_name") or "未知")
+    data["ipv4"] = str(data.get("ipv4") or "")
+    data["ipv6"] = str(data.get("ipv6") or "")
+    data["mac"] = str(data.get("mac") or "")
+    data["ssh_port"] = int(data.get("ssh_port") or 22)
+    data["location"] = str(data.get("location") or "")
+    data["vendor"] = str(data.get("vendor") or "")
+    data["model"] = str(data.get("model") or "")
+    data["serial_number"] = str(data.get("serial_number") or "")
+    data["type"] = str(data.get("device_type") or "")
+
+    redis_client = redis_manager.get_client()
+    status_data = await redis_client.hgetall(f"device_status:{device_id}")
+    data.update(format_ws_data(status_data or {}))
+    return data
+
+
+@router.get("/audit/logs/{device_id}")
+async def get_device_audit_logs(
+    device_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: dict = Depends(PermissionChecker(["sys:device:audit"])),
+):
+    result = await device_service.get_device_change_logs(int(device_id), page=int(page), page_size=int(page_size))
+    return {"code": 200, "data": result}
+
+@router.get("/audit/ssh-commands/{device_id}")
+async def get_device_ssh_command_audit_logs(
+    device_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: dict = Depends(PermissionChecker(["sys:device:audit"])),
+):
+    result = await device_service.get_ssh_command_audit_logs(int(device_id), page=int(page), page_size=int(page_size))
+    return {"code": 200, "data": result}
+
+@router.post("/monitor/boost")
+async def boost_device_monitor(
+    data: MonitorBoostRequest,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    redis_client = redis_manager.get_client()
+    device_id = int(data.device_id)
+    ttl = int(data.ttl_seconds or 60)
+    if ttl < 5:
+        ttl = 5
+    if ttl > 600:
+        ttl = 600
+    payload = {
+        "interval": float(data.interval if data.interval is not None else 1),
+        "monitor_interval": float(data.monitor_interval if data.monitor_interval is not None else 1),
+        "ts": float(time.time()),
+    }
+    await redis_client.set(f"device:boost:{device_id}", json.dumps(payload, ensure_ascii=False), ex=ttl)
+    await redis_client.sadd("device:boost:set", device_id)
+    return {"code": 200}
+
+@router.post("/monitor/restore")
+async def restore_device_monitor(
+    data: MonitorRestoreRequest,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    redis_client = redis_manager.get_client()
+    device_id = int(data.device_id)
+    await redis_client.delete(f"device:boost:{device_id}")
+    await redis_client.srem("device:boost:set", device_id)
+    return {"code": 200}
 
 # WebSocket 详情 (重构：使用 app.core.redis)
 @router.websocket("/ws/detail/{device_id}")
@@ -250,6 +424,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     user = await verify_token_ws(websocket, token)
     if not user:
         return
+    user_id = str(user.get("id") or "")
 
     if not user_is_super(user):
         if not await user_has_permission(user, "sys:ssh:connect"):
@@ -262,7 +437,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     row = await db.fetch_one(
         """
-        SELECT user_name, password, ssh_port, device_type
+        SELECT id, user_name, password, ssh_port, device_type
         FROM network_devices
         WHERE ipv4 = $1
         LIMIT 1
@@ -280,6 +455,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     username = str(row.get("user_name") or "").strip()
     password = str(row.get("password") or "").strip()
+    device_id = int(row.get("id") or 0)
     if not username or not password:
         await websocket.send_text(f"系统: 设备 {ip} 未配置 SSH 账号或密码\r\n")
         try:
@@ -310,6 +486,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         "use_keys": False,
     }
 
+    connected_ok = False
     try:
         last_err: Exception | None = None
         conn = None
@@ -324,12 +501,35 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
             raise last_err or Exception("连接失败")
     except Exception as e:
         msg = str(e).splitlines()[0] if str(e) else "连接失败"
+        try:
+            if device_id:
+                await device_service.log_device_action(
+                    device_id=int(device_id),
+                    action="ssh_connect_failed",
+                    description=f"SSH连接失败: {msg}",
+                    changed_by=user_id,
+                    payload={"ipv4": str(ip), "ssh_port": int(port), "device_type": str(device_type)},
+                )
+        except Exception:
+            pass
         await websocket.send_text(f"系统: 连接失败: {msg}\r\n")
         try:
             await websocket.close()
         except Exception:
             pass
         return
+    try:
+        if device_id:
+            await device_service.log_device_action(
+                device_id=int(device_id),
+                action="ssh_connect",
+                description=f"SSH连接 {ip}",
+                changed_by=user_id,
+                payload={"ipv4": str(ip), "ssh_port": int(port), "device_type": str(device_type)},
+            )
+    except Exception:
+        pass
+    connected_ok = True
 
     async def close_conn():
         try:
@@ -352,6 +552,16 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         async def ws_to_ssh():
             while True:
                 data = await websocket.receive_text()
+                try:
+                    if device_id:
+                        await device_service.log_ssh_command(
+                            device_id=int(device_id),
+                            device_ip=str(ip),
+                            command=str(data),
+                            executed_by=str(user.get("id") or ""),
+                        )
+                except Exception:
+                    pass
                 await asyncio.to_thread(conn.write_channel, f"{data}\n")
 
         async def ssh_to_ws():
@@ -376,6 +586,17 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
             pass
     finally:
         await close_conn()
+        try:
+            if connected_ok and device_id:
+                await device_service.log_device_action(
+                    device_id=int(device_id),
+                    action="ssh_disconnect",
+                    description=f"SSH断开 {ip}",
+                    changed_by=user_id,
+                    payload={"ipv4": str(ip), "ssh_port": int(port), "device_type": str(device_type)},
+                )
+        except Exception:
+            pass
         try:
             await websocket.close()
         except Exception:

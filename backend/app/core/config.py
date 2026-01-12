@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = Field(default=6379, alias="REDISPORT")
     
     # Security
-    SECRET_KEY: str = Field(alias="JWT_SECRET_KEY")
+    SECRET_KEY: str = Field(default="dev-secret", alias="JWT_SECRET_KEY")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     ALGORITHM: str = "HS256"
     
@@ -34,8 +34,10 @@ class Settings(BaseSettings):
     ]
     
     # Monitor
-    MONITOR_INTERVAL: int = 3
-    ONLINE_CHECK_INTERVAL: int = 3
+    # 监控轮询间隔（秒）
+    MONITOR_INTERVAL: int = 1
+    # 在线状态检查间隔（秒）
+    ONLINE_CHECK_INTERVAL: int = 1
     
     class Config:
         case_sensitive = True

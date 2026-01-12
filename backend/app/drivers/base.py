@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from netmiko import ConnectHandler
 from typing import Dict, Optional, Any
 
@@ -28,6 +29,55 @@ class BaseDevice:
         self.static_info = {}
         # 上次采集时间
         self.last_collect_time = 0
+        self.fsm_state = "init"
+        self.fsm_reason = ""
+        self._success_streak = 0
+        self._failure_streak = 0
+        self.fsm_state = "init"
+        self.fsm_reason = ""
+        self.fsm_updated = time.time()
+        self.offline_fail_threshold = 3
+        self.recovery_success_threshold = 2
+        self.consecutive_failures = 0
+        self.consecutive_successes = 0
+
+    @staticmethod
+    def _compact_exception_message(e: Exception) -> str:
+        try:
+            s = str(e) if e is not None else ""
+        except Exception:
+            return ""
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        first = s.split("\n", 1)[0].strip()
+        return first
+
+    def _set_fsm_state(self, new_state: str, reason: Optional[str] = None) -> bool:
+        reason_str = str(reason) if reason else ""
+        if new_state == self.fsm_state and reason_str == self.fsm_reason:
+            return False
+        self.fsm_state = str(new_state)
+        self.fsm_reason = reason_str
+        self.fsm_updated = time.time()
+        return True
+
+    def record_success(self) -> bool:
+        self.consecutive_successes += 1
+        self.consecutive_failures = 0
+
+        if self.fsm_state == "offline" and self.consecutive_successes < int(self.recovery_success_threshold):
+            return self._set_fsm_state("recovering", "")
+        return self._set_fsm_state("online", "")
+
+    def record_failure(self, reason: Optional[str] = None) -> tuple[bool, bool]:
+        self.consecutive_failures += 1
+        self.consecutive_successes = 0
+
+        should_offline = self.consecutive_failures >= int(self.offline_fail_threshold)
+        if should_offline:
+            changed = self._set_fsm_state("offline", reason)
+        else:
+            changed = self._set_fsm_state("degraded", reason)
+        return changed, should_offline
 
     async def connect(self) -> bool:
         """建立 SSH 连接"""
@@ -74,7 +124,9 @@ class BaseDevice:
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise e
-                logger.warning(f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {str(e)}，正在重试...")
+                logger.warning(
+                    f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {self._compact_exception_message(e)}，正在重试..."
+                )
                 import time
                 time.sleep(2) # 等待 2 秒后重试
         
@@ -148,7 +200,7 @@ class BaseDevice:
             return output
         except Exception as e:
             if cmd.strip():
-                logger.error(f"设备 {self.ip} 执行命令出错: {e}")
+                logger.error(f"设备 {self.ip} 执行命令出错: {self._compact_exception_message(e)}")
             
             # 遇到命令执行错误（特别是 EOFError, SocketError），标记为断开
             if self.connected:
@@ -170,3 +222,25 @@ class BaseDevice:
     async def collect_once(self) -> Dict[str, Any]:
         """连接后执行一次的采集任务（需子类实现）"""
         return {}
+
+    def record_success(self) -> bool:
+        prev_state = self.fsm_state
+        self._failure_streak = 0
+        self._success_streak += 1
+        self.fsm_reason = ""
+        if prev_state != "online":
+            self.fsm_state = "online"
+        return self.fsm_state != prev_state
+
+    def record_failure(self, reason: str) -> tuple[bool, bool]:
+        prev_state = self.fsm_state
+        prev_reason = self.fsm_reason
+        self._success_streak = 0
+        self._failure_streak += 1
+        self.fsm_reason = str(reason or "")
+        should_offline = False
+        if self._failure_streak >= 2 and prev_state != "offline":
+            self.fsm_state = "offline"
+            should_offline = True
+        changed = (self.fsm_state != prev_state) or (self.fsm_reason != prev_reason)
+        return changed, should_offline

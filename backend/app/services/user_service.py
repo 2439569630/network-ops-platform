@@ -11,6 +11,7 @@ from app.schemas.user import UserCreate, UserUpdate, RoleUpdate
 from app.core.redis import redis_manager
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email
+from app.core.security import bump_user_auth_version
 
 class UserService:
     _email_verify_table_ready: bool = False
@@ -115,6 +116,10 @@ class UserService:
              
              new_hash = get_password_hash(data.new_password)
              await db.execute("UPDATE users SET password = $1 WHERE id = $2", new_hash, user_id)
+             try:
+                 await bump_user_auth_version(int(user_id))
+             except Exception:
+                 pass
 
         updates = []
         values = []

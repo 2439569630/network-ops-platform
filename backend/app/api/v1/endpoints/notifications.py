@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import StreamingResponse
 from app.core.security import PermissionChecker, verify_token_ws, user_is_super, user_has_permission
 from app.services.notification_service import NotificationService
 from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate
@@ -6,6 +7,7 @@ from app.core.redis import redis_manager
 import logging
 import json
 import asyncio
+import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,6 +73,16 @@ async def mark_site_message_unread(
         return {"code": 200, "message": "未读"}
     except Exception as e:
         return {"code": 500, "message": f"操作失败: {str(e)}"}
+
+@router.get("/site-messages/unread-count", response_model=dict)
+async def get_site_message_unread_count(
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        cnt = await NotificationService.get_site_message_unread_count(user_id=int(user.get("id")))
+        return {"code": 200, "data": {"count": int(cnt)}}
+    except Exception as e:
+        return {"code": 500, "message": f"获取未读数失败: {str(e)}"}
 
 @router.get("/history", response_model=dict)
 async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history"))):
@@ -189,3 +201,54 @@ async def websocket_alerts(websocket: WebSocket):
     finally:
         listener_task.cancel()
         await pubsub.close()
+
+@router.get("/sse/site-messages")
+async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:access"))):
+    user_id = int(user.get("id"))
+
+    async def event_stream():
+        redis_client = redis_manager.get_client()
+        pubsub = redis_client.pubsub()
+        channels = [
+            NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL,
+            NotificationService.get_site_messages_user_channel(user_id),
+        ]
+
+        try:
+            await pubsub.subscribe(*channels)
+
+            init_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
+            yield f"event: unread\ndata: {json.dumps({'count': int(init_count)}, ensure_ascii=False)}\n\n"
+
+            last_ping = time.monotonic()
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message and message.get("type") == "message":
+                    next_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
+                    yield f"event: unread\ndata: {json.dumps({'count': int(next_count)}, ensure_ascii=False)}\n\n"
+
+                if time.monotonic() - last_ping >= 15:
+                    yield ": ping\n\n"
+                    last_ping = time.monotonic()
+
+                await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            try:
+                await pubsub.unsubscribe(*channels)
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
