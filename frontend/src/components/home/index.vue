@@ -12,6 +12,60 @@
 import heada from './header.vue';
 import DATE from './home/home.vue'
 import LEFT from './left/left.vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElNotification } from 'element-plus'
+import Cookies from 'js-cookie'
+import { homeDataStore } from '@/components/home/home/data'
+
+const router = useRouter()
+const store = homeDataStore()
+
+const buildSnippet = (content) => {
+  const raw = String(content ?? '').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  return raw.length > 60 ? `${raw.slice(0, 60)}...` : raw
+}
+
+const notifySiteMessage = (msg) => {
+  const id = msg?.id
+  if (!id) return
+  const current = router.currentRoute?.value
+  if (current?.name === 'site-message-detail' && String(current?.params?.id || '') === String(id)) return
+
+  const notif = ElNotification({
+    title: String(msg?.title || '站内消息'),
+    message: buildSnippet(msg?.content),
+    type: 'info',
+    duration: 8000,
+    onClick: () => {
+      try {
+        notif.close()
+      } catch {}
+      router.push({ name: 'site-message-detail', params: { id: String(id) } })
+    },
+  })
+}
+
+watch(
+  () => store.siteMessageLastSeq,
+  () => {
+    const msg = store.siteMessageLastCreated
+    if (msg) notifySiteMessage(msg)
+  }
+)
+
+onMounted(async () => {
+  const token = Cookies.get('token')
+  if (!token) return
+  store.syncAuthFromToken()
+  await store.fetchPermissions()
+  await store.startSiteMessageRealtime()
+})
+
+onBeforeUnmount(() => {
+  store.stopSiteMessageRealtime()
+})
 
 
 </script>

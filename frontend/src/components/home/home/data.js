@@ -41,6 +41,14 @@ export const homeDataStore = defineStore('homeData', () => {
   const recentOrders = ref([]);
   const notificationHistory = ref([]);
   const siteMessageUnreadCount = ref(0);
+  const siteMessages = ref([]);
+  const siteMessagesOffset = ref(0);
+  const siteMessagesHasMore = ref(true);
+  const siteMessagesLoading = ref(false);
+  const siteMessagesLoadingMore = ref(false);
+  const siteMessagesUnreadOnly = ref(false);
+  const siteMessageLastSeq = ref(0);
+  const siteMessageLastCreated = ref(null);
 
   const profileForm = reactive({
     nickname: ''
@@ -84,10 +92,48 @@ export const homeDataStore = defineStore('homeData', () => {
   const permissionsLoading = ref(false);
   const permissionsLoadedAt = ref(0);
 
+  const PERMS_CACHE_KEY = 'auth:permissions_cache:v1';
+
+  const loadPermsCache = () => {
+    try {
+      const raw = sessionStorage.getItem(PERMS_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const perms = Array.isArray(parsed.permissions) ? parsed.permissions.map(String) : [];
+      const loadedAt = Number(parsed.loadedAt || 0);
+      const ver = parsed.permVer ?? null;
+      if (!Number.isFinite(loadedAt) || loadedAt <= 0) return null;
+      return { permissions: perms, loadedAt, permVer: ver };
+    } catch {
+      return null;
+    }
+  };
+
+  const savePermsCache = () => {
+    try {
+      sessionStorage.setItem(
+        PERMS_CACHE_KEY,
+        JSON.stringify({
+          permissions: Array.isArray(permissions.value) ? permissions.value : [],
+          permVer: permVer.value ?? null,
+          loadedAt: permissionsLoadedAt.value || Date.now(),
+        })
+      );
+    } catch {}
+  };
+
+  const clearPermsCache = () => {
+    try {
+      sessionStorage.removeItem(PERMS_CACHE_KEY);
+    } catch {}
+  };
+
   const clearAuthCache = () => {
     permissions.value = [];
     permVer.value = null;
     permissionsLoadedAt.value = 0;
+    clearPermsCache();
   };
 
   const syncAuthFromToken = () => {
@@ -103,6 +149,21 @@ export const homeDataStore = defineStore('homeData', () => {
       const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
       roleCodes.value = roles;
       isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+
+      const tokenPermVer = decoded?.perm_ver ?? null;
+      const cached = loadPermsCache();
+      if (
+        cached &&
+        cached.permissions.length > 0 &&
+        Date.now() - cached.loadedAt < 5 * 60 * 1000 &&
+        tokenPermVer !== null &&
+        cached.permVer !== null &&
+        String(tokenPermVer) === String(cached.permVer)
+      ) {
+        permissions.value = cached.permissions;
+        permVer.value = cached.permVer;
+        permissionsLoadedAt.value = cached.loadedAt;
+      }
     } catch {
       roleCodes.value = [];
       isSuper.value = false;
@@ -126,6 +187,23 @@ export const homeDataStore = defineStore('homeData', () => {
       if (tokenPermVer !== null && permVer.value !== null && String(tokenPermVer) !== String(permVer.value)) {
         force = true;
       }
+
+      if (!force && permissions.value.length === 0) {
+        const cached = loadPermsCache();
+        if (
+          cached &&
+          cached.permissions.length > 0 &&
+          Date.now() - cached.loadedAt < 5 * 60 * 1000 &&
+          tokenPermVer !== null &&
+          cached.permVer !== null &&
+          String(tokenPermVer) === String(cached.permVer)
+        ) {
+          permissions.value = cached.permissions;
+          permVer.value = cached.permVer;
+          permissionsLoadedAt.value = cached.loadedAt;
+          return permissions.value;
+        }
+      }
     } catch {
       clearAuthCache();
       return [];
@@ -144,6 +222,7 @@ export const homeDataStore = defineStore('homeData', () => {
         permissions.value = perms;
         permVer.value = data.perm_ver ?? null;
         permissionsLoadedAt.value = Date.now();
+        savePermsCache();
         return permissions.value;
       }
       clearAuthCache();
@@ -346,6 +425,92 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
+  const getSiteMessageById = (messageId) => {
+    const id = Number(messageId);
+    if (!Number.isFinite(id)) return null;
+    const list = Array.isArray(siteMessages.value) ? siteMessages.value : [];
+    return list.find((m) => Number(m?.id) === id) || null;
+  };
+
+  const upsertSiteMessage = (msg) => {
+    if (!msg || typeof msg !== 'object') return;
+    const id = Number(msg.id);
+    if (!Number.isFinite(id)) return;
+    const list = Array.isArray(siteMessages.value) ? siteMessages.value : [];
+    const idx = list.findIndex((m) => Number(m?.id) === id);
+    if (idx >= 0) {
+      Object.assign(list[idx], msg);
+      siteMessages.value = list.slice(0, 20);
+      return;
+    }
+    siteMessages.value = [msg, ...list].slice(0, 20);
+  };
+
+  const applySiteMessageReadState = (messageId, isRead) => {
+    const id = Number(messageId);
+    if (!Number.isFinite(id)) return;
+    const list = Array.isArray(siteMessages.value) ? siteMessages.value : [];
+    const idx = list.findIndex((m) => Number(m?.id) === id);
+    if (idx < 0) return;
+    list[idx].is_read = Boolean(isRead);
+    list[idx].read_at = Boolean(isRead) ? (list[idx].read_at || new Date().toISOString()) : null;
+    siteMessages.value = list;
+  };
+
+  const fetchLatestSiteMessages = async () => {
+    try {
+      const res = await axios.get('/api/v1/notifications/site-messages', {
+        params: {
+          unread_only: siteMessagesUnreadOnly.value ? 1 : 0,
+        },
+      });
+      if (res?.data?.code !== 200) return;
+      const items = Array.isArray(res?.data?.data) ? res.data.data : [];
+      siteMessages.value = items.slice(0, 20);
+    } catch (e) {
+      return;
+    }
+  };
+
+  const resetAndLoadSiteMessages = async (options = {}) => {
+    const unreadOnly = Boolean(options.unreadOnly);
+    siteMessagesUnreadOnly.value = unreadOnly;
+    siteMessagesOffset.value = 0;
+    siteMessagesHasMore.value = true;
+    siteMessages.value = [];
+    await loadMoreSiteMessages();
+  };
+
+  const loadMoreSiteMessages = async () => {
+    if (siteMessagesLoading.value || siteMessagesLoadingMore.value) return;
+    if (!siteMessagesHasMore.value) return;
+    const isFirst = Number(siteMessagesOffset.value || 0) === 0;
+    if (isFirst) siteMessagesLoading.value = true;
+    else siteMessagesLoadingMore.value = true;
+    try {
+      const limit = 20;
+      const offset = Number(siteMessagesOffset.value || 0);
+      const res = await axios.get('/api/v1/notifications/site-messages', {
+        params: {
+          limit,
+          offset,
+          unread_only: siteMessagesUnreadOnly.value ? 1 : 0,
+        },
+      });
+      if (res?.data?.code === 200) {
+        const items = Array.isArray(res?.data?.data) ? res.data.data : [];
+        siteMessages.value = (Array.isArray(siteMessages.value) ? siteMessages.value : []).concat(items);
+        siteMessagesOffset.value = offset + items.length;
+        siteMessagesHasMore.value = items.length === limit;
+      }
+    } catch (e) {
+      return;
+    } finally {
+      siteMessagesLoading.value = false;
+      siteMessagesLoadingMore.value = false;
+    }
+  };
+
   const startSiteMessageRealtime = async () => {
     if (siteMessageEventSource || siteMessagePollTimer) return;
     await fetchSiteMessageUnreadCount();
@@ -369,15 +534,49 @@ export const homeDataStore = defineStore('homeData', () => {
         }
       });
 
+      siteMessageEventSource.addEventListener('message', (evt) => {
+        try {
+          const data = JSON.parse(String(evt?.data || '{}'));
+          const msg = data?.message && typeof data.message === 'object' ? data.message : null;
+          if (!msg) return;
+          if (msg.is_read === undefined) msg.is_read = false;
+          if (msg.read_at === undefined) msg.read_at = null;
+          upsertSiteMessage(msg);
+          siteMessageLastCreated.value = msg;
+          siteMessageLastSeq.value += 1;
+        } catch {
+          return;
+        }
+      });
+
+      siteMessageEventSource.addEventListener('read_state', (evt) => {
+        try {
+          const data = JSON.parse(String(evt?.data || '{}'));
+          const messageId = Number(data?.message_id);
+          const isRead = Boolean(data?.is_read);
+          applySiteMessageReadState(messageId, isRead);
+        } catch {
+          return;
+        }
+      });
+
       siteMessageEventSource.onerror = async () => {
         stopSiteMessageRealtime();
         if (!Cookies.get('token')) return;
         await fetchSiteMessageUnreadCount();
-        siteMessagePollTimer = setInterval(fetchSiteMessageUnreadCount, 30000);
+        await fetchLatestSiteMessages();
+        siteMessagePollTimer = setInterval(async () => {
+          await fetchSiteMessageUnreadCount();
+          await fetchLatestSiteMessages();
+        }, 30000);
       };
     } catch (e) {
       if (!Cookies.get('token')) return;
-      siteMessagePollTimer = setInterval(fetchSiteMessageUnreadCount, 30000);
+      await fetchLatestSiteMessages();
+      siteMessagePollTimer = setInterval(async () => {
+        await fetchSiteMessageUnreadCount();
+        await fetchLatestSiteMessages();
+      }, 30000);
     }
   };
 
@@ -497,6 +696,14 @@ export const homeDataStore = defineStore('homeData', () => {
     recentOrders,
     notificationHistory,
     siteMessageUnreadCount,
+    siteMessages,
+    siteMessagesOffset,
+    siteMessagesHasMore,
+    siteMessagesLoading,
+    siteMessagesLoadingMore,
+    siteMessagesUnreadOnly,
+    siteMessageLastSeq,
+    siteMessageLastCreated,
     profileForm,
     emailForm,
     emailVerify,
@@ -531,6 +738,12 @@ export const homeDataStore = defineStore('homeData', () => {
     fetchRecentOrders,
     fetchNotificationHistory,
     fetchSiteMessageUnreadCount,
+    fetchLatestSiteMessages,
+    resetAndLoadSiteMessages,
+    loadMoreSiteMessages,
+    getSiteMessageById,
+    upsertSiteMessage,
+    applySiteMessageReadState,
     refreshAll,
     startSiteMessageRealtime,
     stopSiteMessageRealtime,

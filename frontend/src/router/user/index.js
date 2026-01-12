@@ -5,6 +5,7 @@ import Dashboard from '@/components/Dashboard/index.vue'
 import Organization from '@/components/Organization/index.vue'
 import Location from '@/components/Location/index.vue'
 import MessageCenter from '@/components/MessageCenter/MessageCenter.vue'
+import SiteMessageDetail from '@/components/MessageCenter/SiteMessageDetail.vue'
 import RoleManagement from '@/components/Role/RoleManagement.vue'
 import GlobalConfig from '@/components/System/GlobalConfig.vue'
 import RepairApply from '@/components/Repair/Apply.vue'
@@ -60,6 +61,12 @@ const homeRoutes = [
                 name: 'message',
                 component: MessageCenter,
                 meta: { title: '消息中心' }
+            },
+            {
+                path: 'message/site/:id',
+                name: 'site-message-detail',
+                component: SiteMessageDetail,
+                meta: { title: '站内消息' }
             },
             {
                 path: 'role',

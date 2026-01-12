@@ -8,9 +8,6 @@
           <el-icon class="info-icon"><InfoFilled /></el-icon>
         </el-tooltip>
       </div>
-      <div class="header-actions">
-        <el-button size="small" @click="refreshAll">刷新</el-button>
-      </div>
     </div>
 
     <div class="mc-content">
@@ -143,106 +140,60 @@
         </div>
 
         <div v-show="activeTab === 'site'" class="tab-body">
-          <el-row :gutter="12" class="stats-row">
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value">{{ siteMessageStats.total }}</div>
-                <div class="stat-label">站内消息总数（最近200条）</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value stat-value--warning">{{ siteMessageStats.unread }}</div>
-                <div class="stat-label">未读</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value">{{ siteMessageStats.read }}</div>
-                <div class="stat-label">已读</div>
-              </el-card>
-            </el-col>
-          </el-row>
-
           <div class="toolbar">
-            <el-space wrap alignment="center">
-              <el-select v-model="siteMessagesLevel" size="small" style="width: 140px">
-                <el-option label="全部级别" value="all" />
-                <el-option label="warning" value="warning" />
-                <el-option label="success" value="success" />
-                <el-option label="info" value="info" />
-              </el-select>
-              <el-input v-model="siteMessagesKeyword" size="small" clearable placeholder="搜索标题/内容/来源" style="width: 260px" />
-              <el-switch v-model="siteMessagesUnreadOnly" inline-prompt active-text="未读" inactive-text="全部" @change="fetchSiteMessages" />
-              <el-button size="small" :loading="siteLoading" @click="fetchSiteMessages">刷新</el-button>
-              <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="openPublishDialog">发布</el-button>
-            </el-space>
+            <div class="toolbar__row">
+              <el-space wrap alignment="center">
+                <el-input v-model="siteMessagesKeyword" size="small" clearable placeholder="搜索标题/内容/发件人" style="width: 260px" />
+                <el-switch v-model="siteMessagesUnreadOnly" inline-prompt active-text="未读" inactive-text="全部" @change="loadSiteMessages" />
+              </el-space>
+              <div class="toolbar__right">
+                <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="openPublishDialog">发布通知</el-button>
+              </div>
+            </div>
           </div>
 
           <div class="tab-main">
-            <el-table
-              :data="filteredSiteMessages"
-              stripe
-              v-loading="siteLoading"
-              height="100%"
-              class="table table--fill"
-              empty-text="暂无站内消息"
+            <div
+              class="site-list"
             >
-              <el-table-column prop="created_at" label="时间" width="180">
-                <template #default="scope">
-                  {{ formatDateTime(scope.row.created_at) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="level" label="级别" width="110">
-                <template #default="scope">
-                  <el-tag :type="getSiteMessageLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="110">
-                <template #default="scope">
-                  <el-tag :type="scope.row.is_read ? 'info' : 'warning'" effect="plain">
-                    {{ scope.row.is_read ? '已读' : '未读' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="source" label="来源" width="160" show-overflow-tooltip />
-              <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
-              <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
-              <el-table-column label="操作" width="140" fixed="right">
-                <template #default="scope">
-                  <el-button
-                    v-if="!scope.row.is_read"
-                    size="small"
-                    type="primary"
-                    link
-                    @click="markSiteMessageRead(scope.row)"
+              <div v-loading="siteLoading" class="site-list__inner">
+                <div v-if="filteredSiteMessages.length === 0 && !siteLoading" class="site-empty">
+                  <el-empty description="暂无站内消息" />
+                </div>
+
+                <div v-for="m in filteredSiteMessages" :key="m.id" class="site-item">
+                  <el-card
+                    shadow="never"
+                    class="site-card"
+                    :class="m.is_read ? 'site-card--read' : 'site-card--unread'"
+                    @click="openSiteMessageDetail(m)"
                   >
-                    标记已读
-                  </el-button>
-                  <el-button
-                    v-else
-                    size="small"
-                    link
-                    @click="markSiteMessageUnread(scope.row)"
-                  >
-                    标记未读
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+                    <div class="site-card__header">
+                      <div class="site-card__title">{{ m.title }}</div>
+                      <div class="site-card__tags">
+                        <el-tag :type="m.is_read ? 'info' : 'warning'" effect="plain" size="small">
+                          {{ m.is_read ? '已阅' : '未阅' }}
+                        </el-tag>
+                      </div>
+                    </div>
+                    <div class="site-card__content">
+                      {{ buildSiteMessageSnippet(m.content) }}
+                    </div>
+                    <div class="site-card__meta">
+                      <span class="muted">{{ m.sender_name || m.source || '-' }}</span>
+                      <span class="dot">·</span>
+                      <span class="muted">{{ formatDateTime(m.created_at) }}</span>
+                    </div>
+                  </el-card>
+                </div>
+              </div>
+            </div>
           </div>
 
           <el-dialog v-model="publishDialogVisible" title="发布站内消息" width="560px">
             <el-form label-position="top">
               <el-form-item label="标题">
                 <el-input v-model="publishForm.title" maxlength="120" show-word-limit />
-              </el-form-item>
-              <el-form-item label="级别">
-                <el-select v-model="publishForm.level" style="width: 180px">
-                  <el-option label="info" value="info" />
-                  <el-option label="success" value="success" />
-                  <el-option label="warning" value="warning" />
-                </el-select>
               </el-form-item>
               <el-form-item label="范围">
                 <el-space wrap alignment="center">
@@ -432,17 +383,19 @@ import { ref, onMounted, onUnmounted, reactive, computed, nextTick, watch } from
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 import Cookies from 'js-cookie';
+import { useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
 import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus/icons-vue';
 
 const activeTab = ref('site');
 const notifications = ref([]);
 const alerts = ref([]); // 实时告警列表
-const siteMessages = ref([]);
 const loading = ref(false);
-const siteLoading = ref(false);
 const configLoading = ref(false);
 const store = homeDataStore();
+const router = useRouter();
+const siteMessages = computed(() => (Array.isArray(store.siteMessages) ? store.siteMessages : []));
+const siteLoading = computed(() => Boolean(store.siteMessagesLoading));
 const isSuper = computed(() => Boolean(store.isSuper));
 const perms = computed(() => (Array.isArray(store.permissions) ? store.permissions.map(String) : []));
 const hasPerm = (p) => (isSuper.value ? true : perms.value.includes(String(p)));
@@ -452,7 +405,7 @@ const canViewHistory = computed(() => hasPerm('sys:notify:history'));
 const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
 const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
 const canTest = computed(() => hasPerm('sys:notify:test'));
-const canSendSiteMessages = computed(() => hasPerm('sys:notify:global'));
+const canSendSiteMessages = computed(() => isSuper.value && hasPerm('sys:notify:global'));
 const canUseGlobal = computed(() => {
     return hasPerm('sys:notify:global');
 });
@@ -465,7 +418,6 @@ let ws = null; // WebSocket 实例
 let wsReconnectAttempted = false;
 let wsReconnectTimer = null;
 const wsStatus = ref('disconnected');
-let siteAutoRefreshTimer = null;
 
 const alertsLevel = ref('all');
 const alertsKeyword = ref('');
@@ -475,15 +427,18 @@ const alertsViewMode = ref('table');
 const notificationsLevel = ref('all');
 const notificationsKeyword = ref('');
 
-const siteMessagesLevel = ref('all');
 const siteMessagesKeyword = ref('');
-const siteMessagesUnreadOnly = ref(false);
+const siteMessagesUnreadOnly = computed({
+    get: () => Boolean(store.siteMessagesUnreadOnly),
+    set: (v) => {
+        store.siteMessagesUnreadOnly = Boolean(v);
+    },
+});
 const publishDialogVisible = ref(false);
 const publishSubmitting = ref(false);
 const publishForm = reactive({
     title: '',
     content: '',
-    level: 'info',
     is_global: true,
     target_user_id: '',
 });
@@ -504,6 +459,12 @@ const matchesKeyword = (row, keyword, keys) => {
         if (normalizeText(row?.[k]).includes(kw)) return true;
     }
     return false;
+};
+
+const buildSiteMessageSnippet = (content) => {
+    const raw = String(content ?? '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    return raw.length > 60 ? `${raw.slice(0, 60)}...` : raw;
 };
 
 const filteredAlerts = computed(() => {
@@ -552,11 +513,10 @@ const filteredNotifications = computed(() => {
 });
 
 const filteredSiteMessages = computed(() => {
-    const level = normalizeText(siteMessagesLevel.value);
     return (siteMessages.value || [])
-        .filter((m) => (level === 'all' ? true : normalizeText(m?.level) === level))
+        .filter((m) => (siteMessagesUnreadOnly.value ? !m?.is_read : true))
         .filter((m) => matchesKeyword(m, siteMessagesKeyword.value, ['title', 'content', 'source', 'sender_name']))
-        .slice(0, 200);
+        .slice(0, 1000);
 });
 
 const notificationStats = computed(() => {
@@ -587,13 +547,6 @@ const getAlertLevelType = (level) => {
         case 'success': return 'success';
         default: return 'info';
     }
-};
-
-const getSiteMessageLevelType = (level) => {
-    const v = normalizeText(level);
-    if (v === 'warning') return 'warning';
-    if (v === 'success') return 'success';
-    return 'info';
 };
 
 const clearAlerts = () => {
@@ -774,28 +727,9 @@ const fetchNotifications = async () => {
     }
 };
 
-const fetchSiteMessages = async () => {
-    siteLoading.value = true;
-    try {
-        const res = await axios.get('/api/v1/notifications/site-messages', {
-            params: {
-                limit: 200,
-                offset: 0,
-                unread_only: siteMessagesUnreadOnly.value ? 1 : 0,
-            },
-        });
-        if (res.data.code === 200) {
-            siteMessages.value = res.data.data;
-            store.fetchSiteMessageUnreadCount();
-        }
-    } catch (error) {
-        ElMessage.error('获取站内消息失败');
-    } finally {
-        if (isDev && (!Array.isArray(siteMessages.value) || siteMessages.value.length === 0)) {
-            siteMessages.value = buildTestSiteMessages();
-        }
-        siteLoading.value = false;
-    }
+const loadSiteMessages = async () => {
+    await store.fetchLatestSiteMessages();
+    await store.fetchSiteMessageUnreadCount();
 };
 
 const markSiteMessageRead = async (row) => {
@@ -804,8 +738,7 @@ const markSiteMessageRead = async (row) => {
     try {
         const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/read`);
         if (res?.data?.code === 200) {
-            row.is_read = true;
-            row.read_at = new Date().toISOString();
+            store.applySiteMessageReadState(id, true);
             store.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
@@ -821,8 +754,7 @@ const markSiteMessageUnread = async (row) => {
     try {
         const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/unread`);
         if (res?.data?.code === 200) {
-            row.is_read = false;
-            row.read_at = null;
+            store.applySiteMessageReadState(id, false);
             store.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
@@ -835,7 +767,6 @@ const markSiteMessageUnread = async (row) => {
 const openPublishDialog = () => {
     publishForm.title = '';
     publishForm.content = '';
-    publishForm.level = 'info';
     publishForm.is_global = true;
     publishForm.target_user_id = '';
     publishDialogVisible.value = true;
@@ -848,16 +779,15 @@ const submitPublish = async () => {
         const payload = {
             title: publishForm.title,
             content: publishForm.content,
-            level: publishForm.level,
             is_global: !!publishForm.is_global,
             target_user_id: publishForm.is_global ? null : (publishForm.target_user_id ? Number(publishForm.target_user_id) : null),
-            source: '管理员',
         };
         const res = await axios.post('/api/v1/notifications/site-messages', payload);
         if (res?.data?.code === 200) {
             ElMessage.success('发布成功');
             publishDialogVisible.value = false;
-            await fetchSiteMessages();
+            if (res?.data?.data) store.upsertSiteMessage(res.data.data);
+            store.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '发布失败');
         }
@@ -866,6 +796,12 @@ const submitPublish = async () => {
     } finally {
         publishSubmitting.value = false;
     }
+};
+
+const openSiteMessageDetail = (row) => {
+    const id = row?.id;
+    if (!id) return;
+    router.push({ name: 'site-message-detail', params: { id: String(id) } });
 };
 
 const fetchConfig = async () => {
@@ -929,18 +865,11 @@ const handleTest = async (channel) => {
     }
 };
 
-const refreshAll = async () => {
-    if (canViewHistory.value) fetchNotifications();
-    fetchSiteMessages();
-    if (canViewConfig.value) fetchConfig();
-    initAlertWebSocket();
-};
-
 onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     if (canViewHistory.value) fetchNotifications();
-    fetchSiteMessages();
+    if (!Array.isArray(store.siteMessages) || store.siteMessages.length === 0) loadSiteMessages();
     if (canViewConfig.value) fetchConfig();
     initAlertWebSocket(); // 启动 WS
     if (isDev) {
@@ -960,10 +889,6 @@ onUnmounted(() => {
     if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
-    }
-    if (siteAutoRefreshTimer) {
-        clearInterval(siteAutoRefreshTimer);
-        siteAutoRefreshTimer = null;
     }
 });
 
@@ -1019,7 +944,7 @@ watch(
 watch(
     () => activeTab.value,
     async () => {
-        if (activeTab.value === 'site') fetchSiteMessages();
+        if (activeTab.value === 'site') loadSiteMessages();
         await updateIndicator();
     }
 );
@@ -1027,9 +952,6 @@ watch(
 onMounted(async () => {
     await nextTick();
     await updateIndicator();
-    siteAutoRefreshTimer = setInterval(() => {
-        if (activeTab.value === 'site') fetchSiteMessages();
-    }, 30000);
     if (tabSwitcherRef.value && typeof ResizeObserver !== 'undefined') {
         tabResizeObserver = new ResizeObserver(() => {
             updateIndicator();
@@ -1238,6 +1160,87 @@ onUnmounted(() => {
     border: 1px solid #ebeef5;
     border-radius: 6px;
     margin-bottom: 12px;
+}
+.toolbar__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.toolbar__right {
+    flex-shrink: 0;
+}
+
+.site-list {
+    height: 100%;
+    overflow: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    background: #ffffff;
+}
+.site-list__inner {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 100%;
+}
+.site-empty {
+    padding: 30px 0;
+}
+.site-card {
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    cursor: pointer;
+}
+.site-card:hover {
+    border-color: #c6e2ff;
+}
+.site-card--unread {
+    background: #fff7e6;
+    border-color: #ffe7ba;
+}
+.site-card--read {
+    background: #ffffff;
+}
+.site-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+.site-card__title {
+    font-weight: 600;
+    line-height: 20px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.site-card__tags {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.site-card__content {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 18px;
+    word-break: break-word;
+    color: #606266;
+}
+.site-card__meta {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.site-list__footer {
+    padding: 8px 0 0;
+    text-align: center;
 }
 .table {
     border: 1px solid #ebeef5;

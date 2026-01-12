@@ -3,7 +3,6 @@ import loginRoutes from '@/router/login/index.js'
 import homeRoutes from '@/router/user/index.js'
 import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
-import axios from '@/axios/axios'
 import { jwtDecode } from 'jwt-decode'
 import { homeDataStore } from '@/components/home/home/data'
 
@@ -129,18 +128,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     if (token && to.path.startsWith('/user')) {
-        try {
-            const res = await axios.post('/api/v1/auth/refresh')
-            if (res.data && res.data.token) {
-                token = res.data.token
-                Cookies.set('token', token, { sameSite: 'lax' })
-            } else {
-                token = Cookies.get('token')
-            }
-        } catch (e) {
-            Cookies.remove('token')
-            token = null
-        }
+        token = Cookies.get('token')
     }
 
     if (token) {
