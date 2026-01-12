@@ -1,613 +1,691 @@
 <template>
-  <div class="device-detail-container">
-    <!-- 顶部导航栏 -->
-    <el-card class="page-header-card" shadow="never">
-      <template #header>
-        <div class="page-header">
-          <div class="header-left">
-            <el-button type="default" :icon="ArrowLeft" @click="goBack">返回列表</el-button>
-            <div class="device-title">
-              <span class="device-name">{{ deviceData.name }}</span>
-              <el-tag effect="plain" type="info" class="device-ip">{{ deviceData.ip }}</el-tag>
-              <el-tag :type="deviceData.status === 'online' ? 'success' : 'danger'" effect="dark">
-                {{ deviceData.status === 'online' ? '在线' : '离线' }}
-              </el-tag>
+  <div :class="$style.container" v-loading="loading" element-loading-text="加载中...">
+    <div :class="$style.header">
+      <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
+      <div :class="$style.titleWrap">
+        <div :class="$style.title">{{ detail.device_name || '设备详情' }}</div>
+        <el-tag
+          :type="statusTagType"
+          size="small"
+          effect="dark"
+        >
+          {{ statusText }}
+        </el-tag>
+      </div>
+      <div :class="$style.headerActions">
+        <el-button v-if="canEdit" type="primary" @click="openEdit">编辑</el-button>
+        <el-button v-if="canDelete" type="danger" @click="confirmDelete">删除</el-button>
+      </div>
+    </div>
+
+    <div :class="$style.content">
+      <el-tabs v-model="activeTab" :class="$style.tabs">
+        <el-tab-pane label="概览" name="overview">
+          <el-card :class="$style.section" shadow="never">
+            <template #header>
+              <div :class="$style.sectionHeader">状态</div>
+            </template>
+
+            <div :class="$style.stats">
+              <div :class="$style.statItem">
+                <div :class="$style.statLabel">CPU</div>
+                <div :class="$style.statValue">{{ formatPercent(detail.cpuUsage) }}</div>
+                <el-progress :percentage="clampPercent(detail.cpuUsage)" :show-text="false" :stroke-width="8" />
+              </div>
+              <div :class="$style.statItem">
+                <div :class="$style.statLabel">内存</div>
+                <div :class="$style.statValue">{{ formatPercent(detail.memoryUsage) }}</div>
+                <el-progress :percentage="clampPercent(detail.memoryUsage)" :show-text="false" :stroke-width="8" />
+              </div>
+              <div :class="$style.statItem">
+                <div :class="$style.statLabel">磁盘</div>
+                <div :class="$style.statValue">{{ formatPercent(detail.diskUsage) }}</div>
+                <el-progress :percentage="clampPercent(detail.diskUsage)" :show-text="false" :stroke-width="8" />
+              </div>
             </div>
-          </div>
-          <div class="header-right">
-            <el-button v-if="canSsh" type="primary" :icon="Monitor" @click="handleWebSSH">WebSSH 连接</el-button>
-            <el-button :icon="Refresh" @click="fetchDeviceData" :loading="loading">刷新数据</el-button>
-            <el-button type="danger" plain :icon="SwitchButton" @click="handleRestart">重启设备</el-button>
-          </div>
-        </div>
-      </template>
-    </el-card>
 
-    <div class="main-content">
-      <el-row :gutter="20">
-        <!-- 左侧栏：基础信息与状态 -->
-        <el-col :span="8">
-          <div class="left-column">
-            <!-- 基础概览卡片 -->
-            <el-card class="info-card" shadow="hover">
-              <template #header>
-                <div class="card-header">
-                  <span><el-icon><InfoFilled /></el-icon> 基础概览</span>
-                </div>
-              </template>
-              <el-descriptions :column="1" border>
-                <el-descriptions-item label="类型">{{ deviceData.type }}</el-descriptions-item>
-                <el-descriptions-item label="厂商">{{ deviceData.vendor }}</el-descriptions-item>
-                <el-descriptions-item label="型号">{{ deviceData.model }}</el-descriptions-item>
-                <el-descriptions-item label="序列号">{{ deviceData.serialNumber }}</el-descriptions-item>
-                <el-descriptions-item label="位置">{{ deviceData.location }}</el-descriptions-item>
-                
-                <!-- 网络设备特有字段 -->
-                <el-descriptions-item v-if="isNetworkDevice" label="SNMP 版本">{{ deviceData.snmpVersion }}</el-descriptions-item>
-                
-                <!-- 服务器/Linux特有字段 -->
-                <el-descriptions-item v-if="!isNetworkDevice" label="内核版本">{{ deviceData.osVersion }}</el-descriptions-item>
-              </el-descriptions>
-            </el-card>
-
-            <!-- 实时健康度卡片 -->
-            <el-card class="health-card" shadow="hover">
-              <template #header>
-                <div class="card-header">
-                  <span><el-icon><Odometer /></el-icon> 实时健康度</span>
-                </div>
-              </template>
-              <div class="health-metrics">
-                <div class="metric-item">
-                  <span class="metric-label">CPU 使用率</span>
-                  <el-progress 
-                    type="dashboard" 
-                    :percentage="deviceData.cpuUsage" 
-                    :color="getHealthColor(deviceData.cpuUsage)"
-                  >
-                    <template #default="{ percentage }">
-                      <span class="percentage-value">{{ percentage }}%</span>
-                    </template>
-                  </el-progress>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">内存使用率</span>
-                  <el-progress 
-                    type="dashboard" 
-                    :percentage="deviceData.memoryUsage" 
-                    :color="getHealthColor(deviceData.memoryUsage)"
-                  >
-                    <template #default="{ percentage }">
-                      <span class="percentage-value">{{ percentage }}%</span>
-                    </template>
-                  </el-progress>
-                </div>
-                <!-- 服务器显示磁盘使用率 -->
-                 <div v-if="!isNetworkDevice" class="metric-item">
-                  <span class="metric-label">磁盘使用率</span>
-                  <el-progress 
-                    type="dashboard" 
-                    :percentage="deviceData.diskUsage || 0" 
-                    :color="getHealthColor(deviceData.diskUsage || 0)"
-                  >
-                    <template #default="{ percentage }">
-                      <span class="percentage-value">{{ percentage }}%</span>
-                    </template>
-                  </el-progress>
-                </div>
+            <div :class="$style.meta">
+              <div :class="$style.metaItem">
+                <span :class="$style.metaLabel">运行时长</span>
+                <span :class="$style.metaValue">{{ detail.uptime || '未知' }}</span>
               </div>
-              <div class="uptime-info">
-                <el-icon><Timer /></el-icon>
-                <span>系统运行时间: {{ deviceData.uptime }}</span>
+              <div :class="$style.metaItem">
+                <span :class="$style.metaLabel">系统版本</span>
+                <span :class="$style.metaValue">{{ detail.osVersion || 'Unknown' }}</span>
               </div>
-            </el-card>
-          </div>
-        </el-col>
+            </div>
+          </el-card>
 
-        <!-- 右侧栏：高级监控与管理 -->
-        <el-col :span="16">
-          <el-card class="tabs-card" shadow="hover">
-            <el-tabs v-model="activeTab">
-              <!-- Tab 1: 接口面板 (仅网络设备显示) -->
-              <el-tab-pane v-if="isNetworkDevice" label="接口面板" name="interfaces">
-                <template #label>
-                  <span class="custom-tabs-label">
-                    <el-icon><Connection /></el-icon>
-                    <span>接口面板</span>
-                  </span>
+          <el-card :class="$style.section" shadow="never">
+            <template #header>
+              <div :class="$style.sectionHeader">基础信息</div>
+            </template>
+
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item label="设备名称">{{ detail.device_name || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="设备类型">{{ detail.type || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="IPv4">{{ detail.ipv4 || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="IPv6">{{ detail.ipv6 || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="MAC">{{ detail.mac || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="SSH端口">{{ detail.ssh_port || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="位置" :span="2">{{ detail.location || '-' }}</el-descriptions-item>
+            </el-descriptions>
+          </el-card>
+
+          <el-card :class="$style.section" shadow="never">
+            <template #header>
+              <div :class="$style.sectionHeader">归属信息</div>
+            </template>
+
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item label="添加人">{{ detail.created_by_name || '未知' }}</el-descriptions-item>
+              <el-descriptions-item label="运维管理员">{{ detail.ops_admin_name || '未知' }}</el-descriptions-item>
+            </el-descriptions>
+          </el-card>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canAudit" label="审计" name="audit">
+          <el-tabs v-model="auditTab" :class="$style.auditTabs">
+            <el-tab-pane label="审计日志" name="operation">
+              <el-card :class="$style.section" shadow="never" v-loading="auditLoading">
+                <template #header>
+                  <div :class="$style.auditHeader">
+                    <div :class="$style.sectionHeader">审计日志</div>
+                    <el-button size="small" @click="fetchAuditLogs">刷新</el-button>
+                  </div>
                 </template>
-                <el-table :data="deviceData.interfaces" style="width: 100%" stripe>
-                  <el-table-column prop="name" label="接口名称" width="180" />
-                  <el-table-column prop="status" label="状态" width="100">
-                    <template #default="scope">
-                      <el-tag :type="scope.row.status === 'Up' ? 'success' : 'danger'" size="small">
-                        {{ scope.row.status }}
-                      </el-tag>
+
+                <el-table :data="auditLogs" style="width: 100%">
+                  <el-table-column type="expand">
+                    <template #default="{ row }">
+                      <div :class="$style.auditExpand">
+                        <div :class="$style.auditExpandCol">
+                          <div :class="$style.auditExpandTitle">旧值</div>
+                          <pre :class="$style.auditJson">{{ formatJson(row.old_values) }}</pre>
+                        </div>
+                        <div :class="$style.auditExpandCol">
+                          <div :class="$style.auditExpandTitle">新值</div>
+                          <pre :class="$style.auditJson">{{ formatJson(row.new_values) }}</pre>
+                        </div>
+                      </div>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="ip" label="IP 地址" width="150" />
-                  <el-table-column prop="inTraffic" label="入站流量" />
-                  <el-table-column prop="outTraffic" label="出站流量" />
+                  <el-table-column prop="changed_at" label="时间" width="190">
+                    <template #default="{ row }">{{ formatDateTime(row.changed_at) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="change_type" label="类型" width="120" />
+                  <el-table-column prop="changed_by_name" label="操作人" width="160">
+                    <template #default="{ row }">{{ row.changed_by_name || row.changed_by || '-' }}</template>
+                  </el-table-column>
+                  <el-table-column prop="change_description" label="描述" min-width="220" />
                 </el-table>
-              </el-tab-pane>
 
-              <!-- Tab 1: 进程列表 (仅服务器显示) -->
-               <el-tab-pane v-if="!isNetworkDevice" label="进程列表" name="processes">
-                <template #label>
-                  <span class="custom-tabs-label">
-                    <el-icon><Memo /></el-icon>
-                    <span>进程列表</span>
-                  </span>
-                </template>
-                <el-empty description="暂无进程数据（需安装 Agent）" />
-              </el-tab-pane>
-
-              <!-- Tab 2: 告警日志 -->
-              <el-tab-pane label="告警日志" name="alerts">
-                 <template #label>
-                  <span class="custom-tabs-label">
-                    <el-icon><Bell /></el-icon>
-                    <span>告警日志</span>
-                  </span>
-                </template>
-                <el-timeline>
-                  <el-timeline-item
-                    v-for="(activity, index) in deviceData.alerts"
-                    :key="index"
-                    :icon="activity.icon"
-                    :type="activity.type"
-                    :color="activity.color"
-                    :size="activity.size"
-                    :timestamp="activity.timestamp"
-                  >
-                    {{ activity.content }}
-                  </el-timeline-item>
-                </el-timeline>
-              </el-tab-pane>
-
-              <!-- Tab 3: 配置详情 -->
-              <el-tab-pane label="配置详情" name="config">
-                 <template #label>
-                  <span class="custom-tabs-label">
-                    <el-icon><Setting /></el-icon>
-                    <span>配置详情</span>
-                  </span>
-                </template>
-                <el-descriptions title="SSH 配置信息" :column="2" border>
-                  <el-descriptions-item label="SSH 端口">{{ deviceData.sshPort }}</el-descriptions-item>
-                  <el-descriptions-item label="用户名">{{ deviceData.sshUser }}</el-descriptions-item>
-                  <el-descriptions-item label="认证方式">密码认证</el-descriptions-item>
-                  <el-descriptions-item label="超时时间">300s</el-descriptions-item>
-                  <el-descriptions-item label="最后连接时间">{{ deviceData.lastConnect }}</el-descriptions-item>
-                  <el-descriptions-item label="备注">
-                    <el-tag size="small">自动管理</el-tag>
-                  </el-descriptions-item>
-                </el-descriptions>
-                <div class="config-actions">
-                    <el-alert title="敏感信息已脱敏显示，如需查看完整密码请联系管理员。" type="warning" show-icon :closable="false" />
+                <div :class="$style.auditPager">
+                  <el-pagination
+                    v-model:current-page="auditPage"
+                    v-model:page-size="auditPageSize"
+                    :total="auditTotal"
+                    layout="total, sizes, prev, pager, next"
+                    :page-sizes="[10, 20, 50, 100, 200]"
+                    @current-change="fetchAuditLogs"
+                    @size-change="handleAuditSizeChange"
+                  />
                 </div>
-              </el-tab-pane>
-            </el-tabs>
-          </el-card>
-        </el-col>
-      </el-row>
+              </el-card>
+            </el-tab-pane>
+
+            <el-tab-pane label="命令审计" name="command">
+              <el-card :class="$style.section" shadow="never" v-loading="sshAuditLoading">
+                <template #header>
+                  <div :class="$style.auditHeader">
+                    <div :class="$style.sectionHeader">命令审计</div>
+                    <el-button size="small" @click="fetchSshAuditLogs">刷新</el-button>
+                  </div>
+                </template>
+
+                <el-table :data="sshAuditLogs" style="width: 100%">
+                  <el-table-column prop="executed_at" label="时间" width="190">
+                    <template #default="{ row }">{{ formatDateTime(row.executed_at) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="executed_by_name" label="操作人" width="160">
+                    <template #default="{ row }">{{ row.executed_by_name || row.executed_by || '-' }}</template>
+                  </el-table-column>
+                  <el-table-column prop="command" label="命令" min-width="260" />
+                </el-table>
+
+                <div :class="$style.auditPager">
+                  <el-pagination
+                    v-model:current-page="sshAuditPage"
+                    v-model:page-size="sshAuditPageSize"
+                    :total="sshAuditTotal"
+                    layout="total, sizes, prev, pager, next"
+                    :page-sizes="[10, 20, 50, 100, 200]"
+                    @current-change="fetchSshAuditLogs"
+                    @size-change="handleSshAuditSizeChange"
+                  />
+                </div>
+              </el-card>
+            </el-tab-pane>
+          </el-tabs>
+        </el-tab-pane>
+      </el-tabs>
     </div>
+
+    <el-dialog v-model="editVisible" title="编辑设备" width="520px" destroy-on-close>
+      <el-form :model="editForm" label-width="90px">
+        <el-form-item label="设备名称">
+          <el-input v-model="editForm.device_name" />
+        </el-form-item>
+        <el-form-item label="设备类型">
+          <el-input v-model="editForm.type" />
+        </el-form-item>
+        <el-form-item label="位置">
+          <el-input v-model="editForm.location" />
+        </el-form-item>
+        <el-form-item label="SSH端口">
+          <el-input-number v-model="editForm.ssh_port" :min="1" :max="65535" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  ArrowLeft, 
-  Monitor, 
-  Refresh, 
-  SwitchButton, 
-  InfoFilled, 
-  Odometer, 
-  Timer, 
-  Connection, 
-  Bell, 
-  Setting,
-  Memo 
-} from '@element-plus/icons-vue'
-import Cookies from 'js-cookie'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
-import { dveiceDateStore } from './Date/index' // 引入 Store
+import Cookies from 'js-cookie'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { homeDataStore } from '@/components/home/home/data'
 
 const route = useRoute()
 const router = useRouter()
-const store = dveiceDateStore() // 使用 Store
 const authStore = homeDataStore()
-const deviceId = route.params.id
-const loading = ref(false)
-const activeTab = ref('interfaces') // 默认值，后续会根据设备类型调整
-const timer = ref(null)
-const canSsh = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:ssh:connect')))
 
-// 设备数据模型
-const deviceData = reactive({
-  id: '',
-  name: '',
-  ip: '',
-  status: '',
-  type: '', // 设备类型
-  vendor: '',
-  model: '',
-  serialNumber: '',
+const deviceId = computed(() => {
+  const raw = route.params.id
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+})
+
+const loading = ref(false)
+const detail = reactive({
+  id: null,
+  device_name: '',
+  type: '',
+  ipv4: '',
+  ipv6: '',
+  mac: '',
   location: '',
-  snmpVersion: '',
-  osVersion: '',
+  ssh_port: 22,
+  created_by_name: '',
+  ops_admin_name: '',
+  status: 'offline',
   cpuUsage: 0,
   memoryUsage: 0,
-  diskUsage: 0, // 新增磁盘使用率
-  uptime: '',
-  sshPort: 22,
-  sshUser: '',
-  lastConnect: '',
-  interfaces: [],
-  alerts: []
+  diskUsage: 0,
+  uptime: '未知',
+  osVersion: 'Unknown',
 })
 
-// 计算属性：是否为网络设备
-const isNetworkDevice = computed(() => {
-    const type = deviceData.type ? deviceData.type.toLowerCase() : '';
-    return ['router', 'switch', 'firewall', '路由器', '交换机', '防火墙', 'huawei'].includes(type);
-});
+let ws = null
 
-// 监听设备类型变化，自动切换 Tab
-// ...
+const canEdit = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:edit')))
+const canDelete = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:del')))
+const canAudit = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:audit')))
 
-// 返回列表页
-const goBack = () => {
-  router.push('/user/device')
+const activeTab = computed({
+  get() {
+    const tab = String(route.query.tab || '')
+    if (tab === 'audit' && canAudit.value) return 'audit'
+    return 'overview'
+  },
+  set(val) {
+    const next = String(val || 'overview')
+    const nextQuery = { ...route.query }
+    if (next === 'audit') nextQuery.tab = 'audit'
+    else delete nextQuery.tab
+    router.replace({ query: nextQuery })
+  },
+})
+
+const editVisible = ref(false)
+const editSaving = ref(false)
+const editForm = reactive({
+  device_name: '',
+  type: '',
+  location: '',
+  ssh_port: 22,
+})
+
+const statusText = computed(() => (detail.status === 'online' ? '在线' : '离线'))
+const statusTagType = computed(() => (detail.status === 'online' ? 'success' : 'danger'))
+
+const clampPercent = (val) => {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return 0
+  if (n < 0) return 0
+  if (n > 100) return 100
+  return n
 }
 
-// 跳转到 SSH 页面
-const handleWebSSH = () => {
-  if (deviceData.ip) {
-    const routeUrl = router.resolve({
-        name: 'ssh-connection',
-        params: { ip: deviceData.ip }
-    });
-    window.open(routeUrl.href, '_blank');
-  } else {
-    ElMessage.warning('设备 IP 不存在')
+const formatPercent = (val) => `${clampPercent(val).toFixed(0)}%`
+
+const applyStatusPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return
+  if (payload.status) detail.status = payload.status
+  if (payload.cpuUsage !== undefined) detail.cpuUsage = Number(payload.cpuUsage) || 0
+  if (payload.memoryUsage !== undefined) detail.memoryUsage = Number(payload.memoryUsage) || 0
+  if (payload.diskUsage !== undefined) detail.diskUsage = Number(payload.diskUsage) || 0
+  if (payload.uptime) detail.uptime = payload.uptime
+  if (payload.osVersion) detail.osVersion = payload.osVersion
+}
+
+const openWs = () => {
+  if (!deviceId.value) return
+  const token = Cookies.get('token') || ''
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const url = `${proto}://${window.location.host}/api/v1/user/device/ws/detail/${deviceId.value}?token=${encodeURIComponent(token)}`
+  ws = new WebSocket(url)
+  ws.onmessage = (evt) => {
+    try {
+      const payload = JSON.parse(evt.data)
+      applyStatusPayload(payload)
+    } catch {}
   }
 }
 
-// 重启设备
-const handleRestart = () => {
-  ElMessageBox.confirm(
-    '确定要重启该设备吗？重启过程中将无法采集监控数据。',
-    '重启确认',
-    {
-      confirmButtonText: '确定重启',
+const closeWs = () => {
+  try {
+    if (ws) ws.close()
+  } catch {}
+  ws = null
+}
+
+const boostMonitor = async () => {
+  if (!deviceId.value) return
+  await axios.post('/api/v1/user/device/monitor/boost', {
+    device_id: deviceId.value,
+    ttl_seconds: 600,
+    interval: 1,
+    monitor_interval: 1,
+  })
+}
+
+const restoreMonitor = async () => {
+  if (!deviceId.value) return
+  await axios.post('/api/v1/user/device/monitor/restore', { device_id: deviceId.value })
+}
+
+const auditLoading = ref(false)
+const auditLogs = ref([])
+const auditTotal = ref(0)
+const auditPage = ref(1)
+const auditPageSize = ref(50)
+const auditTab = ref('operation')
+
+const sshAuditLoading = ref(false)
+const sshAuditLogs = ref([])
+const sshAuditTotal = ref(0)
+const sshAuditPage = ref(1)
+const sshAuditPageSize = ref(50)
+
+const formatDateTime = (val) => {
+  if (!val) return '-'
+  const d = new Date(val)
+  if (Number.isNaN(d.getTime())) return String(val)
+  return d.toLocaleString()
+}
+
+const formatJson = (val) => {
+  if (val === null || val === undefined || val === '') return '-'
+  try {
+    if (typeof val === 'string') {
+      const s = val.trim()
+      if (!s) return '-'
+      if (s.startsWith('{') || s.startsWith('[')) return JSON.stringify(JSON.parse(s), null, 2)
+      return s
+    }
+    return JSON.stringify(val, null, 2)
+  } catch {
+    return String(val)
+  }
+}
+
+const fetchAuditLogs = async () => {
+  if (!deviceId.value) return
+  if (!canAudit.value) return
+  auditLoading.value = true
+  try {
+    const res = await axios.get(`/api/v1/user/device/audit/logs/${deviceId.value}`, {
+      params: { page: auditPage.value, page_size: auditPageSize.value },
+    })
+    const payload = res?.data || {}
+    const data = payload?.data || payload
+    auditLogs.value = Array.isArray(data?.items) ? data.items : []
+    auditTotal.value = Number(data?.total || 0)
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '获取审计日志失败')
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+const handleAuditSizeChange = async () => {
+  auditPage.value = 1
+  await fetchAuditLogs()
+}
+
+const fetchSshAuditLogs = async () => {
+  if (!deviceId.value) return
+  if (!canAudit.value) return
+  sshAuditLoading.value = true
+  try {
+    const res = await axios.get(`/api/v1/user/device/audit/ssh-commands/${deviceId.value}`, {
+      params: { page: sshAuditPage.value, page_size: sshAuditPageSize.value },
+    })
+    const payload = res?.data || {}
+    const data = payload?.data || payload
+    sshAuditLogs.value = Array.isArray(data?.items) ? data.items : []
+    sshAuditTotal.value = Number(data?.total || 0)
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '获取命令审计失败')
+  } finally {
+    sshAuditLoading.value = false
+  }
+}
+
+const handleSshAuditSizeChange = async () => {
+  sshAuditPage.value = 1
+  await fetchSshAuditLogs()
+}
+
+const fetchDetail = async () => {
+  if (!deviceId.value) return
+  loading.value = true
+  try {
+    const res = await axios.get(`/api/v1/user/device/detail/${deviceId.value}`)
+    const data = res?.data || {}
+    detail.id = data.id ?? null
+    detail.device_name = data.device_name || ''
+    detail.type = data.type || data.device_type || ''
+    detail.ipv4 = data.ipv4 || ''
+    detail.ipv6 = data.ipv6 || ''
+    detail.mac = data.mac || ''
+    detail.location = data.location || ''
+    detail.ssh_port = data.ssh_port || 22
+    detail.created_by_name = data.created_by_name || ''
+    detail.ops_admin_name = data.ops_admin_name || ''
+    applyStatusPayload(data)
+  } finally {
+    loading.value = false
+  }
+}
+
+const openEdit = () => {
+  editForm.device_name = detail.device_name || ''
+  editForm.type = detail.type || ''
+  editForm.location = detail.location || ''
+  editForm.ssh_port = Number(detail.ssh_port || 22)
+  editVisible.value = true
+}
+
+const saveEdit = async () => {
+  if (!deviceId.value) return
+  editSaving.value = true
+  try {
+    await axios.post('/api/v1/user/device/update', {
+      device_id: deviceId.value,
+      device_name: editForm.device_name,
+      type: editForm.type,
+      location: editForm.location,
+      ssh_port: editForm.ssh_port,
+    })
+    editVisible.value = false
+    await fetchDetail()
+    ElMessage.success('保存成功')
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '保存失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+const confirmDelete = async () => {
+  if (!deviceId.value) return
+  try {
+    await ElMessageBox.confirm('确定要删除该设备吗？删除后将移入回收站', '警告', {
+      confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
-    }
-  )
-    .then(() => {
-      ElMessage({
-        type: 'success',
-        message: '重启指令已下发',
-      })
     })
-    .catch(() => {
-      // 取消操作
-    })
-}
-
-// 获取健康度颜色
-const getHealthColor = (percentage) => {
-  if (percentage < 60) return '#67C23A'
-  if (percentage < 80) return '#E6A23C'
-  return '#F56C6C'
-}
-
-// 模拟获取数据
-const applyListItemToModel = (item) => {
-  if (!item) return
-  deviceData.id = item.id
-  deviceData.name = item.device_name || ''
-  deviceData.ip = item.ipv4 || ''
-  deviceData.status = item.status || ''
-  deviceData.type = item.type || ''
-  deviceData.location = item.location || ''
-  deviceData.sshPort = item.ssh_port || 22
-  deviceData.cpuUsage = parseFloat(item.cpu_usage || 0)
-  deviceData.memoryUsage = parseFloat(item.memory_usage || 0)
-  deviceData.diskUsage = parseFloat(item.disk_usage || 0)
-}
-
-const fetchDeviceData = async (isSilent = false) => {
-  if (!isSilent) {
-    loading.value = true
-  }
-  try {
-    const local = (store.data || []).find(d => d.id == deviceId)
-    if (local) {
-      applyListItemToModel(local)
-    } else {
-      const response = await axios.get('/api/v1/user/device/get', { params: { type: 0 } })
-      const list = Array.isArray(response.data) ? response.data : []
-      const remote = list.find(d => d.id == deviceId)
-      if (!remote) throw new Error('未找到该设备')
-      applyListItemToModel(remote)
-    }
-
-    if (!deviceData.type) {
-      activeTab.value = 'interfaces'
-    } else {
-      const newIsNetwork = ['router', 'switch', 'firewall', '路由器', '交换机', '防火墙', 'huawei'].includes(String(deviceData.type).toLowerCase())
-      activeTab.value = newIsNetwork ? 'interfaces' : 'processes'
-    }
-
-    if (!isSilent) ElMessage.success('数据刷新成功')
-  } catch (error) {
-    console.error('获取设备详情失败:', error)
-    if (!isSilent) {
-        ElMessage.error(error.response?.data?.message || '获取设备详情失败')
-    }
-  } finally {
-    if (!isSilent) {
-        loading.value = false
-    }
-  }
-}
-
-// WebSocket 实例
-const ws = ref(null)
-// 标记是否使用全局 WebSocket
-const usingGlobalWS = ref(false)
-
-const initWebSocket = () => {
-    // 1. 尝试从 Store 中获取数据 (如果列表页的 WebSocket 已经开启)
-    
-    // 检查 Store 中是否有该设备的数据
-    // 注意：store.data 是一个 ref，需要通过 .value 访问，但在组件中直接使用 store.data (如果不解构) 可能需要注意访问方式
-    // 检查 index.js 定义： const data = ref([])
-    // 在 store 中导出时 return { data, ... }
-    // 在组件中使用 const store = dveiceDateStore()
-    // 此时 store.data 应该是自动解包的数组，或者需要通过 store.getData() 获取
-    
-    const deviceList = store.data || [] // 容错处理
-    const cachedDevice = deviceList.find(d => d.id == deviceId)
-    
-    if (cachedDevice) {
-      console.log('Using Store data for realtime updates')
-      usingGlobalWS.value = true
-      
-      // 立即同步一次
-      syncFromStore(cachedDevice)
-      
-      // 监听 Store 变化
-      // 注意：store.data 是一个数组，我们需要监听其中特定元素的变化
-      // 或者更简单：监听整个 data 数组，当 id 匹配时更新
-      // 由于 vue 的响应式系统，如果 store.data 中的对象属性发生变化，watch 应该能捕获到
-      // 但最好是 watchEffect 或者 watch(() => store.data)
-  } else {
-      console.log('Store data not found, falling back to dedicated WebSocket')
-      usingGlobalWS.value = false
-      // ... 原有的 WebSocket 连接逻辑
-      connectDedicatedWebSocket()
-  }
-}
-
-const syncFromStore = (data) => {
-    if (!data) return
-    deviceData.status = data.status
-    // Store 中的数据可能是字符串 "35%"，需要转换
-    deviceData.cpuUsage = parseFloat(data.cpu_usage || 0)
-    deviceData.memoryUsage = parseFloat(data.memory_usage || 0)
-    deviceData.diskUsage = parseFloat(data.disk_usage || 0)
-    // deviceData.uptime = data.uptime // Store 中目前没有 uptime
-}
-
-// 独立的 WebSocket 连接逻辑 (原 initWebSocket)
-const connectDedicatedWebSocket = () => {
-  // 确保先关闭旧连接
-  if (ws.value) {
-    ws.value.close()
-  }
-
-  // 构建 WebSocket URL
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsBase = `${wsProtocol}//${window.location.host}`
-  
-  // 从 Cookie 获取 Token 用于鉴权
-  const token = Cookies.get('token')
-  
-  if (!token) {
-    console.error('WebSocket init failed: No token found')
+  } catch {
     return
   }
-
-  const wsUrl = `${wsBase}/api/v1/user/device/ws/detail/${deviceId}?token=${encodeURIComponent(token)}`
-  
-  console.log('Connecting to Detail WebSocket:', wsUrl)
-
   try {
-      ws.value = new WebSocket(wsUrl)
-
-      ws.value.onopen = () => {
-        console.log('WebSocket connected')
-      }
-
-      ws.value.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          // 更新实时数据
-          if (data) {
-             deviceData.status = data.status
-             deviceData.cpuUsage = data.cpuUsage
-             deviceData.memoryUsage = data.memoryUsage
-             deviceData.diskUsage = data.diskUsage
-             deviceData.uptime = data.uptime
-             // 更新最后连接时间
-             if (data.lastConnect) {
-                deviceData.lastConnect = data.lastConnect
-             }
-             // 更新版本信息（如果有变化）
-             if (data.osVersion && data.osVersion !== 'Unknown') {
-                deviceData.osVersion = data.osVersion
-             }
-          }
-        } catch (e) {
-          console.error('WebSocket message parse error:', e)
-        }
-      }
-
-      ws.value.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        // 可以在这里添加重连逻辑
-      }
-
-      ws.value.onclose = (e) => {
-        console.log('WebSocket closed', e.code, e.reason)
-        if (e.code === 4001) {
-            ElMessage.error('实时连接认证失败: ' + (e.reason || '请重新登录'))
-        }
-      }
+    await axios.post('/api/v1/user/device/delete', { id: deviceId.value })
+    ElMessage.success('已移入回收站')
+    router.push({ name: 'device' })
   } catch (e) {
-      console.error('WebSocket creation failed:', e)
+    ElMessage.error(e?.response?.data?.message || e?.message || '删除失败')
   }
 }
 
-// 监听 Store 变化 (仅当使用全局 WS 时)
-watch(() => store.data, (newData) => {
-    if (usingGlobalWS.value) {
-        const item = newData.find(d => d.id == deviceId)
-        if (item) {
-            syncFromStore(item)
-        }
-    }
-}, { deep: true })
+const goBack = () => {
+  router.back()
+}
 
-onMounted(() => {
+onMounted(async () => {
   authStore.syncAuthFromToken()
-  authStore.fetchPermissions()
-  fetchDeviceData()
-  // 初始化 WebSocket 连接
-  initWebSocket()
+  await authStore.fetchPermissions()
+  if (route.query.tab === 'audit' && !canAudit.value) {
+    const nextQuery = { ...route.query }
+    delete nextQuery.tab
+    router.replace({ query: nextQuery })
+  }
+  await fetchDetail()
+  try {
+    await boostMonitor()
+  } catch {}
+  openWs()
 })
 
-onUnmounted(() => {
-  if (ws.value) {
-    ws.value.close()
-    ws.value = null
-  }
+onBeforeUnmount(async () => {
+  closeWs()
+  try {
+    await restoreMonitor()
+  } catch {}
 })
+
+watch(
+  () => activeTab.value,
+  async (tab) => {
+    if (tab !== 'audit') return
+    if (auditTab.value === 'command') await fetchSshAuditLogs()
+    else await fetchAuditLogs()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => auditTab.value,
+  async () => {
+    if (activeTab.value !== 'audit') return
+    if (auditTab.value === 'command') await fetchSshAuditLogs()
+    else await fetchAuditLogs()
+  }
+)
 </script>
 
-<style scoped>
-.device-detail-container {
+<style module>
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #f0f2f5;
   padding: 20px;
-  background-color: #f5f7fa;
-  min-height: calc(100vh - 84px); /* 减去顶部导航的高度 */
+  box-sizing: border-box;
+  overflow: auto;
 }
 
-.page-header-card {
-  margin-bottom: 20px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
+.header {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
 
-.device-title {
+.titleWrap {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
-.device-name {
-  font-size: 20px;
-  font-weight: bold;
-  color: #303133;
+.title {
+  font-weight: 600;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
 }
 
-.device-ip {
-  font-family: monospace;
+.headerActions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
 }
 
-.main-content {
-  /* 布局调整 */
-}
-
-.left-column {
+.content {
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.info-card, .health-card, .tabs-card {
-  height: 100%;
+.tabs :global(.el-tabs__header) {
+  margin: 0 0 12px 0;
 }
 
-.card-header {
+.section {
+  border-radius: 8px;
+  border: none;
+}
+
+.sectionHeader {
+  font-weight: 600;
+}
+
+.auditHeader {
   display: flex;
   align-items: center;
-  font-weight: bold;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.card-header .el-icon {
-  margin-right: 5px;
-  vertical-align: middle;
+.auditTabs :global(.el-tabs__header) {
+  margin: 0 0 12px 0;
 }
 
-.health-metrics {
+.auditPager {
+  margin-top: 14px;
   display: flex;
-  justify-content: space-around;
-  margin-bottom: 20px;
+  justify-content: flex-end;
 }
 
-.metric-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.auditExpand {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.metric-label {
-  margin-bottom: 10px;
-  font-size: 14px;
-  color: #606266;
+.auditExpandCol {
+  min-width: 0;
 }
 
-.percentage-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: #303133;
+.auditExpandTitle {
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
-.uptime-info {
-  text-align: center;
+.auditJson {
+  margin: 0;
+  padding: 10px;
+  background: #f8f9fa;
+  border: 1px solid rgba(220, 223, 230, 0.7);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.statItem {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(220, 223, 230, 0.5);
+}
+
+.statLabel {
+  font-size: 12px;
   color: #909399;
-  font-size: 14px;
+}
+
+.statValue {
+  margin: 6px 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.meta {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.metaItem {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border-top: 1px solid #ebeef5;
-  padding-top: 15px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(220, 223, 230, 0.5);
 }
 
-.custom-tabs-label .el-icon {
-  vertical-align: middle;
-  margin-right: 5px;
+.metaLabel {
+  color: #909399;
+  font-size: 12px;
 }
 
-.config-actions {
-  margin-top: 20px;
+.metaValue {
+  color: #303133;
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: 8px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

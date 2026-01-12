@@ -23,12 +23,15 @@ import LEFT from './left/left.vue'
 }
 
 .aside {
-    width: 15vw;
+    width: clamp(220px, 15vw, 300px);
+    min-width: 220px;
     height: 100vh;
+    border-right: none;
     /* background: rgba(45, 55, 72, 0.6); */
 }
 .main {
-    width: 85vw;
+    width: auto;
+    flex: 1;
     /* background: rgba(45, 55, 72, 0.6); */
     height: 100vh;
     padding: 0;
@@ -38,4 +41,22 @@ import LEFT from './left/left.vue'
     padding: 0;
 }
 
+@media (max-width: 900px) {
+    .aside {
+        width: 64px;
+        min-width: 64px;
+    }
+
+    .aside :deep(.el-menu-item span),
+    .aside :deep(.el-sub-menu__title span) {
+        display: none;
+    }
+
+    .aside :deep(.el-menu-item),
+    .aside :deep(.el-sub-menu__title) {
+        justify-content: center;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+}
 </style>

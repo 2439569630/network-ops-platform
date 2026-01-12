@@ -35,6 +35,12 @@ const homeRoutes = [
                 meta: { title: '设备列表', perms: ['sys:device:list'] } // 仅管理员和运维可见
             },
             {
+                path: 'device/recycle',
+                name: 'device-recycle',
+                component: () => import('@/components/DeviceList/RecycleBin.vue'),
+                meta: { title: '回收站', perms: ['sys:device:del'] }
+            },
+            {
                 path: 'device/:id',
                 name: 'device-detail',
                 component: () => import('@/components/DeviceList/DeviceDetail.vue'),
@@ -53,7 +59,7 @@ const homeRoutes = [
                 path: 'message',
                 name: 'message',
                 component: MessageCenter,
-                meta: { title: '消息中心', perms: ['sys:message:access'] }
+                meta: { title: '消息中心' }
             },
             {
                 path: 'role',

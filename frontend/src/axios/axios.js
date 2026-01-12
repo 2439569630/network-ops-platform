@@ -18,6 +18,12 @@ const dispatchAuthRefreshed = (token) => {
   } catch {}
 };
 
+const dispatchForceLogin = (detail) => {
+  try {
+    window.dispatchEvent(new CustomEvent("auth:force-login", { detail: detail || {} }));
+  } catch {}
+};
+
 const refreshAuth = async () => {
   if (refreshingPromise) return refreshingPromise;
   refreshingPromise = (async () => {
@@ -55,6 +61,23 @@ axios.interceptors.response.use(
     const data = error?.response?.data || {};
     const errCode = data.error;
 
+    if (status === 401 && errCode === "AUTH_SESSION_REVOKED") {
+      const device = data?.data?.new_login?.device;
+      const ip = data?.data?.new_login?.ip;
+      try {
+        const payload = data?.data?.new_login ?? null;
+        sessionStorage.setItem("auth:kicked_info", JSON.stringify(payload));
+      } catch {}
+      Cookies.remove("token");
+      ElNotification({
+        title: "登录已失效",
+        message: data.message || (device || ip ? `已在其他设备登录（${String(device || "未知设备")} / ${String(ip || "未知IP")}）` : "会话已失效，请重新登录"),
+        type: "warning",
+      });
+      dispatchForceLogin({ reason: "kicked" });
+      return Promise.reject(error);
+    }
+
     if (status === 401 && (errCode === "AUTH_TOKEN_TOO_OLD" || errCode === "AUTHZ_VERSION_MISMATCH")) {
       const originalConfig = error?.config || {};
       const url = String(originalConfig?.url || "");
@@ -71,7 +94,7 @@ axios.interceptors.response.use(
             message: data.message || "权限已更新，请重新登录",
             type: "warning",
           });
-          window.location.href = "/login";
+          dispatchForceLogin({ reason: "expired" });
           return Promise.reject(error);
         }
       }

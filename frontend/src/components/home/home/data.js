@@ -19,6 +19,8 @@ export const homeDataStore = defineStore('homeData', () => {
   let clockTimer = null;
   let emailCooldownTimer = null;
   let pollingTimer = null;
+  let siteMessagePollTimer = null;
+  let siteMessageEventSource = null;
 
   const form = reactive({
     id: null,
@@ -38,6 +40,7 @@ export const homeDataStore = defineStore('homeData', () => {
 
   const recentOrders = ref([]);
   const notificationHistory = ref([]);
+  const siteMessageUnreadCount = ref(0);
 
   const profileForm = reactive({
     nickname: ''
@@ -318,6 +321,66 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
+  const fetchSiteMessageUnreadCount = async () => {
+    try {
+      const res = await axios.get('/api/v1/notifications/site-messages/unread-count');
+      if (res?.data?.code === 200) {
+        const cnt = Number(res?.data?.data?.count || 0);
+        siteMessageUnreadCount.value = Number.isFinite(cnt) ? cnt : 0;
+      }
+    } catch (e) {
+      return;
+    }
+  };
+
+  const stopSiteMessageRealtime = () => {
+    if (siteMessageEventSource) {
+      try {
+        siteMessageEventSource.close();
+      } catch {}
+      siteMessageEventSource = null;
+    }
+    if (siteMessagePollTimer) {
+      clearInterval(siteMessagePollTimer);
+      siteMessagePollTimer = null;
+    }
+  };
+
+  const startSiteMessageRealtime = async () => {
+    if (siteMessageEventSource || siteMessagePollTimer) return;
+    await fetchSiteMessageUnreadCount();
+
+    const url = '/api/v1/notifications/sse/site-messages';
+    try {
+      if (typeof EventSource === 'undefined') throw new Error('EventSource unavailable');
+      try {
+        siteMessageEventSource = new EventSource(url, { withCredentials: true });
+      } catch {
+        siteMessageEventSource = new EventSource(url);
+      }
+
+      siteMessageEventSource.addEventListener('unread', (evt) => {
+        try {
+          const data = JSON.parse(String(evt?.data || '{}'));
+          const cnt = Number(data?.count || 0);
+          siteMessageUnreadCount.value = Number.isFinite(cnt) ? cnt : 0;
+        } catch {
+          return;
+        }
+      });
+
+      siteMessageEventSource.onerror = async () => {
+        stopSiteMessageRealtime();
+        if (!Cookies.get('token')) return;
+        await fetchSiteMessageUnreadCount();
+        siteMessagePollTimer = setInterval(fetchSiteMessageUnreadCount, 30000);
+      };
+    } catch (e) {
+      if (!Cookies.get('token')) return;
+      siteMessagePollTimer = setInterval(fetchSiteMessageUnreadCount, 30000);
+    }
+  };
+
   const refreshAll = async (options = {}) => {
     const activePage = String(options.activePage || 'overview');
     await Promise.all([
@@ -433,6 +496,7 @@ export const homeDataStore = defineStore('homeData', () => {
     summary,
     recentOrders,
     notificationHistory,
+    siteMessageUnreadCount,
     profileForm,
     emailForm,
     emailVerify,
@@ -466,7 +530,10 @@ export const homeDataStore = defineStore('homeData', () => {
     fetchSummary,
     fetchRecentOrders,
     fetchNotificationHistory,
+    fetchSiteMessageUnreadCount,
     refreshAll,
+    startSiteMessageRealtime,
+    stopSiteMessageRealtime,
     saveProfile,
     unlockEmailVerify,
     requestEmailVerify,

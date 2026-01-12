@@ -481,6 +481,7 @@ const permissionDepsByCode = {
   'sys:device:add': ['sys:device:list'],
   'sys:device:edit': ['sys:device:list'],
   'sys:device:del': ['sys:device:list'],
+  'sys:device:audit': ['sys:device:list'],
   'sys:user:manage': ['sys:user:view'],
   'sys:user:import': ['sys:user:manage'],
   'sys:config:edit': ['sys:config:view'],

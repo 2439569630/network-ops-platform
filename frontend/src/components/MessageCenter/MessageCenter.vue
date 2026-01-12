@@ -168,7 +168,6 @@
             <el-space wrap alignment="center">
               <el-select v-model="siteMessagesLevel" size="small" style="width: 140px">
                 <el-option label="全部级别" value="all" />
-                <el-option label="error" value="error" />
                 <el-option label="warning" value="warning" />
                 <el-option label="success" value="success" />
                 <el-option label="info" value="info" />
@@ -243,7 +242,6 @@
                   <el-option label="info" value="info" />
                   <el-option label="success" value="success" />
                   <el-option label="warning" value="warning" />
-                  <el-option label="error" value="error" />
                 </el-select>
               </el-form-item>
               <el-form-item label="范围">
@@ -437,7 +435,7 @@ import Cookies from 'js-cookie';
 import { homeDataStore } from '@/components/home/home/data';
 import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus/icons-vue';
 
-const activeTab = ref('alerts'); // 默认显示告警
+const activeTab = ref('site');
 const notifications = ref([]);
 const alerts = ref([]); // 实时告警列表
 const siteMessages = ref([]);
@@ -454,7 +452,6 @@ const canViewHistory = computed(() => hasPerm('sys:notify:history'));
 const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
 const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
 const canTest = computed(() => hasPerm('sys:notify:test'));
-const canViewSiteMessages = computed(() => hasPerm('sys:message:access'));
 const canSendSiteMessages = computed(() => hasPerm('sys:notify:global'));
 const canUseGlobal = computed(() => {
     return hasPerm('sys:notify:global');
@@ -468,6 +465,7 @@ let ws = null; // WebSocket 实例
 let wsReconnectAttempted = false;
 let wsReconnectTimer = null;
 const wsStatus = ref('disconnected');
+let siteAutoRefreshTimer = null;
 
 const alertsLevel = ref('all');
 const alertsKeyword = ref('');
@@ -593,7 +591,6 @@ const getAlertLevelType = (level) => {
 
 const getSiteMessageLevelType = (level) => {
     const v = normalizeText(level);
-    if (v === 'error') return 'danger';
     if (v === 'warning') return 'warning';
     if (v === 'success') return 'success';
     return 'info';
@@ -722,7 +719,7 @@ const buildTestNotifications = () => {
 
 const buildTestSiteMessages = () => {
     const now = Date.now();
-    const levels = ['info', 'warning', 'error', 'success'];
+    const levels = ['info', 'warning', 'success'];
     const sources = ['系统', '管理员'];
     return Array.from({ length: 10 }).map((_, idx) => {
         const createdAt = new Date(now - idx * 10 * 60 * 1000).toISOString();
@@ -789,6 +786,7 @@ const fetchSiteMessages = async () => {
         });
         if (res.data.code === 200) {
             siteMessages.value = res.data.data;
+            store.fetchSiteMessageUnreadCount();
         }
     } catch (error) {
         ElMessage.error('获取站内消息失败');
@@ -808,6 +806,7 @@ const markSiteMessageRead = async (row) => {
         if (res?.data?.code === 200) {
             row.is_read = true;
             row.read_at = new Date().toISOString();
+            store.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
         }
@@ -824,6 +823,7 @@ const markSiteMessageUnread = async (row) => {
         if (res?.data?.code === 200) {
             row.is_read = false;
             row.read_at = null;
+            store.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
         }
@@ -931,7 +931,7 @@ const handleTest = async (channel) => {
 
 const refreshAll = async () => {
     if (canViewHistory.value) fetchNotifications();
-    if (canViewSiteMessages.value) fetchSiteMessages();
+    fetchSiteMessages();
     if (canViewConfig.value) fetchConfig();
     initAlertWebSocket();
 };
@@ -940,7 +940,7 @@ onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     if (canViewHistory.value) fetchNotifications();
-    if (canViewSiteMessages.value) fetchSiteMessages();
+    fetchSiteMessages();
     if (canViewConfig.value) fetchConfig();
     initAlertWebSocket(); // 启动 WS
     if (isDev) {
@@ -961,6 +961,10 @@ onUnmounted(() => {
         clearTimeout(wsReconnectTimer);
         wsReconnectTimer = null;
     }
+    if (siteAutoRefreshTimer) {
+        clearInterval(siteAutoRefreshTimer);
+        siteAutoRefreshTimer = null;
+    }
 });
 
 const tabSwitcherRef = ref(null);
@@ -970,14 +974,11 @@ const tabEls = reactive({});
 let tabResizeObserver;
 
 const visibleTabs = computed(() => {
-    const tabs = [];
+    const tabs = [{ name: 'site', label: '站内消息', icon: Bell }];
     if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '实时告警', icon: WarningFilled });
-    if (canViewSiteMessages.value) tabs.push({ name: 'site', label: '站内消息', icon: Bell });
     if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
-    if (tabs.length > 0) return tabs;
-    if (canViewSiteMessages.value) return [{ name: 'site', label: '站内消息', icon: Bell }];
-    return [{ name: 'notifications', label: '设备通知', icon: Message }];
+    return tabs;
 });
 
 const indicatorStyle = computed(() => {
@@ -1018,6 +1019,7 @@ watch(
 watch(
     () => activeTab.value,
     async () => {
+        if (activeTab.value === 'site') fetchSiteMessages();
         await updateIndicator();
     }
 );
@@ -1025,6 +1027,9 @@ watch(
 onMounted(async () => {
     await nextTick();
     await updateIndicator();
+    siteAutoRefreshTimer = setInterval(() => {
+        if (activeTab.value === 'site') fetchSiteMessages();
+    }, 30000);
     if (tabSwitcherRef.value && typeof ResizeObserver !== 'undefined') {
         tabResizeObserver = new ResizeObserver(() => {
             updateIndicator();

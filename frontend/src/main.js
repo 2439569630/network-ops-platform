@@ -26,6 +26,16 @@ const pinia = createPinia()
 
 import axios from './axios/axios.js'
 
+try {
+  window.addEventListener('auth:force-login', async (ev) => {
+    const reason = ev?.detail?.reason ? String(ev.detail.reason) : ''
+    const query = reason ? { reason } : {}
+    try {
+      await router.replace({ path: '/login', query })
+    } catch {}
+  })
+} catch {}
+
 // 在main.js或组件中
 export default {
   mounted() {

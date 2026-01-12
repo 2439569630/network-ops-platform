@@ -11,4 +11,10 @@ export default [
     component: () => import('@/components/login/register.vue'),
     meta: { title: '注册' },
   },
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/components/login/forgotPassword.vue'),
+    meta: { title: '忘记密码' },
+  },
 ]

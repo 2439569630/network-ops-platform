@@ -1,7 +1,7 @@
 <template>
     <div class="leftbox">
         <el-row class="tac" :style="{ height: '100%' }">
-            <el-col :span="12" class="tac">
+            <el-col :span="24" class="tac">
                 <el-menu 
                     active-text-color="#ffd04b" 
                     background-color="transparent" 
@@ -16,9 +16,11 @@
                         <span>系统概览</span>
                     </el-menu-item>
 
-                    <el-menu-item index="message" @click="goto('/user/message')" v-if="hasPerm('sys:message:access')">
+                    <el-menu-item index="message" @click="goto('/user/message')">
                          <el-icon><Message /></el-icon>
-                         <span>消息中心</span>
+                         <el-badge :is-dot="store.siteMessageUnreadCount > 0" class="menu-badge-text">
+                            <span>消息中心</span>
+                         </el-badge>
                     </el-menu-item>
 
                     <!-- 2. 个人工作台 (所有人可见) -->
@@ -166,8 +168,12 @@ let authRefreshListener = null;
 const syncAuthAndPerms = async (options = {}) => {
   const force = Boolean(options.force);
   store.syncAuthFromToken();
-  if (!Cookies.get('token')) return;
+  if (!Cookies.get('token')) {
+    store.stopSiteMessageRealtime();
+    return;
+  }
   await store.fetchPermissions({ force });
+  store.startSiteMessageRealtime();
 };
 
 onMounted(async () => {
@@ -201,6 +207,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('auth:refreshed', authRefreshListener);
     authRefreshListener = null;
   }
+  store.stopSiteMessageRealtime();
 });
 
 watch(
@@ -233,11 +240,25 @@ const goto = (path) => {
     display: block;
     width: 100%;
 }
-.el-col-12 {
+.el-col-24 {
     max-width: none;
     background: none;
 }
 .menu {
     background: none;
+}
+
+:deep(.el-menu) {
+    border-right: none;
+}
+
+:deep(.menu-badge-text) {
+    display: inline-flex;
+    align-items: center;
+}
+
+:deep(.menu-badge-text .el-badge__content.is-dot) {
+    top: 12px;
+    right: -6px;
 }
 </style>

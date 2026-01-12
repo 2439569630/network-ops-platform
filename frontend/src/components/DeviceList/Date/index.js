@@ -147,9 +147,34 @@ export const dveiceDateStore = defineStore('data', () => {
     // WebSocket 实例
     const ws = ref(null)
     let reconnectAttempted = false
+    let listFallbackTimer = null
+
+    const normalizeHostname = (hostname) => {
+        const h = String(hostname || '').trim()
+        if (!h) return '127.0.0.1'
+        if (h === '0.0.0.0') return '127.0.0.1'
+        return h
+    }
+
+    const fetchListHttp = async () => {
+        try {
+            const res = await axios.get('/api/v1/user/device/get', { params: { type: filterType.value } })
+            const list = Array.isArray(res.data) ? res.data : []
+            data.value = list
+            loading.value = false
+            return list
+        } catch (e) {
+            loading.value = false
+            return []
+        }
+    }
 
     // 停止 WebSocket (原停止轮询)
     const stopPolling = () => {
+        if (listFallbackTimer) {
+            clearTimeout(listFallbackTimer)
+            listFallbackTimer = null
+        }
         if (ws.value) {
             ws.value.__manualClose = true
             ws.value.close()
@@ -162,14 +187,15 @@ export const dveiceDateStore = defineStore('data', () => {
         stopPolling()
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsHost = window.location.hostname
+        const wsHost = normalizeHostname(window.location.hostname)
         const wsPort = window.location.port ? `:${window.location.port}` : ''
 
         const token = Cookies.get('token')
         
         if (!token) {
             console.error('WebSocket init failed: No token found')
-            loading.value = false
+            loading.value = true
+            fetchListHttp()
             return
         }
 
@@ -187,6 +213,12 @@ export const dveiceDateStore = defineStore('data', () => {
                 reconnectAttempted = false
                 // 连接成功后，立即发送获取列表的指令
                 sendGetListCommand()
+                if (listFallbackTimer) clearTimeout(listFallbackTimer)
+                listFallbackTimer = setTimeout(() => {
+                    if (loading.value && (!Array.isArray(data.value) || data.value.length === 0)) {
+                        fetchListHttp()
+                    }
+                }, 2000)
             }
 
             socket.onmessage = (event) => {
@@ -197,6 +229,10 @@ export const dveiceDateStore = defineStore('data', () => {
                         console.log('Received device list:', msg.data)
                         data.value = msg.data
                         loading.value = false
+                        if (listFallbackTimer) {
+                            clearTimeout(listFallbackTimer)
+                            listFallbackTimer = null
+                        }
                     } else if (msg.type === 'update') {
                         // 收到单个设备更新
                         const updateItem = msg.data
@@ -213,14 +249,24 @@ export const dveiceDateStore = defineStore('data', () => {
 
             socket.onerror = (error) => {
                 console.error('WebSocket error:', error)
-                loading.value = false
+                loading.value = true
+                fetchListHttp()
             }
             
             socket.onclose = async (e) => {
                 console.log('Device List WebSocket closed', e.code, e.reason)
                 if (socket.__manualClose) return
+                if (listFallbackTimer) {
+                    clearTimeout(listFallbackTimer)
+                    listFallbackTimer = null
+                }
 
                 const closeCode = Number(e?.code || 0)
+                if (closeCode === 4003) {
+                    loading.value = false
+                    ElMessage.warning('无权限查看设备列表')
+                    return
+                }
                 if (closeCode !== 4001) return
                 if (reconnectAttempted) return
                 reconnectAttempted = true
@@ -236,7 +282,8 @@ export const dveiceDateStore = defineStore('data', () => {
             }
         } catch (e) {
              console.error('WebSocket creation failed:', e)
-             loading.value = false
+             loading.value = true
+             fetchListHttp()
         }
     }
 

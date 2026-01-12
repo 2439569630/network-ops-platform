@@ -81,7 +81,7 @@
                         <div :class="$style.actions">
                             <el-button type="primary" size="small" :icon="View" @click="showDeviceDetail(item)">详情</el-button>
                             <el-button v-if="canSsh" type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="item.status !== '在线'">SSH</el-button>
-                            <el-button type="danger" size="small" :icon="Delete" @click="handleDelete(item)">删除</el-button>
+                            <el-button v-if="canDelete" type="danger" size="small" :icon="Delete" @click="handleDelete(item)">删除</el-button>
                         </div>
                     </div>
                 </el-card>
@@ -106,7 +106,7 @@
                         <template #default="{ row }">
                             <el-button link type="primary" size="small" @click="showDeviceDetail(row)">详情</el-button>
                             <el-button v-if="canSsh" link type="success" size="small" @click="connectSSH(row)" :disabled="row.status !== '在线'">SSH</el-button>
-                            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+                            <el-button v-if="canDelete" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -132,6 +132,7 @@ const activeTab = ref('0');
 const isCardView = computed(() => store.getdataCardType() === 0);
 const deviceList = computed(() => store.getPaginatedData());
 const canSsh = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:ssh:connect')))
+const canDelete = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:del')))
 
 // 方法
 const setCardView = (isCard) => {
@@ -178,7 +179,7 @@ const getProgressColor = (percentage) => {
 
 const handleDelete = (item) => {
     ElMessageBox.confirm(
-        '确定要删除该设备吗？此操作不可恢复',
+        '确定要删除该设备吗？删除后将移入回收站',
         '警告',
         {
             confirmButtonText: '确定',

@@ -36,6 +36,15 @@
                 >
                     添加设备
                 </el-button>
+                <el-button
+                    v-if="canRecycle"
+                    type="warning"
+                    :icon="Delete"
+                    @click="goRecyclePage"
+                    class="action-btn"
+                >
+                    回收站
+                </el-button>
                 <el-button 
                     type="success" 
                     :icon="Upload"
@@ -186,13 +195,17 @@
 </template>
 
 <script setup>
-import { Plus, Upload, Search, Connection, User, Lock, Location } from '@element-plus/icons-vue'
-import { ref, reactive } from 'vue'
+import { Plus, Upload, Search, Connection, User, Lock, Location, Delete } from '@element-plus/icons-vue'
+import { computed, onMounted, ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
 import { dveiceDateStore } from './Date/index' // 引入 Store
+import { homeDataStore } from '@/components/home/home/data'
 
 const store = dveiceDateStore() // 使用 Store
+const authStore = homeDataStore()
+const router = useRouter()
 
 // 搜索输入
 const searchInput = ref('')
@@ -201,6 +214,13 @@ const searchInput = ref('')
 const dialogFormVisible = ref(false)
 const testing = ref(false)
 const submitting = ref(false)
+
+const canRecycle = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:del')))
+
+onMounted(() => {
+    authStore.syncAuthFromToken()
+    authStore.fetchPermissions()
+})
 
 // 设备表单
 const deviceForm = reactive({
@@ -274,6 +294,10 @@ const closeDialog = () => {
         deviceFormRef.value.resetFields()
         deviceForm.ssh_port = 22 // 重置端口默认值
     }
+}
+
+const goRecyclePage = () => {
+    router.push({ name: 'device-recycle' })
 }
 
 // 提交表单

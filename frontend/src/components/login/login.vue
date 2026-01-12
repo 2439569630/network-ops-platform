@@ -10,6 +10,35 @@
         <div class="auth-subtitle">使用账号密码登录系统</div>
       </div>
 
+      <el-alert
+        v-if="kickedInfo"
+        class="kick-alert"
+        title="你的账号已在另一台设备登录"
+        type="warning"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <div class="kick-body">
+            <div class="kick-line">
+              新登录设备：{{ kickedInfo.device || '未知' }}
+            </div>
+            <div class="kick-line">
+              新登录IP：{{ kickedInfo.ip || '未知' }}
+            </div>
+            <div class="kick-line" v-if="kickedInfo.ts">
+              时间：{{ kickedInfo.ts }}
+            </div>
+            <div class="kick-line">
+              如果不是你本人操作，可能密码已泄露，建议立即重置密码。
+            </div>
+            <div class="kick-actions">
+              <el-button type="primary" @click="goForgotPassword">通过邮箱重置密码</el-button>
+            </div>
+          </div>
+        </template>
+      </el-alert>
+
       <el-form :model="form" label-position="top" @keyup.enter="submitLogin">
         <el-form-item label="账号">
           <el-input v-model="form.username" placeholder="请输入账号" :prefix-icon="User" />
@@ -21,6 +50,7 @@
 
         <div class="auth-row">
           <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+          <el-button type="primary" link @click="goForgotPassword">忘记密码</el-button>
         </div>
       </el-form>
 
@@ -33,12 +63,13 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from '@/axios/axios'
 import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
+import { jwtDecode } from 'jwt-decode'
 
 const router = useRouter()
 const route = useRoute()
@@ -50,8 +81,26 @@ const form = reactive({
 
 const rememberPassword = ref(false)
 const loading = ref(false)
+const kickedInfo = ref(null)
+
+const loadKickedInfo = () => {
+  try {
+    const reason = String(route.query?.reason || '')
+    if (reason !== 'kicked') {
+      kickedInfo.value = null
+      return
+    }
+    const raw = sessionStorage.getItem('auth:kicked_info')
+    kickedInfo.value = raw ? JSON.parse(raw) : { device: null, ip: null }
+    sessionStorage.removeItem('auth:kicked_info')
+  } catch {
+    kickedInfo.value = null
+  }
+}
 
 onMounted(() => {
+  loadKickedInfo()
+
   const cachedUser = localStorage.getItem('username')
   const cachedPwd = localStorage.getItem('password')
   if (cachedUser && cachedPwd) {
@@ -66,8 +115,43 @@ onMounted(() => {
   }
 })
 
+watch(
+  () => route.query?.reason,
+  () => {
+    loadKickedInfo()
+  }
+)
+
 const goRegister = () => {
   router.push('/register')
+}
+
+const goForgotPassword = () => {
+  router.push('/forgot-password')
+}
+
+const pickPostLoginPath = async (token) => {
+  const fallback = '/user/home'
+  if (!token) return fallback
+
+  try {
+    const decoded = jwtDecode(token)
+    const roleCodes = Array.isArray(decoded?.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : []
+    const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
+    if (isSuper) return '/user/dashboard'
+  } catch (e) {
+    return fallback
+  }
+
+  try {
+    const res = await axios.get('/api/v1/auth/permissions')
+    const perms = Array.isArray(res.data?.data?.permissions) ? res.data.data.permissions.map(String) : []
+    if (perms.includes('sys:dashboard:view')) return '/user/dashboard'
+    if (perms.includes('sys:message:access')) return '/user/message'
+    return fallback
+  } catch (e) {
+    return fallback
+  }
 }
 
 const submitLogin = async () => {
@@ -94,7 +178,8 @@ const submitLogin = async () => {
       Cookies.set('token', res.data.token, { sameSite: 'lax' })
     }
 
-    await router.push('/user/dashboard')
+    const nextPath = await pickPostLoginPath(res.data?.token)
+    await router.push(nextPath)
 
     ElNotification({
       title: 'Success',
@@ -149,6 +234,25 @@ const submitLogin = async () => {
   backdrop-filter: blur(12px);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
   z-index: 1;
+}
+
+.kick-alert {
+  margin: 10px 0 12px;
+}
+
+.kick-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kick-line {
+  color: #374151;
+  font-size: 13px;
+}
+
+.kick-actions {
+  margin-top: 8px;
 }
 
 .auth-header {
