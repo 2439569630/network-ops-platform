@@ -44,7 +44,7 @@
       <!-- 角色管理视图 -->
         <div v-show="activeTab === 'role'" class="view-container role-view">
           <!-- 左侧：角色列表 -->
-          <div class="left-panel">
+          <div class="left-panel" v-show="!isMobile || !showMobileDetail">
             <div class="panel-header">
               <span class="panel-title">角色列表</span>
               <el-button type="primary" size="small" circle :icon="Plus" @click="handleCreateRole" />
@@ -56,7 +56,7 @@
                 :key="role.id"
                 class="role-item"
                 :class="{ active: currentRole?.id === role.id }"
-                @click="handleSelectRole(role)"
+                @click="handleRoleClick(role)"
               >
                 <div class="role-icon">
                   <el-icon><UserFilled /></el-icon>
@@ -85,9 +85,12 @@
           </div>
 
           <!-- 右侧：角色详情与权限配置 -->
-          <div class="right-panel" v-if="currentRole">
+          <div class="right-panel" v-if="currentRole" v-show="!isMobile || showMobileDetail">
             <div class="panel-header">
-              <span class="panel-title">角色配置: {{ currentRole.name }}</span>
+              <div style="display:flex;align-items:center;">
+                <el-button v-if="isMobile" link :icon="Back" @click="handleBackToList" style="margin-right:8px;font-size:18px;"></el-button>
+                <span class="panel-title">角色配置: {{ currentRole.name }}</span>
+              </div>
               <div class="header-actions">
                  <el-tag v-if="currentRole.is_default" type="success" effect="dark" class="mr-2">默认角色</el-tag>
                  <el-tag v-if="hasChanges" type="warning" effect="dark" class="mr-2">未保存</el-tag>
@@ -237,7 +240,7 @@
             </div>
           </div>
           
-          <div class="right-panel empty-state" v-else>
+          <div class="right-panel empty-state" v-else v-show="!isMobile">
             <el-empty description="请选择左侧角色进行配置" />
           </div>
         </div>
@@ -245,7 +248,7 @@
         <!-- 权限管理视图 -->
         <div v-show="activeTab === 'permission'" class="view-container perm-view">
            <!-- 左侧：权限树/列表 -->
-           <div class="left-panel">
+           <div class="left-panel" v-show="!isMobile || !showMobileDetail">
            <div class="panel-header">
               <span class="panel-title">权限目录</span>
               <div>
@@ -265,7 +268,7 @@
                     :key="perm.id ?? perm.code"
                     class="perm-tree-item"
                     :class="{ active: currentPerm?.code === perm.code, child: perm._depth === 1, grandchild: perm._depth === 2 }"
-                    @click="handleSelectPerm(perm)"
+                    @click="handlePermClick(perm)"
                   >
                     <el-icon class="item-icon"><Connection /></el-icon>
                     <div class="item-content">
@@ -309,9 +312,12 @@
            </div>
 
            <!-- 右侧：权限详情 -->
-           <div class="right-panel" v-if="currentPerm">
+           <div class="right-panel" v-if="currentPerm" v-show="!isMobile || showMobileDetail">
               <div class="panel-header">
-                <span class="panel-title">权限详情</span>
+                <div style="display:flex;align-items:center;">
+                  <el-button v-if="isMobile" link :icon="Back" @click="handleBackToList" style="margin-right:8px;font-size:18px;"></el-button>
+                  <span class="panel-title">权限详情</span>
+                </div>
                 <el-button type="primary" :disabled="!currentPerm?.id" :loading="permSaving" @click="saveCurrentPerm">保存</el-button>
               </div>
               <div class="panel-body">
@@ -345,7 +351,7 @@
               </div>
            </div>
            
-           <div class="right-panel empty-state" v-else>
+           <div class="right-panel empty-state" v-else v-show="!isMobile">
              <el-empty description="请选择或新建权限" />
            </div>
         </div>
@@ -385,7 +391,7 @@
           </div>
         </div>
 
-        <el-dialog v-model="addMembersDialogVisible" title="添加成员" width="560px">
+        <el-dialog v-model="addMembersDialogVisible" title="添加成员" :width="isMobile ? '90%' : '560px'">
           <el-form label-width="90px">
             <el-form-item label="选择用户">
               <el-select
@@ -428,7 +434,7 @@ import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
 import { 
   Key, InfoFilled, Avatar, Lock, Plus, UserFilled, MoreFilled, 
-  Search, Connection, Delete, User
+  Search, Connection, Delete, User, Back
 } from '@element-plus/icons-vue';
 
 // --- State ---
@@ -436,6 +442,33 @@ const route = useRoute();
 const router = useRouter();
 const activeTab = ref('role');
 const hasChanges = ref(false);
+
+// --- Mobile Support ---
+const isMobile = ref(false);
+const showMobileDetail = ref(false);
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 768;
+};
+
+const handleRoleClick = (role) => {
+  handleSelectRole(role);
+  if (isMobile.value) {
+    showMobileDetail.value = true;
+  }
+};
+
+const handlePermClick = (perm) => {
+  handleSelectPerm(perm);
+  if (isMobile.value) {
+    showMobileDetail.value = true;
+  }
+};
+
+const handleBackToList = () => {
+  showMobileDetail.value = false;
+};
+
 
 // --- Role State ---
 const roleLoading = ref(false);
@@ -684,6 +717,8 @@ const filteredPermGroups = computed(() => {
 
 // --- Lifecycle ---
 onMounted(() => {
+  handleResize();
+  window.addEventListener('resize', handleResize);
   const token = Cookies.get('token');
   if (token) {
     try {
@@ -717,6 +752,7 @@ watch(activeTab, (val) => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize);
   if (tabResizeObserver) tabResizeObserver.disconnect();
 });
 
@@ -1838,5 +1874,69 @@ const handlePermDelete = async (perm) => {
     #f8f9fa 10px,
     #f8f9fa 20px
   );
+}
+
+@media (max-width: 768px) {
+  .rbac-container {
+    height: auto;
+    min-height: 100%;
+    border-radius: 0;
+  }
+  
+  .rbac-header {
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .page-title {
+    justify-content: flex-start;
+  }
+  
+  .tab-switcher {
+    width: 100%;
+  }
+  
+  .view-container {
+    flex-direction: column;
+  }
+  
+  .left-panel {
+    width: 100%;
+    border-right: none;
+    height: 100%;
+  }
+  
+  .right-panel {
+    width: 100%;
+    height: 100%;
+  }
+  
+  .perm-matrix {
+    grid-template-columns: 1fr;
+  }
+  
+  .config-section {
+    padding: 12px;
+  }
+  
+  .role-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .role-actions, .delete-btn {
+    opacity: 1;
+  }
+  
+  .panel-body {
+    padding: 12px;
+  }
+
+  /* Adjust dialog for mobile if needed globally, but here we used inline style for width */
+  :deep(.el-dialog) {
+      margin-top: 5vh !important;
+  }
 }
 </style>

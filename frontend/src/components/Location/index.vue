@@ -1,279 +1,367 @@
 <template>
-  <div class="location-management">
-    <el-card class="box-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <div class="left-actions">
-            <span class="title">位置体系管理</span>
-          </div>
-          <div class="right-actions">
-             <el-button-group>
-                <el-button :icon="Plus" type="primary" @click="handleAddRoot">新建校区</el-button>
-                <el-button :icon="Download" @click="handleExport">导出数据</el-button>
-                <el-button :icon="Refresh" @click="handleRefresh">刷新</el-button>
-                <el-button :icon="Sort" @click="toggleExpandAll">{{ isExpandAll ? '折叠全部' : '展开全部' }}</el-button>
-            </el-button-group>
-          </div>
-        </div>
-      </template>
-
-      <div class="layout-container">
-          <!-- Left Tree (30%) -->
-          <div class="tree-panel">
-               <div class="filter-box">
-                    <el-input 
-                        v-model="filterText" 
-                        placeholder="搜索位置/编码" 
-                        :prefix-icon="Search"
-                        clearable
-                    />
-               </div>
-               
-               <div class="tree-wrapper" v-loading="loading">
-                   <el-tree
-                    ref="treeRef"
-                    :data="locationData"
-                    :props="defaultProps"
-                    :filter-node-method="filterNode"
-                    node-key="id"
-                    :default-expand-all="isExpandAll"
-                    draggable
-                    :allow-drop="allowDrop"
-                    :allow-drag="allowDrag"
-                    @node-drop="handleDrop"
-                    @node-click="handleNodeClick"
-                    highlight-current
-                    :expand-on-click-node="false"
-                  >
-                    <template #default="{ node, data }">
-                        <div class="custom-tree-node" :class="{ 'is-disabled': data.status === false }">
-                             <span class="node-main">
-                                 <!-- Type Icon -->
-                                 <el-icon :color="getTypeColor(data.type)" class="node-icon">
-                                     <component :is="getTypeIcon(data.type)" />
-                                 </el-icon>
-                                 
-                                 <!-- Label -->
-                                 <span class="node-label" v-html="highlightText(node.label)"></span>
-                                 
-                                 <!-- Count Badge -->
-                                 <span v-if="data.children && data.children.length > 0" class="count-badge">
-                                     ({{data.children.length}})
-                                 </span>
-
-                                  <!-- Status Dot -->
-                                 <span v-if="data.status === false" class="status-dot disabled" title="停用"></span>
-                             </span>
-                        </div>
-                    </template>
-                  </el-tree>
-               </div>
-          </div>
-
-          <!-- Right Detail/Edit Panel (70%) -->
-          <div class="detail-panel" v-loading="detailLoading">
-              <div v-if="currentNode" class="detail-content">
-                  <!-- Header -->
-                  <div class="detail-header">
-                      <div class="header-title">
-                          <el-icon :size="24" :color="getTypeColor(currentNode.type)" style="margin-right: 10px">
-                               <component :is="getTypeIcon(currentNode.type)" />
-                          </el-icon>
-                          <h2>{{ currentNode.label }}</h2>
-                          <el-tag :type="getTypeTagEffect(currentNode.type)" effect="dark" class="ml-2">
-                              {{ getTypeName(currentNode.type) }}
-                          </el-tag>
-                          <el-tag v-if="currentNode.status === false" type="danger" effect="dark" class="ml-2">已停用</el-tag>
-                          <el-tag v-else type="success" effect="plain" class="ml-2">使用中</el-tag>
-                      </div>
-                      <div class="header-actions">
-                           <el-button type="primary" :icon="Edit" @click="handleEdit(currentNode)">编辑</el-button>
-                           <el-button type="success" :icon="Printer" @click="handleQrCode(currentNode)">二维码</el-button>
-                      </div>
-                  </div>
-
-                  <!-- Breadcrumb -->
-                  <div class="breadcrumb-nav">
-                       <el-breadcrumb separator="/">
-                            <el-breadcrumb-item v-for="(item, index) in breadcrumbList" :key="index">{{ item }}</el-breadcrumb-item>
-                       </el-breadcrumb>
-                  </div>
-
-                  <!-- Info Cards -->
-                  <el-row :gutter="20" class="mt-20">
-                      <el-col :span="16">
-                           <el-descriptions title="基本信息" :column="2" border>
-                                <el-descriptions-item label="位置编码">
-                                    <el-tag type="info">{{ currentNode.code || '未设置' }}</el-tag>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="管理单位">{{ currentNode.managerDept || '未设置' }}</el-descriptions-item>
-                                <el-descriptions-item label="容量/面积">{{ currentNode.capacity ? currentNode.capacity + '人' : '-' }} / {{ currentNode.area ? currentNode.area + '㎡' : '-' }}</el-descriptions-item>
-                                <el-descriptions-item label="负责人">{{ currentNode.manager || '未设置' }} ({{ currentNode.phone || '-' }})</el-descriptions-item>
-                                <el-descriptions-item label="详细地址" :span="2">{{ currentNode.address || '-' }}</el-descriptions-item>
-                                <el-descriptions-item label="备注" :span="2">{{ currentNode.description || '无' }}</el-descriptions-item>
-                           </el-descriptions>
-
-                           <div class="section-title mt-20">
-                                <span>关联设备 ({{ deviceList.length }})</span>
-                                <el-button link type="primary" size="small">查看全部</el-button>
-                           </div>
-                           <el-table :data="deviceList" style="width: 100%" size="small" border stripe>
-                                <el-table-column prop="name" label="设备名称" />
-                                <el-table-column prop="type" label="类型" width="100" />
-                                <el-table-column prop="status" label="状态" width="80">
-                                     <template #default="{ row }">
-                                         <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small">
-                                             {{ row.status === 'online' ? '在线' : '离线' }}
-                                         </el-tag>
-                                     </template>
-                                </el-table-column>
-                           </el-table>
-                      </el-col>
-
-                      <el-col :span="8">
-                           <!-- Quick Actions -->
-                           <el-card shadow="hover" class="action-card">
-                               <template #header>快捷操作</template>
-                               <div class="quick-actions">
-                                   <el-button class="qa-btn" :icon="Plus" @click="append(currentNode)">添加子位置</el-button>
-                                   <el-button class="qa-btn" :icon="CopyDocument" @click="handleCopy(currentNode)">复制结构</el-button>
-                                   <el-button class="qa-btn" type="danger" plain :icon="Delete" @click="remove(currentNode)">删除位置</el-button>
-                               </div>
-                           </el-card>
-
-                           <!-- Stats -->
-                           <el-card shadow="hover" class="mt-20 stats-card">
-                               <div class="stat-item">
-                                   <div class="label">创建时间</div>
-                                   <div class="value">{{ formatDate(currentNode.createdAt) }}</div>
-                               </div>
-                               <div class="stat-item">
-                                   <div class="label">最后更新</div>
-                                   <div class="value">{{ formatDate(currentNode.updatedAt) }}</div>
-                               </div>
-                           </el-card>
-                      </el-col>
-                  </el-row>
-
-              </div>
-              <div class="empty-state" v-else>
-                  <el-empty description="请选择左侧位置节点查看详情" :image-size="200" />
-              </div>
-          </div>
+  <div class="location-container">
+    <!-- 侧边栏：位置树 -->
+    <div class="sidebar-card">
+      <div class="sidebar-header">
+        <span class="sidebar-title">位置导航</span>
+        <el-button-group class="sidebar-actions">
+           <el-tooltip content="刷新" placement="top">
+                <el-button :icon="Refresh" circle size="small" @click="handleRefresh" />
+           </el-tooltip>
+           <el-tooltip content="展开/折叠" placement="top">
+                <el-button :icon="Sort" circle size="small" @click="toggleExpandAll" />
+           </el-tooltip>
+        </el-button-group>
       </div>
-    </el-card>
+      
+      <div class="sidebar-action-area">
+         <el-button type="primary" class="full-width-btn" :icon="Plus" :disabled="!canAdd" @click="handleAddRoot" plain>新建节点</el-button>
+      </div>
+
+      <div class="filter-wrapper">
+        <el-input 
+            v-model="filterText" 
+            placeholder="输入关键字过滤..." 
+            :prefix-icon="Search"
+            clearable
+        />
+      </div>
+      
+      <div class="tree-content" v-loading="loading">
+           <el-tree
+            ref="treeRef"
+            :data="locationData"
+            :props="defaultProps"
+            :filter-node-method="filterNode"
+            node-key="id"
+            :default-expand-all="isExpandAll"
+            draggable
+            :allow-drop="allowDrop"
+            :allow-drag="allowDrag"
+            @node-drop="handleDrop"
+            @node-click="handleNodeClick"
+            highlight-current
+            :expand-on-click-node="false"
+          >
+            <template #default="{ node, data }">
+                <div class="custom-tree-node" :class="{ 'is-disabled': data.status === false }">
+                     <span class="node-main">
+                         <el-icon :color="getTypeColor(data.type)" class="node-icon">
+                             <component :is="getTypeIcon(data.type)" />
+                         </el-icon>
+                         <span class="node-label" v-html="highlightText(node.label)"></span>
+                         <span v-if="data.status === false" class="status-badge off">停</span>
+                     </span>
+                </div>
+            </template>
+          </el-tree>
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content" v-loading="detailLoading">
+      <div v-if="currentNode" class="content-wrapper">
+        <!-- 顶部头信息 -->
+        <div class="content-header">
+            <div class="header-left">
+                <div class="breadcrumb-area">
+                    <el-breadcrumb separator="/">
+                        <el-breadcrumb-item v-for="(item, index) in breadcrumbList" :key="index">{{ item }}</el-breadcrumb-item>
+                    </el-breadcrumb>
+                </div>
+                <div class="title-row">
+                    <h1 class="node-title">{{ currentNode.label }}</h1>
+                    <el-tag :type="getTypeTagEffect(currentNode.type)" effect="dark" class="ml-3">
+                        {{ getTypeName(currentNode.type) }}
+                    </el-tag>
+                    <el-tag v-if="currentNode.status === false" type="danger" effect="dark" class="ml-2">已停用</el-tag>
+                    <el-tag v-else type="success" effect="plain" class="ml-2">正常</el-tag>
+                </div>
+            </div>
+            <div class="header-right">
+                <el-button type="primary" :icon="Edit" :disabled="!canEdit" @click="handleEdit(currentNode)">编辑</el-button>
+                <el-button type="success" plain :icon="Printer" @click="handleQrCode(currentNode)">二维码</el-button>
+                <el-dropdown trigger="click" class="ml-2" @command="handleCommand">
+                    <el-button>
+                        更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item :icon="Plus" :disabled="!canAdd" command="add">添加子位置</el-dropdown-item>
+                            <el-dropdown-item :icon="CopyDocument" command="copy">复制结构</el-dropdown-item>
+                            <el-dropdown-item divided :icon="Delete" :disabled="!canDel" command="delete" style="color: #f56c6c">删除位置</el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
+            </div>
+        </div>
+
+        <!-- 统计卡片行 -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-icon bg-blue">
+                    <el-icon><Key /></el-icon>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">绑定角色</div>
+                    <div class="stat-value">{{ (currentNode.roleIds || []).length }}</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-green">
+                    <el-icon><User /></el-icon>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">绑定用户</div>
+                    <div class="stat-value">{{ (currentNode.userIds || []).length }}</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-purple">
+                    <el-icon><Monitor /></el-icon>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">关联设备</div>
+                    <div class="stat-value">{{ deviceList.length }}</div>
+                </div>
+            </div>
+             <div class="stat-card">
+                <div class="stat-icon bg-orange">
+                    <el-icon><OfficeBuilding /></el-icon>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-label">下级位置</div>
+                    <div class="stat-value">{{ currentNode.children ? currentNode.children.length : 0 }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 详细信息与设备 -->
+        <div class="details-grid">
+            <!-- 左侧：基本信息 -->
+            <div class="info-section">
+                <div class="section-header">
+                    <span class="section-title">基本信息</span>
+                </div>
+                <el-descriptions :column="1" border size="large">
+                    <el-descriptions-item label="位置编码">
+                        <el-tag type="info" effect="plain">{{ currentNode.code || '未设置' }}</el-tag>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="绑定角色">
+                        <div v-if="currentNodeRoleLabels.length" class="tag-list">
+                            <el-tag v-for="t in currentNodeRoleLabels" :key="t" type="primary" effect="plain" class="mr-1">{{ t }}</el-tag>
+                        </div>
+                        <span v-else>-</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="绑定用户">
+                        <div v-if="currentNodeUserLabels.length" class="tag-list">
+                            <el-tag v-for="t in currentNodeUserLabels" :key="t" type="success" effect="plain" class="mr-1">{{ t }}</el-tag>
+                        </div>
+                        <span v-else>-</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="详细地址">{{ currentNode.address || '-' }}</el-descriptions-item>
+                    <el-descriptions-item label="备注">
+                         <span class="desc-text">{{ currentNode.description || '暂无备注' }}</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="创建时间">{{ formatDate(currentNode.createdAt) }}</el-descriptions-item>
+                    <el-descriptions-item label="最后更新">{{ formatDate(currentNode.updatedAt) }}</el-descriptions-item>
+                </el-descriptions>
+            </div>
+
+            <!-- 右侧：关联设备 -->
+            <div class="device-section">
+                <div class="section-header">
+                    <span class="section-title">关联设备列表</span>
+                    <el-button link type="primary">查看全部</el-button>
+                </div>
+                <el-table :data="deviceList" style="width: 100%" height="400" stripe>
+                    <el-table-column prop="name" label="设备名称" show-overflow-tooltip />
+                    <el-table-column prop="type" label="类型" width="100" />
+                    <el-table-column prop="ipv4" label="IP地址" width="130" />
+                    <el-table-column prop="status" label="状态" width="90">
+                            <template #default="{ row }">
+                                <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small" effect="dark">
+                                    {{ row.status === 'online' ? '在线' : '离线' }}
+                                </el-tag>
+                            </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </div>
+
+      </div>
+      <div class="empty-placeholder" v-else>
+          <img src="https://gw.alipayobjects.com/zos/antfincdn/ZHrcdLPrvN/empty.svg" alt="Empty" width="200" />
+          <p>请选择左侧位置节点查看详情</p>
+      </div>
+    </div>
 
     <!-- Create/Edit Dialog -->
     <el-dialog 
         v-model="dialogVisible" 
         :title="dialogTitle" 
-        width="600px"
+        width="580px"
         :close-on-click-modal="false"
         destroy-on-close
+        class="location-dialog"
+        center
+        append-to-body
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-row :gutter="20">
-            <el-col :span="24">
-                <el-form-item label="名称" prop="label">
-                  <el-input v-model="form.label" placeholder="如：教学楼A" maxlength="50" show-word-limit />
-                </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                <el-form-item label="类型" prop="type">
-                  <el-select v-model="form.type" placeholder="请选择类型" :disabled="formType === 'edit' && form.type === 'campus'">
-                    <el-option label="校区" value="campus" v-if="isRoot || form.type === 'campus'" />
-                    <el-option label="楼宇" value="building" />
-                    <el-option label="楼层" value="floor" />
-                    <el-option label="房间/区域" value="room" />
-                  </el-select>
-                </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                 <el-form-item label="编码" prop="code">
-                    <el-input v-model="form.code" placeholder="唯一编码" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="24">
-                <el-form-item label="管理单位" prop="managerDept">
-                     <el-select v-model="form.managerDept" placeholder="选择管理单位" filterable style="width: 100%">
-                         <el-option label="教务处" value="教务处" />
-                         <el-option label="信息化办公室" value="信息化办公室" />
-                         <el-option label="后勤处" value="后勤处" />
-                         <el-option label="计算机学院" value="计算机学院" />
-                     </el-select>
-                </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                 <el-form-item label="负责人">
-                    <el-input v-model="form.manager" placeholder="姓名" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                 <el-form-item label="联系电话">
-                    <el-input v-model="form.phone" placeholder="电话" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                 <el-form-item label="容量(人)">
-                    <el-input-number v-model="form.capacity" :min="0" style="width: 100%" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="12">
-                 <el-form-item label="面积(㎡)">
-                    <el-input-number v-model="form.area" :min="0" :precision="2" style="width: 100%" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="24">
-                 <el-form-item label="详细地址">
-                    <el-input v-model="form.address" placeholder="详细地理位置描述" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="24">
-                 <el-form-item label="备注">
-                    <el-input v-model="form.description" type="textarea" :rows="2" />
-                 </el-form-item>
-            </el-col>
-            <el-col :span="24">
-                 <el-form-item label="状态">
-                    <el-switch v-model="form.status" active-text="启用" inactive-text="停用" />
-                 </el-form-item>
-            </el-col>
-        </el-row>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" class="location-form" hide-required-asterisk>
+        <!-- 核心信息 -->
+        <div class="form-section">
+            <el-row :gutter="20">
+                <el-col :span="24">
+                    <el-form-item label="名称" prop="label">
+                      <el-input v-model="form.label" placeholder="如：教学楼A" maxlength="50" show-word-limit>
+                          <template #prefix><el-icon><OfficeBuilding /></el-icon></template>
+                      </el-input>
+                    </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                    <el-form-item label="类型" prop="type">
+                      <el-select v-model="form.type" placeholder="请选择类型" :disabled="formType === 'edit' && form.type === 'campus'" style="width: 100%">
+                        <template #prefix><el-icon><Menu /></el-icon></template>
+                        <el-option label="校区" value="campus" v-if="isRoot || form.type === 'campus'" />
+                        <el-option label="楼宇" value="building" />
+                        <el-option label="楼层" value="floor" />
+                        <el-option label="房间/区域" value="room" />
+                      </el-select>
+                    </el-form-item>
+                </el-col>
+                 <el-col :span="12">
+                     <el-form-item label="状态">
+                        <el-radio-group v-model="form.status" style="width: 100%">
+                            <el-radio-button :label="true">启用</el-radio-button>
+                            <el-radio-button :label="false">停用</el-radio-button>
+                        </el-radio-group>
+                     </el-form-item>
+                </el-col>
+                 <el-col :span="24">
+                     <el-form-item label="编码">
+                        <el-input v-model="form.code" placeholder="系统自动生成（创建后显示）" disabled class="code-input">
+                            <template #prefix><el-icon><Lock /></el-icon></template>
+                        </el-input>
+                     </el-form-item>
+                </el-col>
+            </el-row>
+        </div>
+
+        <!-- 详细信息 -->
+        <div class="form-section mt-3">
+            <el-row :gutter="20">
+                <el-col :span="24">
+                     <el-form-item label="详细地址">
+                        <el-input v-model="form.address" placeholder="详细地理位置描述" :rows="2" type="textarea" />
+                     </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                     <el-form-item label="备注">
+                        <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选备注信息" />
+                     </el-form-item>
+                </el-col>
+            </el-row>
+        </div>
+        
+        <!-- 更多信息（卡片背景） -->
+        <div class="more-info-box">
+            <div class="info-title">
+                <el-icon><Setting /></el-icon> 权限绑定
+            </div>
+            <el-row :gutter="20">
+                <el-col :span="24">
+                    <el-form-item label="绑定角色">
+                         <el-select
+                            v-model="form.roleIds"
+                            multiple
+                            filterable
+                            collapse-tags
+                            collapse-tags-tooltip
+                            placeholder="可选，绑定到该节点的角色"
+                            style="width: 100%"
+                            :loading="rolesLoading"
+                         >
+                            <el-option
+                                v-for="r in roleOptions"
+                                :key="r.id"
+                                :label="`${r.name} (${r.code})`"
+                                :value="r.id"
+                            />
+                         </el-select>
+                    </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                     <el-form-item label="绑定用户">
+                        <el-select
+                            v-model="form.userIds"
+                            multiple
+                            filterable
+                            remote
+                            :remote-method="handleUsersRemoteSearch"
+                            :reserve-keyword="false"
+                            collapse-tags
+                            collapse-tags-tooltip
+                            placeholder="可选，绑定到该节点的具体用户"
+                            style="width: 100%"
+                            :loading="usersLoading"
+                        >
+                            <el-option
+                                v-for="u in userOptions"
+                                :key="u.id"
+                                :label="`${u.nickname || u.username} (${u.username})`"
+                                :value="u.id"
+                            />
+                        </el-select>
+                     </el-form-item>
+                </el-col>
+            </el-row>
+        </div>
       </el-form>
       <template #footer>
-        <span class="dialog-footer">
+        <div class="dialog-footer-actions">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSave" :loading="saving">确定</el-button>
-        </span>
+          <el-button type="primary" @click="handleSave" :loading="saving" class="save-btn">确定保存</el-button>
+        </div>
       </template>
     </el-dialog>
 
     <!-- QR Code Dialog -->
-    <el-dialog v-model="qrVisible" title="位置二维码" width="300px" center>
+    <el-dialog v-model="qrVisible" title="位置二维码" width="360px" center append-to-body>
         <div class="qr-container" v-if="qrNode">
-            <div class="qr-title">{{ qrNode.label }}</div>
-            <div class="qr-code-mock">
-                <!-- Placeholder for QR Code -->
-                <el-icon :size="150" color="#333"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=LocationID:123" alt="QR" /></el-icon>
+            <div class="qr-header">
+                <div class="qr-title">{{ qrNode.label }}</div>
+                <div class="qr-subtitle">{{ qrNode.address || '暂无地址信息' }}</div>
             </div>
-            <div class="qr-info">ID: {{ qrNode.code || qrNode.id }}</div>
-            <div class="qr-hint">扫码报修 / 查看详情</div>
+            <div class="qr-code-box">
+                <!-- Placeholder for QR Code -->
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LocationID:123" alt="QR" class="qr-img" />
+            </div>
+            <div class="qr-meta">
+                <div class="meta-item">
+                    <span class="label">编码:</span>
+                    <span class="value">{{ qrNode.code || qrNode.id }}</span>
+                </div>
+                <div class="meta-hint">扫码即可快速报修或查看详情</div>
+            </div>
         </div>
         <template #footer>
-            <el-button type="primary" @click="downloadQr">下载二维码</el-button>
+            <el-button type="primary" @click="downloadQr" style="width: 100%">下载二维码</el-button>
         </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, reactive, nextTick, computed } from 'vue'
+import { ref, watch, reactive, nextTick, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
     Plus, Edit, Delete, Search, Download, Refresh, Sort, 
     School, OfficeBuilding, House, Location,
-    Printer, CopyDocument, Warning
+    Printer, CopyDocument, Warning, ArrowDown, User, Monitor, Lock,
+    Menu, Setting, Key
 } from '@element-plus/icons-vue'
+import axios from '@/axios/axios'
+import { homeDataStore } from '@/components/home/home/data'
 
 // --- State ---
 const filterText = ref('')
@@ -283,6 +371,8 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const saving = ref(false)
 const isExpandAll = ref(true)
+const store = homeDataStore()
+store.syncAuthFromToken()
 
 // Dialogs
 const dialogVisible = ref(false)
@@ -301,21 +391,16 @@ const form = reactive({
     label: '',
     type: 'building',
     code: '',
-    managerDept: '',
-    manager: '',
-    phone: '',
     address: '',
-    capacity: 0,
-    area: 0,
     description: '',
-    status: true
+    status: true,
+    roleIds: [],
+    userIds: []
 })
 
 const rules = {
     label: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-    type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-    code: [{ required: true, message: '请输入编码', trigger: 'blur' }],
-    managerDept: [{ required: true, message: '请选择管理单位', trigger: 'change' }]
+    type: [{ required: true, message: '请选择类型', trigger: 'change' }]
 }
 
 // Data
@@ -324,46 +409,15 @@ const defaultProps = {
   label: 'label',
 }
 
-const locationData = ref([
-    {
-        id: 1,
-        label: '主校区',
-        type: 'campus',
-        code: 'CAMP01',
-        managerDept: '校办',
-        status: true,
-        createdAt: '2023-01-01',
-        updatedAt: '2023-12-01',
-        children: [
-            {
-                id: 2,
-                label: '教学楼A',
-                type: 'building',
-                code: 'BLD-A',
-                managerDept: '教务处',
-                status: true,
-                createdAt: '2023-01-02',
-                updatedAt: '2023-12-05',
-                children: [
-                    {
-                        id: 3,
-                        label: '1楼',
-                        type: 'floor',
-                        code: 'BLD-A-1F',
-                        managerDept: '教务处',
-                        status: true,
-                        children: [
-                            { id: 4, label: '101教室', type: 'room', code: '101', managerDept: '教务处', status: true, capacity: 50 },
-                            { id: 5, label: '102教室', type: 'room', code: '102', managerDept: '教务处', status: true, capacity: 50 }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
-])
+const locationData = ref([])
 
 const deviceList = ref([])
+
+const roleOptions = ref([])
+const rolesLoading = ref(false)
+const userOptions = ref([])
+const usersLoading = ref(false)
+const usersQuery = ref('')
 
 // --- Watchers ---
 watch(filterText, (val) => {
@@ -373,9 +427,6 @@ watch(filterText, (val) => {
 // --- Computed ---
 const breadcrumbList = computed(() => {
     if (!currentNode.value) return []
-    // Need to traverse up to find path. 
-    // Since element tree data structure is nested, we might need a helper or use tree node properties
-    // Using a simple hack: Node object from tree has parent reference
     const list = []
     let node = treeRef.value.getNode(currentNode.value.id)
     while(node && node.level > 0) {
@@ -385,13 +436,45 @@ const breadcrumbList = computed(() => {
     return list
 })
 
+const canAdd = computed(() => Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:location:add')))
+const canEdit = computed(() => Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:location:edit')))
+const canDel = computed(() => Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:location:del')))
+
+const roleLabelById = computed(() => {
+    const m = new Map()
+    for (const r of roleOptions.value || []) {
+        const id = Number(r?.id)
+        if (!Number.isNaN(id)) m.set(id, `${r?.name || r?.code || id}`)
+    }
+    return m
+})
+
+const userLabelById = computed(() => {
+    const m = new Map()
+    for (const u of userOptions.value || []) {
+        const id = Number(u?.id)
+        if (!Number.isNaN(id)) m.set(id, `${u?.nickname || u?.username || id}`)
+    }
+    return m
+})
+
+const currentNodeRoleLabels = computed(() => {
+    const ids = Array.isArray(currentNode.value?.roleIds) ? currentNode.value.roleIds : []
+    return ids.map(id => roleLabelById.value.get(Number(id)) || `#${id}`)
+})
+
+const currentNodeUserLabels = computed(() => {
+    const ids = Array.isArray(currentNode.value?.userIds) ? currentNode.value.userIds : []
+    return ids.map(id => userLabelById.value.get(Number(id)) || `#${id}`)
+})
+
 // --- Methods ---
 
 const filterNode = (value, data) => {
   if (!value) return true
-  const lowerValue = value.toLowerCase()
-  return data.label.toLowerCase().includes(lowerValue) || 
-         (data.code && data.code.toLowerCase().includes(lowerValue))
+  const lowerValue = String(value || '').toLowerCase()
+  return String(data?.label || '').toLowerCase().includes(lowerValue) || 
+         (data?.code && String(data.code).toLowerCase().includes(lowerValue))
 }
 
 const highlightText = (text) => {
@@ -403,16 +486,20 @@ const highlightText = (text) => {
 const handleNodeClick = (data) => {
     detailLoading.value = true
     currentNode.value = data
-    // Simulate fetching details & devices
+    ensureUsersByIds(currentNode.value?.userIds)
+    // Mock device data for now
+    deviceList.value = []
+    
+    // Simulate fetching delay
     setTimeout(() => {
-        // Mock devices
-        deviceList.value = [
-            { name: 'Switch-01', type: '交换机', status: 'online' },
-            { name: 'AP-01', type: '无线AP', status: 'online' },
-            { name: 'PC-Teacher', type: 'PC', status: 'offline' }
-        ]
         detailLoading.value = false
     }, 300)
+}
+
+const handleCommand = (command) => {
+    if (command === 'add') append(currentNode.value)
+    else if (command === 'copy') handleCopy(currentNode.value)
+    else if (command === 'delete') remove(currentNode.value)
 }
 
 // Icons & Styles
@@ -437,16 +524,30 @@ const getTypeTagEffect = (type) => {
 
 const formatDate = (dateStr) => {
     if(!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString()
+    return new Date(dateStr).toLocaleString()
+}
+
+const fetchTree = async (options = {}) => {
+    const silent = Boolean(options.silent)
+    if (!silent) loading.value = true
+    try {
+        const res = await axios.get('/api/v1/locations/tree')
+        const payload = res?.data || {}
+        if (payload?.code !== 200) {
+            if (!silent) ElMessage.error(payload?.message || '获取位置树失败')
+            return
+        }
+        locationData.value = Array.isArray(payload?.data) ? payload.data : []
+    } catch (e) {
+        if (!silent) ElMessage.error(e?.response?.data?.message || e?.message || '获取位置树失败')
+    } finally {
+        if (!silent) loading.value = false
+    }
 }
 
 // Toolbar Actions
 const handleRefresh = () => {
-    loading.value = true
-    setTimeout(() => {
-        loading.value = false
-        ElMessage.success('数据已刷新')
-    }, 500)
+    fetchTree()
 }
 
 const toggleExpandAll = () => {
@@ -471,16 +572,24 @@ const handleExport = () => {
 
 // CRUD
 const handleAddRoot = () => {
+    if (!canAdd.value) {
+        ElMessage.warning('无权限新增位置')
+        return
+    }
     isRoot.value = true
     currentParent.value = null
     formType.value = 'create'
-    dialogTitle.value = '新建校区'
+    dialogTitle.value = '新建节点'
     resetForm()
     form.type = 'campus'
     dialogVisible.value = true
 }
 
 const append = (data) => {
+    if (!canAdd.value) {
+        ElMessage.warning('无权限新增位置')
+        return
+    }
     isRoot.value = false
     currentParent.value = data
     formType.value = 'create'
@@ -491,12 +600,14 @@ const append = (data) => {
     else if(data.type === 'building') form.type = 'floor'
     else if(data.type === 'floor') form.type = 'room'
     else form.type = 'room'
-    
-    form.managerDept = data.managerDept 
     dialogVisible.value = true
 }
 
 const handleEdit = (data) => {
+    if (!canEdit.value) {
+        ElMessage.warning('无权限编辑位置')
+        return
+    }
     isRoot.value = data.type === 'campus'
     currentParent.value = null
     formType.value = 'edit'
@@ -505,6 +616,8 @@ const handleEdit = (data) => {
     // Fill form
     Object.assign(form, data)
     form.status = data.status !== false
+    form.roleIds = Array.isArray(data?.roleIds) ? data.roleIds.slice() : []
+    form.userIds = Array.isArray(data?.userIds) ? data.userIds.slice() : []
     
     dialogVisible.value = true
 }
@@ -519,6 +632,10 @@ const handleCopy = (data) => {
 }
 
 const remove = (data) => {
+    if (!canDel.value) {
+        ElMessage.warning('无权限删除位置')
+        return
+    }
     ElMessageBox.confirm(
         `确定要删除 [${data.label}] 吗？\n注意：如果该位置下有设备，请先迁移设备。`,
         '删除确认',
@@ -529,89 +646,214 @@ const remove = (data) => {
             icon: Warning
         }
     ).then(() => {
-        // Recursive remove
-        const removeNode = (list, id) => {
-            for(let i=0; i<list.length; i++) {
-                if(list[i].id === id) {
-                    list.splice(i, 1)
-                    return true
-                }
-                if(list[i].children) {
-                    if(removeNode(list[i].children, id)) return true
-                }
+        saving.value = true
+        axios.delete(`/api/v1/locations/${data.id}`).then((res) => {
+            const payload = res?.data || {}
+            if (payload?.code === 200) {
+                if (currentNode.value?.id === data.id) currentNode.value = null
+                fetchTree({ silent: true })
+                ElMessage.success('删除成功')
+                return
             }
-            return false
-        }
-        removeNode(locationData.value, data.id)
-        currentNode.value = null
-        ElMessage.success('删除成功')
+            ElMessage.error(payload?.message || '删除失败')
+        }).catch((e) => {
+            ElMessage.error(e?.response?.data?.message || e?.message || '删除失败')
+        }).finally(() => {
+            saving.value = false
+        })
     }).catch(() => {})
 }
 
 const handleSave = async () => {
     if (!formRef.value) return
-    await formRef.value.validate((valid) => {
-        if (valid) {
-            saving.value = true
-            setTimeout(() => {
-                const now = new Date().toISOString()
-                if (formType.value === 'create') {
-                    const newChild = { 
-                        ...form,
-                        id: Date.now(), 
-                        children: [],
-                        createdAt: now,
-                        updatedAt: now
-                    }
-                    if (!currentParent.value) {
-                        locationData.value.push(newChild)
-                    } else {
-                        if (!currentParent.value.children) {
-                            currentParent.value.children = []
-                        }
-                        currentParent.value.children.push(newChild)
-                        nextTick(() => {
-                            const node = treeRef.value.getNode(currentParent.value)
-                            if(node) node.expanded = true
-                        })
-                    }
-                    ElMessage.success('创建成功')
-                } else {
-                    // Update - need to find reference in real data, but here form is copied
-                    // In real app, we update backend. Here we update currentNode if it matches
-                    if(currentNode.value && currentNode.value.id === form.id) {
-                         Object.assign(currentNode.value, form)
-                         currentNode.value.updatedAt = now
-                    }
-                    ElMessage.success('更新成功')
-                }
-                saving.value = false
-                dialogVisible.value = false
-            }, 500)
+    try {
+        await formRef.value.validate()
+    } catch {
+        return
+    }
+
+    saving.value = true
+    try {
+        if (formType.value === 'create') {
+            if (!canAdd.value) {
+                ElMessage.warning('无权限新增位置')
+                return
+            }
+            const payload = {
+                parent_id: currentParent.value?.id ?? null,
+                label: form.label,
+                type: form.type,
+                address: form.address,
+                description: form.description,
+                status: form.status,
+                roleIds: form.roleIds,
+                userIds: form.userIds,
+            }
+            const res = await axios.post('/api/v1/locations/', payload)
+            const out = res?.data || {}
+            if (out?.code !== 200) {
+                ElMessage.error(out?.message || '创建失败')
+                return
+            }
+            ElMessage.success('创建成功')
+            dialogVisible.value = false
+            await fetchTree({ silent: true })
+            if (currentParent.value?.id) {
+                nextTick(() => {
+                    const node = treeRef.value?.getNode(currentParent.value?.id)
+                    if (node) node.expanded = true
+                })
+            }
+            return
         }
-    })
+
+        if (!canEdit.value) {
+            ElMessage.warning('无权限编辑位置')
+            return
+        }
+        const updatePayload = {
+            label: form.label,
+            type: form.type,
+            address: form.address,
+            description: form.description,
+            status: form.status,
+            roleIds: form.roleIds,
+            userIds: form.userIds,
+        }
+        const res = await axios.put(`/api/v1/locations/${form.id}`, updatePayload)
+        const out = res?.data || {}
+        if (out?.code !== 200) {
+            ElMessage.error(out?.message || '更新失败')
+            return
+        }
+        ElMessage.success('更新成功')
+        dialogVisible.value = false
+        await fetchTree({ silent: true })
+        if (currentNode.value?.id === form.id && out?.data) {
+            Object.assign(currentNode.value, out.data)
+        }
+    } catch (e) {
+        ElMessage.error(e?.response?.data?.message || e?.message || '保存失败')
+    } finally {
+        saving.value = false
+    }
 }
 
 const resetForm = () => {
     form.id = null
     form.label = ''
     form.code = ''
-    form.managerDept = ''
-    form.manager = ''
-    form.phone = ''
     form.address = ''
-    form.capacity = 0
-    form.area = 0
     form.description = ''
     form.status = true
+    form.roleIds = []
+    form.userIds = []
     if(formRef.value) formRef.value.resetFields()
 }
 
+const fetchRoleOptions = async () => {
+    if (!canAdd.value && !canEdit.value) return
+    rolesLoading.value = true
+    try {
+        const res = await axios.get('/api/v1/locations/bind/roles')
+        const out = res?.data || {}
+        if (out?.code === 200) {
+            roleOptions.value = Array.isArray(out?.data) ? out.data : []
+        }
+    } catch {}
+    finally { rolesLoading.value = false }
+}
+
+const mergeUserOptions = (items) => {
+    const next = Array.isArray(items) ? items : []
+    const byId = new Map()
+    for (const u of userOptions.value || []) {
+        const id = Number(u?.id)
+        if (!Number.isNaN(id)) byId.set(id, u)
+    }
+    for (const u of next) {
+        const id = Number(u?.id)
+        if (!Number.isNaN(id)) byId.set(id, u)
+    }
+    userOptions.value = Array.from(byId.values())
+}
+
+const ensureUsersByIds = async (ids) => {
+    if (!canAdd.value && !canEdit.value) return
+    const list = Array.isArray(ids) ? ids.map(v => Number(v)).filter(v => !Number.isNaN(v)) : []
+    if (!list.length) return
+    const need = []
+    const existing = new Set((userOptions.value || []).map(u => Number(u?.id)).filter(v => !Number.isNaN(v)))
+    for (const id of list) {
+        if (!existing.has(id)) need.push(id)
+    }
+    if (!need.length) return
+    usersLoading.value = true
+    try {
+        const res = await axios.get('/api/v1/locations/bind/users/by_ids', { params: { ids: need } })
+        const out = res?.data || {}
+        if (out?.code === 200) mergeUserOptions(out?.data)
+    } catch {}
+    finally { usersLoading.value = false }
+}
+
+const fetchUsers = async ({ q } = {}) => {
+    if (!canAdd.value && !canEdit.value) return
+    usersLoading.value = true
+    try {
+        const res = await axios.get('/api/v1/locations/bind/users', { params: { q: String(q ?? '') || '', page: 1, page_size: 50 } })
+        const out = res?.data || {}
+        if (out?.code === 200) mergeUserOptions(out?.data)
+    } catch {}
+    finally { usersLoading.value = false }
+}
+
+const handleUsersRemoteSearch = async (query) => {
+    usersQuery.value = String(query ?? '')
+    await fetchUsers({ q: usersQuery.value })
+}
+
+watch(dialogVisible, async (visible) => {
+    if (!visible) return
+    await fetchRoleOptions()
+    await ensureUsersByIds(form.userIds)
+})
+
 // Drag & Drop
-const allowDrag = (draggingNode) => true
-const allowDrop = (draggingNode, dropNode, type) => true
-const handleDrop = (draggingNode, dropNode, dropType, ev) => {
-    ElMessage.success(`已移动位置`)
+const allowDrag = () => canEdit.value
+const allowDrop = (draggingNode, dropNode) => {
+    if (!canEdit.value) return false
+    const dragId = draggingNode?.data?.id
+    if (!dragId) return false
+    let p = dropNode
+    while (p) {
+        if (p?.data?.id === dragId) return false
+        p = p.parent
+    }
+    return true
+}
+const handleDrop = async (draggingNode, dropNode, dropType) => {
+    if (!canEdit.value) return
+    const dragId = draggingNode?.data?.id
+    if (!dragId) return
+    const dropData = dropNode?.data || {}
+    const nextParentId = dropType === 'inner' ? dropData?.id : (dropData?.parent_id ?? null)
+
+    saving.value = true
+    try {
+        const res = await axios.post(`/api/v1/locations/${dragId}/move`, { parent_id: nextParentId })
+        const out = res?.data || {}
+        if (out?.code !== 200) {
+            ElMessage.error(out?.message || '移动失败')
+            return
+        }
+        ElMessage.success('已移动位置')
+        await fetchTree({ silent: true })
+    } catch (e) {
+        ElMessage.error(e?.response?.data?.message || e?.message || '移动失败')
+    } finally {
+        saving.value = false
+    }
 }
 
 // QR Code
@@ -625,171 +867,409 @@ const downloadQr = () => {
     qrVisible.value = false
 }
 
+onMounted(async () => {
+    store.syncAuthFromToken()
+    await store.fetchPermissions({ force: false })
+    await fetchTree()
+})
+
 </script>
 
 <style scoped>
-.location-management {
-    padding: 20px;
+.location-container {
     height: 100%;
     display: flex;
-    flex-direction: column;
-}
-.box-card {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.title {
-    font-size: 16px;
-    font-weight: bold;
+    background-color: #f0f2f5;
+    padding: 16px;
+    gap: 16px;
+    box-sizing: border-box;
 }
 
-.layout-container {
-    display: flex;
-    gap: 20px;
-    height: calc(100vh - 200px); /* Responsive height */
-    min-height: 500px;
-}
-
-/* Tree Panel */
-.tree-panel {
-    flex: 3; /* 30% */
-    border-right: 1px solid #eee;
-    padding-right: 20px;
+/* Sidebar */
+.sidebar-card {
+    width: 320px;
+    background: #fff;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
-}
-.filter-box {
-    margin-bottom: 10px;
-}
-.tree-wrapper {
-    flex: 1;
-    overflow-y: auto;
-}
-.custom-tree-node {
-    flex: 1;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     overflow: hidden;
 }
+
+.sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sidebar-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+}
+
+.sidebar-action-area {
+    padding: 16px 16px 0 16px;
+}
+
+.full-width-btn {
+    width: 100%;
+    border-style: dashed;
+}
+
+.filter-wrapper {
+    padding: 12px 16px;
+}
+
+.tree-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 16px 8px;
+}
+
+.custom-tree-node {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    padding-right: 8px;
+    overflow: hidden;
+}
+
 .node-main {
     display: flex;
     align-items: center;
-    font-size: 14px;
+    width: 100%;
+    overflow: hidden;
 }
+
 .node-icon {
-    margin-right: 6px;
-}
-.node-label {
     margin-right: 8px;
-    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.node-label {
     overflow: hidden;
     text-overflow: ellipsis;
-}
-.count-badge {
-    color: #909399;
-    font-size: 12px;
-}
-.status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    margin-left: 5px;
-}
-.status-dot.disabled {
-    background-color: #f56c6c;
-}
-.custom-tree-node.is-disabled .node-label {
-    color: #909399;
-    text-decoration: line-through;
+    white-space: nowrap;
 }
 
-/* Detail Panel */
-.detail-panel {
-    flex: 7; /* 70% */
-    padding-left: 20px;
-    overflow-y: auto;
+.status-badge {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.status-badge.off {
+    background: #fef0f0;
+    color: #f56c6c;
 }
 
-.detail-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #eee;
-}
-.header-title {
-    display: flex;
-    align-items: center;
-}
-.header-title h2 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: bold;
-}
-.ml-2 { margin-left: 10px; }
-.mt-20 { margin-top: 20px; }
-
-.section-title {
-    font-size: 14px;
-    font-weight: bold;
-    color: #303133;
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.action-card, .stats-card {
-    background-color: #fcfcfc;
-}
-.quick-actions {
+/* Main Content */
+.main-content {
+    flex: 1;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     display: flex;
     flex-direction: column;
-    gap: 10px;
-}
-.qa-btn {
-    margin-left: 0 !important;
-    justify-content: flex-start;
+    overflow: hidden;
 }
 
-.stat-item {
+.content-wrapper {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+/* Header */
+.content-header {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 10px;
-    font-size: 13px;
+    align-items: flex-start;
+    margin-bottom: 24px;
 }
-.stat-item .label { color: #909399; }
+
+.breadcrumb-area {
+    margin-bottom: 12px;
+}
+
+.title-row {
+    display: flex;
+    align-items: center;
+}
+
+.node-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: #1d2129;
+    line-height: 1.2;
+}
+
+.ml-2 { margin-left: 8px; }
+.ml-3 { margin-left: 12px; }
+
+/* Stats Row */
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    transition: all 0.3s;
+}
+.stat-card:hover {
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #fff;
+    margin-right: 16px;
+}
+.bg-blue { background: linear-gradient(135deg, #409eff, #79bbff); }
+.bg-green { background: linear-gradient(135deg, #67c23a, #95d475); }
+.bg-purple { background: linear-gradient(135deg, #722ed1, #b37feb); }
+.bg-orange { background: linear-gradient(135deg, #e6a23c, #f3d19e); }
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+}
+.stat-label {
+    font-size: 13px;
+    color: #909399;
+    margin-bottom: 4px;
+}
+.stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #303133;
+}
+
+/* Details Grid */
+.details-grid {
+    display: flex;
+    gap: 24px;
+    flex: 1;
+}
+
+.info-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.device-section {
+    flex: 1.5;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    position: relative;
+    padding-left: 12px;
+}
+.section-title::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 16px;
+    background: #409eff;
+    border-radius: 2px;
+}
+
+.user-info, .phone-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.empty-placeholder {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #909399;
+    background: #fff;
+    border-radius: 8px;
+}
 
 /* QR Code */
 .qr-container {
     text-align: center;
+    padding: 10px;
+}
+.qr-header {
+    margin-bottom: 16px;
 }
 .qr-title {
+    font-size: 18px;
     font-weight: bold;
-    margin-bottom: 10px;
+    color: #303133;
+    margin-bottom: 4px;
 }
-.qr-code-mock {
-    margin: 10px 0;
+.qr-subtitle {
+    font-size: 13px;
+    color: #909399;
 }
-.qr-info {
+.qr-code-box {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 8px;
+    display: inline-block;
+    margin-bottom: 16px;
+}
+.qr-img {
+    display: block;
+    width: 180px;
+    height: 180px;
+}
+.qr-meta {
+    background: #f0f9eb;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+.meta-item {
+    font-size: 16px;
+    font-family: monospace;
+    font-weight: 600;
+    color: #67c23a;
+    margin-bottom: 4px;
+}
+.meta-hint {
     font-size: 12px;
-    color: #666;
-}
-.qr-hint {
-    font-size: 12px;
-    color: #999;
-    margin-top: 5px;
+    color: #909399;
 }
 
-.empty-state {
-    height: 100%;
+/* Responsive */
+@media (max-width: 1200px) {
+    .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .details-grid {
+        flex-direction: column;
+    }
+}
+</style>
+
+<style>
+/* Global styles for Dialog (append-to-body) */
+.location-dialog {
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: 0 12px 32px 4px rgba(0, 0, 0, 0.08), 0 8px 20px rgba(0, 0, 0, 0.04) !important;
+}
+.location-dialog .el-dialog__header {
+    margin-right: 0;
+    padding: 20px 24px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+}
+.location-dialog .el-dialog__title {
+    font-weight: 600;
+    font-size: 18px;
+    color: #1d2129;
+}
+.location-dialog .el-dialog__body {
+    padding: 24px !important;
+}
+.location-dialog .el-dialog__footer {
+    padding: 16px 24px;
+    border-top: 1px solid #f0f0f0;
+    background: #fcfcfc;
+}
+
+/* Form Styles */
+.location-form .el-form-item__label {
+    font-weight: 500;
+}
+.location-form .el-input__wrapper {
+    box-shadow: 0 0 0 1px #dcdfe6 inset;
+}
+.location-form .el-input__wrapper:hover {
+    box-shadow: 0 0 0 1px #c0c4cc inset;
+}
+.location-form .el-input__wrapper.is-focus {
+    box-shadow: 0 0 0 1px #409eff inset !important; 
+}
+
+.code-input .el-input__wrapper {
+    background-color: #f5f7fa;
+}
+
+.form-section {
+    padding: 0 4px;
+}
+
+.more-info-box {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px 20px 4px 20px;
+    margin-top: 24px;
+    border: 1px solid #eee;
+}
+
+.info-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #606266;
+    margin-bottom: 16px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+}
+
+.dialog-footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.save-btn {
+    padding: 8px 24px;
+    font-weight: 500;
+}
+
+.mt-3 {
+    margin-top: 12px;
 }
 </style>

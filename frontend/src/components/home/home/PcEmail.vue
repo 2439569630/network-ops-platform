@@ -63,12 +63,17 @@ import { homeDataStore } from './data';
 const store = homeDataStore();
 const emailFormRef = ref(null);
 
+const normalizeEmailInput = (value) => {
+  return String(value ?? '').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+};
+
 const emailRules = {
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     {
       validator: (rule, value, cb) => {
-        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
+        const normalized = normalizeEmailInput(value);
+        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
         if (!ok) return cb(new Error('邮箱格式不正确'));
         cb();
       },
@@ -151,4 +156,3 @@ onMounted(() => {
   font-size: 13px;
 }
 </style>
-

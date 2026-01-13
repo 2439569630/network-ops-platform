@@ -4,7 +4,7 @@
       <div class="page-title">
         <el-icon class="mr-2"><Bell /></el-icon>
         <span>消息中心</span>
-        <el-tooltip content="告警、通知与推送设置" placement="right">
+        <el-tooltip content="设备通知、站内消息与推送设置" placement="right">
           <el-icon class="info-icon"><InfoFilled /></el-icon>
         </el-tooltip>
       </div>
@@ -40,7 +40,7 @@
             <el-col :xs="24" :sm="12" :md="8">
               <el-card shadow="never" class="stat-card">
                 <div class="stat-value">{{ alertStats.total }}</div>
-                <div class="stat-label">告警总数（本页缓存）</div>
+                <div class="stat-label">通知总数（本页缓存）</div>
               </el-card>
             </el-col>
             <el-col :xs="24" :sm="12" :md="8">
@@ -52,7 +52,7 @@
             <el-col :xs="24" :sm="12" :md="8">
               <el-card shadow="never" class="stat-card">
                 <div class="stat-value stat-value--warning">{{ alertStats.warning }}</div>
-                <div class="stat-label">告警</div>
+                <div class="stat-label">警告</div>
               </el-card>
             </el-col>
           </el-row>
@@ -61,7 +61,7 @@
             v-if="wsStatus === 'forbidden'"
             type="warning"
             show-icon
-            title="无权限订阅实时告警"
+            title="无权限订阅设备通知"
             class="mb-12"
           />
 
@@ -109,7 +109,7 @@
                     </div>
                   </el-timeline-item>
                 </el-timeline>
-                <el-empty v-if="timelineAlerts.length === 0" description="暂无告警" />
+                <el-empty v-if="timelineAlerts.length === 0" description="暂无通知" />
               </el-card>
             </div>
 
@@ -120,7 +120,7 @@
               stripe
               height="100%"
               class="table table--fill"
-              :empty-text="wsStatus === 'connected' ? '暂无实时告警' : '未连接或无数据'"
+              :empty-text="wsStatus === 'connected' ? '暂无设备通知' : '未连接或无数据'"
             >
               <el-table-column prop="time" label="时间" width="180">
                 <template #default="scope">
@@ -147,7 +147,7 @@
                 <el-switch v-model="siteMessagesUnreadOnly" inline-prompt active-text="未读" inactive-text="全部" @change="loadSiteMessages" />
               </el-space>
               <div class="toolbar__right">
-                <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="openPublishDialog">发布通知</el-button>
+                <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="goPublishPage">发布通知</el-button>
               </div>
             </div>
           </div>
@@ -189,34 +189,6 @@
               </div>
             </div>
           </div>
-
-          <el-dialog v-model="publishDialogVisible" title="发布站内消息" width="560px">
-            <el-form label-position="top">
-              <el-form-item label="标题">
-                <el-input v-model="publishForm.title" maxlength="120" show-word-limit />
-              </el-form-item>
-              <el-form-item label="范围">
-                <el-space wrap alignment="center">
-                  <el-switch v-model="publishForm.is_global" inline-prompt active-text="全站" inactive-text="指定用户" />
-                  <el-input
-                    v-if="!publishForm.is_global"
-                    v-model="publishForm.target_user_id"
-                    placeholder="用户ID"
-                    style="width: 180px"
-                  />
-                </el-space>
-              </el-form-item>
-              <el-form-item label="内容">
-                <el-input v-model="publishForm.content" type="textarea" :rows="6" maxlength="2000" show-word-limit />
-              </el-form-item>
-            </el-form>
-            <template #footer>
-              <el-space>
-                <el-button @click="publishDialogVisible = false">取消</el-button>
-                <el-button type="primary" :loading="publishSubmitting" @click="submitPublish">发布</el-button>
-              </el-space>
-            </template>
-          </el-dialog>
         </div>
 
         <div v-show="activeTab === 'notifications'" class="tab-body">
@@ -288,11 +260,7 @@
                   </el-form-item>
 
                   <template v-if="config.enable_email">
-                    <el-form-item label="使用全局配置" v-if="canUseGlobal">
-                      <el-switch v-model="config.use_global_email" :disabled="!canEditConfig" />
-                    </el-form-item>
-
-                    <el-row v-if="!config.use_global_email" :gutter="12">
+                    <el-row :gutter="12">
                       <el-col :span="12">
                         <el-form-item label="SMTP 服务器">
                           <el-input v-model="config.email_config.host" placeholder="smtp.example.com" :disabled="!canEditConfig" />
@@ -382,20 +350,22 @@
 import { ref, onMounted, onUnmounted, reactive, computed, nextTick, watch } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
-import Cookies from 'js-cookie';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
+import { messageCenterDataStore } from '@/components/MessageCenter/date';
 import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus/icons-vue';
 
 const activeTab = ref('site');
 const notifications = ref([]);
-const alerts = ref([]); // 实时告警列表
+const alerts = ref([]);
 const loading = ref(false);
 const configLoading = ref(false);
 const store = homeDataStore();
+const msgStore = messageCenterDataStore();
 const router = useRouter();
-const siteMessages = computed(() => (Array.isArray(store.siteMessages) ? store.siteMessages : []));
-const siteLoading = computed(() => Boolean(store.siteMessagesLoading));
+const route = useRoute();
+const siteMessages = computed(() => (Array.isArray(msgStore.siteMessages) ? msgStore.siteMessages : []));
+const siteLoading = computed(() => Boolean(msgStore.siteMessagesLoading));
 const isSuper = computed(() => Boolean(store.isSuper));
 const perms = computed(() => (Array.isArray(store.permissions) ? store.permissions.map(String) : []));
 const hasPerm = (p) => (isSuper.value ? true : perms.value.includes(String(p)));
@@ -405,19 +375,13 @@ const canViewHistory = computed(() => hasPerm('sys:notify:history'));
 const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
 const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
 const canTest = computed(() => hasPerm('sys:notify:test'));
-const canSendSiteMessages = computed(() => isSuper.value && hasPerm('sys:notify:global'));
-const canUseGlobal = computed(() => {
-    return hasPerm('sys:notify:global');
-});
+const canSendSiteMessages = computed(() => isSuper.value);
 const canSubscribeAlerts = computed(() => {
     return hasPerm('sys:alert:subscribe');
 });
 const testEmailTarget = ref('');
 const isDev = Boolean(import.meta?.env?.DEV);
-let ws = null; // WebSocket 实例
-let wsReconnectAttempted = false;
-let wsReconnectTimer = null;
-const wsStatus = ref('disconnected');
+const wsStatus = computed(() => String(store.alertsWsStatus || 'disconnected'));
 
 const alertsLevel = ref('all');
 const alertsKeyword = ref('');
@@ -429,18 +393,10 @@ const notificationsKeyword = ref('');
 
 const siteMessagesKeyword = ref('');
 const siteMessagesUnreadOnly = computed({
-    get: () => Boolean(store.siteMessagesUnreadOnly),
+    get: () => Boolean(msgStore.siteMessagesUnreadOnly),
     set: (v) => {
-        store.siteMessagesUnreadOnly = Boolean(v);
+        msgStore.siteMessagesUnreadOnly = Boolean(v);
     },
-});
-const publishDialogVisible = ref(false);
-const publishSubmitting = ref(false);
-const publishForm = reactive({
-    title: '',
-    content: '',
-    is_global: true,
-    target_user_id: '',
 });
 
 const normalizeText = (v) => String(v ?? '').trim().toLowerCase();
@@ -552,81 +508,10 @@ const getAlertLevelType = (level) => {
 const clearAlerts = () => {
     alerts.value = [];
 };
-
-const initAlertWebSocket = () => {
-    if (ws) {
-        ws.__manualClose = true;
-        ws.close();
-        ws = null;
-    }
-
-    if (!canSubscribeAlerts.value) {
-        wsStatus.value = 'forbidden';
-        return;
-    }
-
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsHost = window.location.hostname
-    const wsPort = window.location.port ? `:${window.location.port}` : ''
-    const token = Cookies.get('token')
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/notifications/ws/alerts?token=${encodeURIComponent(token)}`
-    
-    try {
-        wsStatus.value = 'connecting';
-        ws = new WebSocket(wsUrl);
-        ws.__manualClose = false;
-        ws.onopen = () => {
-            wsStatus.value = 'connected';
-            wsReconnectAttempted = false;
-        };
-        ws.onmessage = (event) => {
-            try {
-                if (alertsPaused.value) return;
-                const alert = JSON.parse(event.data);
-                alerts.value.unshift(alert);
-                if (alerts.value.length > 500) {
-                    alerts.value.pop();
-                }
-            } catch (e) {
-                wsStatus.value = 'error';
-            }
-        };
-        ws.onclose = async (e) => {
-            if (ws?.__manualClose) return;
-
-            const closeCode = Number(e?.code || 0);
-            if (closeCode === 4003) {
-                wsStatus.value = 'forbidden';
-                ElMessage.warning('无权订阅实时告警');
-                return;
-            }
-            if (closeCode !== 4001) return;
-            if (wsReconnectAttempted) return;
-            wsReconnectAttempted = true;
-
-            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-            wsReconnectTimer = setTimeout(async () => {
-                try {
-                    const res = await axios.post('/api/v1/auth/refresh');
-                    const nextToken = res?.data?.token;
-                    if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' });
-                    initAlertWebSocket();
-                } catch (err) {
-                    return;
-                }
-            }, 500);
-        };
-        ws.onerror = () => {
-            wsStatus.value = 'error';
-        };
-    } catch (e) {
-        wsStatus.value = 'error';
-    }
-}
+const lastHandledAlertSeq = ref(0);
 
 const config = reactive({
     enable_email: false,
-    use_global_email: false,
     email_config: {
         host: '',
         port: '',
@@ -728,8 +613,8 @@ const fetchNotifications = async () => {
 };
 
 const loadSiteMessages = async () => {
-    await store.fetchLatestSiteMessages();
-    await store.fetchSiteMessageUnreadCount();
+    await msgStore.fetchLatestSiteMessages();
+    await msgStore.fetchSiteMessageUnreadCount();
 };
 
 const markSiteMessageRead = async (row) => {
@@ -738,8 +623,8 @@ const markSiteMessageRead = async (row) => {
     try {
         const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/read`);
         if (res?.data?.code === 200) {
-            store.applySiteMessageReadState(id, true);
-            store.fetchSiteMessageUnreadCount();
+            msgStore.applySiteMessageReadState(id, true);
+            msgStore.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
         }
@@ -754,8 +639,8 @@ const markSiteMessageUnread = async (row) => {
     try {
         const res = await axios.post(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}/unread`);
         if (res?.data?.code === 200) {
-            store.applySiteMessageReadState(id, false);
-            store.fetchSiteMessageUnreadCount();
+            msgStore.applySiteMessageReadState(id, false);
+            msgStore.fetchSiteMessageUnreadCount();
         } else {
             ElMessage.error(res?.data?.message || '操作失败');
         }
@@ -764,38 +649,8 @@ const markSiteMessageUnread = async (row) => {
     }
 };
 
-const openPublishDialog = () => {
-    publishForm.title = '';
-    publishForm.content = '';
-    publishForm.is_global = true;
-    publishForm.target_user_id = '';
-    publishDialogVisible.value = true;
-};
-
-const submitPublish = async () => {
-    if (publishSubmitting.value) return;
-    publishSubmitting.value = true;
-    try {
-        const payload = {
-            title: publishForm.title,
-            content: publishForm.content,
-            is_global: !!publishForm.is_global,
-            target_user_id: publishForm.is_global ? null : (publishForm.target_user_id ? Number(publishForm.target_user_id) : null),
-        };
-        const res = await axios.post('/api/v1/notifications/site-messages', payload);
-        if (res?.data?.code === 200) {
-            ElMessage.success('发布成功');
-            publishDialogVisible.value = false;
-            if (res?.data?.data) store.upsertSiteMessage(res.data.data);
-            store.fetchSiteMessageUnreadCount();
-        } else {
-            ElMessage.error(res?.data?.message || '发布失败');
-        }
-    } catch (e) {
-        ElMessage.error('发布失败');
-    } finally {
-        publishSubmitting.value = false;
-    }
+const goPublishPage = () => {
+    router.push({ name: 'site-message-publish' });
 };
 
 const openSiteMessageDetail = (row) => {
@@ -868,10 +723,14 @@ const handleTest = async (channel) => {
 onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
+    const tab = String(route.query?.tab || '').trim();
+    if (['site', 'alerts', 'notifications', 'settings'].includes(tab)) {
+        activeTab.value = tab;
+    }
     if (canViewHistory.value) fetchNotifications();
-    if (!Array.isArray(store.siteMessages) || store.siteMessages.length === 0) loadSiteMessages();
+    if (!Array.isArray(msgStore.siteMessages) || msgStore.siteMessages.length === 0) loadSiteMessages();
     if (canViewConfig.value) fetchConfig();
-    initAlertWebSocket(); // 启动 WS
+    await store.startAlertsRealtime();
     if (isDev) {
         setTimeout(() => {
             if (!Array.isArray(alerts.value) || alerts.value.length === 0) {
@@ -881,16 +740,30 @@ onMounted(async () => {
     }
 });
 
-onUnmounted(() => {
-    if (ws) {
-        ws.__manualClose = true;
-        ws.close();
+watch(
+    () => route.query?.tab,
+    (tab) => {
+        const t = String(tab || '').trim();
+        if (['site', 'alerts', 'notifications', 'settings'].includes(t)) {
+            activeTab.value = t;
+        }
     }
-    if (wsReconnectTimer) {
-        clearTimeout(wsReconnectTimer);
-        wsReconnectTimer = null;
+);
+
+watch(
+    () => store.alertLastSeq,
+    () => {
+        const seq = Number(store.alertLastSeq || 0);
+        if (!Number.isFinite(seq) || seq <= 0) return;
+        if (seq <= Number(lastHandledAlertSeq.value || 0)) return;
+        lastHandledAlertSeq.value = seq;
+        if (alertsPaused.value) return;
+        const alert = store.alertLastReceived;
+        if (!alert || typeof alert !== 'object') return;
+        alerts.value.unshift(alert);
+        if (alerts.value.length > 500) alerts.value.pop();
     }
-});
+);
 
 const tabSwitcherRef = ref(null);
 const indicatorLeft = ref(0);
@@ -900,8 +773,8 @@ let tabResizeObserver;
 
 const visibleTabs = computed(() => {
     const tabs = [{ name: 'site', label: '站内消息', icon: Bell }];
-    if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '实时告警', icon: WarningFilled });
-    if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
+    if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '设备通知（实时）', icon: WarningFilled });
+    if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知（历史）', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
     return tabs;
 });

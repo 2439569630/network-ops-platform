@@ -59,7 +59,7 @@
         <el-tabs
           v-else
           v-model="activeTab"
-          tab-position="left"
+          :tab-position="tabPosition"
           class="group-tabs"
         >
           <el-tab-pane
@@ -146,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 import { Check, CopyDocument, Refresh, Search } from '@element-plus/icons-vue';
@@ -160,6 +160,7 @@ const onlyChanged = ref(false);
 const savingKeys = ref({});
 const savingAll = ref(false);
 const originalValues = ref({});
+const tabPosition = ref('left'); // 动态控制 Tabs 位置
 
 const groupedConfigs = computed(() => {
   const groups = {};
@@ -345,9 +346,26 @@ const handleTestGlobalEmail = async () => {
         ElMessage.warning('请输入测试接收邮箱');
         return;
     }
+    const hostItem = configs.value.find(i => i.key === 'email_host');
+    const portItem = configs.value.find(i => i.key === 'email_port');
+    const usernameItem = configs.value.find(i => i.key === 'email_username');
+    const passwordItem = configs.value.find(i => i.key === 'email_password');
+    const nicknameItem = configs.value.find(i => i.key === 'email_nickname');
+    if (!hostItem?.value || !portItem?.value || !usernameItem?.value || !passwordItem?.value) {
+        ElMessage.warning('请先完善全局邮箱配置');
+        return;
+    }
     const payload = {
         channel: 'email',
-        config: { use_global_email: true },
+        config: {
+            email_config: {
+                host: hostItem.value,
+                port: portItem.value,
+                username: usernameItem.value,
+                password: passwordItem.value,
+            },
+            email_nickname: nicknameItem?.value || '',
+        },
         target: testEmailTarget.value
     };
     await sendTestRequest(payload);
@@ -381,8 +399,23 @@ const sendTestRequest = async (payload) => {
     }
 };
 
+// Responsive logic
+const handleResize = () => {
+    if (window.innerWidth <= 768) {
+        tabPosition.value = 'top';
+    } else {
+        tabPosition.value = 'left';
+    }
+};
+
 onMounted(() => {
   fetchConfigs();
+  handleResize();
+  window.addEventListener('resize', handleResize);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResize);
 });
 </script>
 
@@ -569,15 +602,179 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .global-config-page {
+    padding: 0;
+    gap: 0;
+    height: auto;
+    min-height: 100vh;
+    background-color: #f5f7fa;
+  }
+
+  .page-header {
+    border-radius: 0 0 20px 20px;
+    margin-bottom: 16px;
+    padding: 20px 16px;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+
   .header-main {
     flex-direction: column;
     align-items: stretch;
+    gap: 16px;
   }
+
+  .header-title .title {
+    font-size: 22px;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .search {
     width: 100%;
   }
+
+  .action-group {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .main-card {
+    border-radius: 20px 20px 0 0;
+    border: none;
+    flex: 1;
+    margin: 0;
+  }
+
+  /* Card Header Mobile */
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .card-header .el-text {
+      display: none;
+  }
+
+  /* Tabs Mobile */
+  .group-tabs {
+      height: auto;
+  }
+  
   .group-tabs :deep(.el-tabs__header) {
-    width: 140px;
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 16px;
+    float: none;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 10px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+  }
+
+  .group-panel {
+      padding: 0 4px;
+  }
+
+  .group-tabs :deep(.el-tabs__nav-wrap) {
+      padding: 0 16px;
+      mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  }
+  
+  .group-tabs :deep(.el-tabs__nav-scroll) {
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 0;
+      scrollbar-width: none; /* Firefox */
+  }
+  
+  .group-tabs :deep(.el-tabs__nav-scroll)::-webkit-scrollbar {
+      display: none; /* Chrome/Safari */
+  }
+  
+  .group-tabs :deep(.el-tabs__nav) {
+      float: none;
+      display: flex;
+      gap: 8px;
+  }
+
+  .group-tabs :deep(.el-tabs__item) {
+    height: 32px;
+    margin: 0;
+    padding: 0 16px;
+    border-radius: 16px;
+    background-color: #f5f7fa;
+    color: #606266;
+    font-size: 13px;
+    flex-shrink: 0;
+    border: none;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .group-tabs :deep(.el-tabs__item.is-active) {
+      background-color: var(--el-color-primary);
+      color: #fff;
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(64, 158, 255, 0.3);
+  }
+
+  
+  .group-tabs :deep(.el-tabs__active-bar) {
+      display: none;
+  }
+  
+  .group-tabs :deep(.el-tabs__content) {
+      padding: 0 4px 40px 4px; /* Bottom padding for mobile */
+  }
+
+  /* Config Card Mobile */
+  .config-card {
+      padding: 16px;
+      margin-bottom: 12px;
+      min-height: auto;
+  }
+  
+  .meta .label-row {
+      flex-direction: column;
+      gap: 4px;
+  }
+  
+  .meta-actions {
+      width: 100%;
+      justify-content: space-between;
+      margin-top: 4px;
+  }
+  
+  .control {
+      flex-direction: column;
+      align-items: stretch;
+      margin-top: 12px;
+  }
+  
+  .control .el-button {
+      width: 100%;
+  }
+  
+  .test-row {
+      flex-direction: column;
+      align-items: stretch;
+  }
+  .test-row .el-input {
+      max-width: 100% !important;
   }
 }
 </style>

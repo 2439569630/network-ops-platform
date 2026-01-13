@@ -4,6 +4,225 @@
     </div>
 </template>
 
+<script setup>
+import { h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElNotification } from 'element-plus'
+import Cookies from 'js-cookie'
+import { jwtDecode } from 'jwt-decode'
+import { homeDataStore } from '@/components/home/home/data'
+import { messageCenterDataStore } from '@/components/MessageCenter/date'
+
+const router = useRouter()
+const store = homeDataStore()
+const msgStore = messageCenterDataStore()
+
+let authGuardTimer = null
+let authRefreshListener = null
+let notifyInitialized = false
+const lastNotifiedSiteMessageId = ref('')
+const currentUserId = ref(null)
+
+const syncCurrentUserIdFromToken = () => {
+  const token = Cookies.get('token')
+  if (!token) {
+    currentUserId.value = null
+    return
+  }
+  try {
+    const decoded = jwtDecode(token)
+    const id = Number(decoded?.id)
+    currentUserId.value = Number.isFinite(id) ? id : null
+  } catch {
+    currentUserId.value = null
+  }
+}
+
+const buildSnippet = (content) => {
+  const raw = String(content ?? '').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  return raw.length > 60 ? `${raw.slice(0, 60)}...` : raw
+}
+
+const truncateText = (value, maxLen) => {
+  const raw = String(value ?? '').replace(/\s+/g, ' ').trim()
+  const n = Number(maxLen || 0)
+  if (!raw) return ''
+  if (!Number.isFinite(n) || n <= 0) return raw
+  return raw.length > n ? `${raw.slice(0, n)}...` : raw
+}
+
+const notifySiteMessage = (msg) => {
+  const id = msg?.id
+  if (!id) return
+  if (String(lastNotifiedSiteMessageId.value || '') === String(id)) return
+  const senderId = Number(msg?.sender_id)
+  if (Number.isFinite(senderId) && currentUserId.value !== null && senderId === currentUserId.value) return
+  const current = router.currentRoute?.value
+  if (current?.name === 'site-message-detail' && String(current?.params?.id || '') === String(id)) return
+
+  const titleText = truncateText(msg?.title || '站内消息', 28)
+  const contentText = truncateText(msg?.content, 80)
+
+  const notif = ElNotification({
+    title: '站内消息',
+    message: h(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+      [
+        h('div', { style: { fontWeight: '600', lineHeight: '18px' } }, titleText),
+        h('div', { style: { lineHeight: '18px' } }, contentText),
+        h('div', { style: { fontSize: '12px', color: '#909399', lineHeight: '16px' } }, '点击查看详情'),
+      ]
+    ),
+    type: 'info',
+    duration: 8000,
+    onClick: () => {
+      try {
+        notif.close()
+      } catch {}
+      router.push({ name: 'site-message-detail', params: { id: String(id) } })
+    },
+  })
+
+  lastNotifiedSiteMessageId.value = String(id)
+  try {
+    sessionStorage.setItem('siteMessage:lastNotifiedId', String(id))
+  } catch {}
+}
+
+const normalizeLevel = (level) => String(level || '').trim().toLowerCase()
+
+const notifyAlert = (alert) => {
+  const level = normalizeLevel(alert?.level)
+  const type = level === 'error' ? 'error' : level === 'warning' ? 'warning' : 'info'
+
+  const deviceName = String(alert?.device_name || '').trim()
+  const ipv4 = String(alert?.ipv4 || '').trim()
+  const source = String(alert?.source || '系统').trim()
+  const titleCore = deviceName ? deviceName : source
+  const title = level ? `${level.toUpperCase()} - ${titleCore}` : titleCore
+
+  const message = String(alert?.description || alert?.message || '').trim() || (ipv4 ? `IP: ${ipv4}` : '')
+  if (!message) return
+
+  const notif = ElNotification({
+    title,
+    message: buildSnippet(message),
+    type,
+    duration: level === 'error' ? 12000 : 9000,
+    onClick: () => {
+      try {
+        notif.close()
+      } catch {}
+      router.push({ name: 'message', query: { tab: 'alerts' } })
+    },
+  })
+}
+
+const startRealtime = async () => {
+  const token = Cookies.get('token')
+  if (!token) return
+  syncCurrentUserIdFromToken()
+  store.syncAuthFromToken()
+  await store.fetchPermissions()
+  await msgStore.startSiteMessageRealtime()
+  if (!notifyInitialized) {
+    await msgStore.fetchLatestSiteMessages()
+    const latestId = msgStore.siteMessages?.[0]?.id
+    if (latestId) {
+      lastNotifiedSiteMessageId.value = String(latestId)
+      try {
+        sessionStorage.setItem('siteMessage:lastNotifiedId', String(latestId))
+      } catch {}
+    } else {
+      try {
+        const cached = sessionStorage.getItem('siteMessage:lastNotifiedId')
+        if (cached) lastNotifiedSiteMessageId.value = String(cached)
+      } catch {}
+    }
+    notifyInitialized = true
+  }
+  await store.startAlertsRealtime()
+}
+
+const stopRealtime = () => {
+  msgStore.stopSiteMessageRealtime()
+  store.stopAlertsRealtime()
+  notifyInitialized = false
+}
+
+onMounted(async () => {
+  syncCurrentUserIdFromToken()
+  await startRealtime()
+
+  authRefreshListener = async () => {
+    await startRealtime()
+  }
+  window.addEventListener('auth:refreshed', authRefreshListener)
+
+  authGuardTimer = setInterval(async () => {
+    if (!Cookies.get('token')) {
+      stopRealtime()
+      return
+    }
+    syncCurrentUserIdFromToken()
+    await startRealtime()
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (authGuardTimer) {
+    clearInterval(authGuardTimer)
+    authGuardTimer = null
+  }
+  if (authRefreshListener) {
+    window.removeEventListener('auth:refreshed', authRefreshListener)
+    authRefreshListener = null
+  }
+  stopRealtime()
+})
+
+watch(
+  () => msgStore.siteMessageLastSeq,
+  () => {
+    const msg = msgStore.siteMessageLastCreated
+    if (msg) notifySiteMessage(msg)
+  }
+)
+
+watch(
+  () => msgStore.siteMessageUnreadCount,
+  async (newCount, oldCount) => {
+    if (!notifyInitialized) return
+    const n = Number(newCount || 0)
+    const o = Number(oldCount || 0)
+    if (!Number.isFinite(n) || !Number.isFinite(o)) return
+    if (n <= o) return
+    await msgStore.fetchLatestSiteMessages()
+    const list = Array.isArray(msgStore.siteMessages) ? msgStore.siteMessages : []
+    const isSelfSent = (m) => {
+      const senderId = Number(m?.sender_id)
+      if (!Number.isFinite(senderId) || currentUserId.value === null) return false
+      return senderId === currentUserId.value
+    }
+    const first =
+      list.find((m) => m && typeof m === 'object' && !m.is_read && !isSelfSent(m)) ||
+      list.find((m) => m && typeof m === 'object' && !isSelfSent(m)) ||
+      null
+    if (first) notifySiteMessage(first)
+  }
+)
+
+watch(
+  () => store.alertLastSeq,
+  () => {
+    const alert = store.alertLastReceived
+    if (alert) notifyAlert(alert)
+  }
+)
+</script>
+
 <style>
 * {
     margin: 0;

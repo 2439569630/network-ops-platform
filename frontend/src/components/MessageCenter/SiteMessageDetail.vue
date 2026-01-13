@@ -36,11 +36,11 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
-import { homeDataStore } from '@/components/home/home/data';
+import { messageCenterDataStore } from '@/components/MessageCenter/date';
 
 const route = useRoute();
 const router = useRouter();
-const store = homeDataStore();
+const store = messageCenterDataStore();
 
 const messageId = computed(() => Number(route.params.id));
 const loading = ref(false);

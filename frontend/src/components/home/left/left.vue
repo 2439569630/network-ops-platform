@@ -18,7 +18,7 @@
 
                     <el-menu-item index="message" @click="goto('/user/message')">
                          <el-icon><Message /></el-icon>
-                         <el-badge :is-dot="store.siteMessageUnreadCount > 0" class="menu-badge-text">
+                         <el-badge :is-dot="msgStore.siteMessageUnreadCount > 0" class="menu-badge-text">
                             <span>消息中心</span>
                          </el-badge>
                     </el-menu-item>
@@ -104,6 +104,7 @@ import { onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import Cookies from 'js-cookie';
 import axios from '@/axios/axios';
 import { homeDataStore } from '@/components/home/home/data';
+import { messageCenterDataStore } from '@/components/MessageCenter/date';
 import { 
     UserFilled, Monitor, Connection, Message, Setting, SwitchButton, Odometer, 
     OfficeBuilding, Location, User, DataLine, School, Avatar, Tools,
@@ -113,6 +114,7 @@ import {
 const router = useRouter();
 const route = useRoute();
 const store = homeDataStore();
+const msgStore = messageCenterDataStore();
 const isSuper = computed(() => Boolean(store.isSuper));
 const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));
 
@@ -169,11 +171,9 @@ const syncAuthAndPerms = async (options = {}) => {
   const force = Boolean(options.force);
   store.syncAuthFromToken();
   if (!Cookies.get('token')) {
-    store.stopSiteMessageRealtime();
     return;
   }
   await store.fetchPermissions({ force });
-  store.startSiteMessageRealtime();
 };
 
 onMounted(async () => {
@@ -207,7 +207,6 @@ onBeforeUnmount(() => {
     window.removeEventListener('auth:refreshed', authRefreshListener);
     authRefreshListener = null;
   }
-  store.stopSiteMessageRealtime();
 });
 
 watch(
