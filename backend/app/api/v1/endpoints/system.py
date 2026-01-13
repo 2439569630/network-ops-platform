@@ -14,10 +14,45 @@ class ConfigUpdate(BaseModel):
     key: str
     value: str
 
+_DEFAULT_CONFIG_META = {
+    "email_host": {"group_name": "notification", "description": "邮箱 SMTP 地址"},
+    "email_port": {"group_name": "notification", "description": "邮箱 SMTP 端口"},
+    "email_username": {"group_name": "notification", "description": "邮箱账号"},
+    "email_password": {"group_name": "notification", "description": "邮箱密码"},
+    "email_nickname": {"group_name": "notification", "description": "邮件发件人昵称"},
+    "pushplus_token": {"group_name": "notification", "description": "PushPlus Token"},
+}
+
+async def _ensure_default_configs_exist(keys: list[str]) -> None:
+    if not keys:
+        return
+    rows = await db.fetch_all(
+        "SELECT key FROM system_settings WHERE key = ANY($1::text[])",
+        [str(k) for k in keys],
+    )
+    existing = {str(r.get("key")) for r in (rows or [])}
+    missing = [k for k in keys if k not in existing]
+    for key in missing:
+        meta = _DEFAULT_CONFIG_META.get(key) or {}
+        group_name = str(meta.get("group_name") or "system")
+        description = meta.get("description")
+        await db.execute(
+            """
+            INSERT INTO system_settings (key, value, description, group_name)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (key) DO NOTHING
+            """,
+            str(key),
+            "",
+            description,
+            group_name,
+        )
+
 @router.get("/config/list", response_model=dict)
 async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]))):
     """获取所有系统配置 (仅管理员)"""
     try:
+        await _ensure_default_configs_exist(["email_nickname"])
         sql = """
             SELECT key, value, description, group_name
             FROM system_settings
@@ -35,8 +70,20 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
     try:
         if data.key == "trap_autostart":
             return {"code": 400, "message": "trap_autostart 已废弃，无法更新"}
-        sql = "UPDATE system_settings SET value = $1 WHERE key = $2"
-        await db.execute(sql, data.value, data.key)
+        meta = _DEFAULT_CONFIG_META.get(str(data.key)) or {}
+        group_name = str(meta.get("group_name") or "system")
+        description = meta.get("description")
+        await db.execute(
+            """
+            INSERT INTO system_settings (key, value, description, group_name)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """,
+            str(data.key),
+            str(data.value),
+            description,
+            group_name,
+        )
         
         # 刷新内存缓存
         await SystemConfig.refresh()

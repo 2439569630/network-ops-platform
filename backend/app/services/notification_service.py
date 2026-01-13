@@ -3,8 +3,8 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from app.core.database import db
-from app.core.system_config import SystemConfig
 from app.core.redis import redis_manager
+from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email, send_pushplus, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
 
@@ -18,6 +18,9 @@ class NotificationService:
     SITE_MESSAGES_CHANNEL_GLOBAL = "site_messages:global"
     SITE_MESSAGES_CHANNEL_USER_PREFIX = "site_messages:user:"
     _site_message_tables_ready = False
+    _user_notification_config_table_ready = False
+    SITE_MESSAGE_EMAIL_MAX_RECIPIENTS = 500
+    SITE_MESSAGE_EMAIL_CONCURRENCY = 10
 
     @staticmethod
     async def get_history(can_view_all: bool, user_id: int) -> List[dict]:
@@ -77,6 +80,32 @@ class NotificationService:
             "CREATE INDEX IF NOT EXISTS idx_site_message_reads_user_readat ON site_message_reads(user_id, read_at DESC)"
         )
         NotificationService._site_message_tables_ready = True
+
+    @staticmethod
+    async def _ensure_user_notification_config_table():
+        if NotificationService._user_notification_config_table_ready:
+            return
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_notification_config (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                enable_email BOOLEAN NOT NULL DEFAULT FALSE,
+                email_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+                enable_pushplus BOOLEAN NOT NULL DEFAULT FALSE,
+                pushplus_token TEXT NOT NULL DEFAULT '',
+                enable_http BOOLEAN NOT NULL DEFAULT FALSE,
+                http_url TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+
+        try:
+            await db.execute("ALTER TABLE user_notification_config DROP COLUMN IF EXISTS use_global_email")
+        except Exception as e:
+            logger.error(f"移除 user_notification_config.use_global_email 失败: {e}")
+
+        NotificationService._user_notification_config_table_ready = True
 
     @staticmethod
     async def list_site_messages(
@@ -242,6 +271,12 @@ class NotificationService:
         return f"{NotificationService.SITE_MESSAGES_CHANNEL_USER_PREFIX}{int(user_id)}"
 
     @staticmethod
+    def _json_default(obj: Any):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return str(obj)
+
+    @staticmethod
     async def publish_site_message_created(*, target_user_id: Optional[int], is_global: bool, message: dict) -> None:
         redis_client = redis_manager.get_client()
         payload = {
@@ -250,7 +285,7 @@ class NotificationService:
             "is_global": bool(is_global),
             "message": message or {},
         }
-        payload_str = json.dumps(payload, ensure_ascii=False)
+        payload_str = json.dumps(payload, ensure_ascii=False, default=NotificationService._json_default)
         if is_global:
             await redis_client.publish(NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL, payload_str)
         elif target_user_id is not None:
@@ -270,7 +305,7 @@ class NotificationService:
             "message_id": int(message_id),
             "is_read": bool(is_read),
         }
-        payload_str = json.dumps(payload, ensure_ascii=False)
+        payload_str = json.dumps(payload, ensure_ascii=False, default=NotificationService._json_default)
         await redis_client.publish(NotificationService.get_site_messages_user_channel(int(target_user_id)), payload_str)
 
     @staticmethod
@@ -453,13 +488,13 @@ class NotificationService:
     @staticmethod
     async def get_config(user_id: int) -> dict:
         """获取用户通知配置"""
+        await NotificationService._ensure_user_notification_config_table()
         sql = "SELECT * FROM user_notification_config WHERE user_id = $1"
         config = await db.fetch_one(sql, user_id)
         
         if not config:
             return {
                 "enable_email": False,
-                "use_global_email": False,
                 "email_config": {},
                 "enable_pushplus": False,
                 "pushplus_token": "",
@@ -478,14 +513,13 @@ class NotificationService:
     @staticmethod
     async def update_config(user_id: int, data: NotificationConfig):
         """更新用户通知配置"""
+        await NotificationService._ensure_user_notification_config_table()
         sql = """
             INSERT INTO user_notification_config (
-                user_id, enable_email, use_global_email, email_config, 
-                enable_pushplus, pushplus_token, enable_http, http_url
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                user_id, enable_email, email_config, enable_pushplus, pushplus_token, enable_http, http_url
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (user_id) DO UPDATE SET
                 enable_email = EXCLUDED.enable_email,
-                use_global_email = EXCLUDED.use_global_email,
                 email_config = EXCLUDED.email_config,
                 enable_pushplus = EXCLUDED.enable_pushplus,
                 pushplus_token = EXCLUDED.pushplus_token,
@@ -497,7 +531,6 @@ class NotificationService:
             sql, 
             user_id, 
             data.enable_email, 
-            data.use_global_email, 
             json.dumps(data.email_config) if data.email_config else '{}',
             data.enable_pushplus,
             data.pushplus_token,
@@ -509,24 +542,34 @@ class NotificationService:
     async def test_notification(data: TestNotification):
         """测试通知发送"""
         if data.channel == 'email':
-            email_config = {}
-            if data.config:
-                email_config = data.config
-            else:
-                raise ValueError("请提供配置信息")
-            
-            if email_config.get('use_global_email'):
-                host = SystemConfig.get('email_host')
-                port = SystemConfig.get('email_port')
-                username = SystemConfig.get('email_username')
-                password = SystemConfig.get('email_password')
-            else:
-                cfg = email_config.get('email_config', {})
-                host = cfg.get('host')
-                port = cfg.get('port')
-                username = cfg.get('username')
-                password = cfg.get('password')
-            
+            host = None
+            port = None
+            username = None
+            password = None
+            nickname = None
+
+            if data.config and isinstance(data.config, dict):
+                cfg = data.config.get("email_config", {}) if isinstance(data.config.get("email_config"), dict) else {}
+                host = cfg.get("host")
+                port = cfg.get("port")
+                username = cfg.get("username")
+                password = cfg.get("password")
+                nickname = data.config.get("email_nickname")
+
+            if not all([host, port, username, password]):
+                host = SystemConfig.get("email_host")
+                port = SystemConfig.get("email_port")
+                username = SystemConfig.get("email_username")
+                password = SystemConfig.get("email_password")
+                nickname = SystemConfig.get("email_nickname")
+                if not all([host, port, username, password]):
+                    await SystemConfig.load()
+                    host = SystemConfig.get("email_host")
+                    port = SystemConfig.get("email_port")
+                    username = SystemConfig.get("email_username")
+                    password = SystemConfig.get("email_password")
+                    nickname = SystemConfig.get("email_nickname")
+
             if not all([host, port, username, password]):
                 raise ValueError("邮箱配置不完整")
                 
@@ -534,7 +577,16 @@ class NotificationService:
             if not to_email:
                 raise ValueError("请输入接收邮箱")
                 
-            success, msg = await send_email(host, port, username, password, to_email, "测试通知", "这是一条测试消息")
+            success, msg = await send_email(
+                host,
+                port,
+                username,
+                password,
+                to_email,
+                "测试通知",
+                "这是一条测试消息",
+                nickname=str(nickname or "").strip() or None,
+            )
             
         elif data.channel == 'pushplus':
             token = data.config.get('pushplus_token') if data.config else None

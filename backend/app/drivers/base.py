@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import threading
 from netmiko import ConnectHandler
 from typing import Dict, Optional, Any
 
@@ -24,6 +25,8 @@ class BaseDevice:
         self.connection = None
         self.connected = False
         self._lock = asyncio.Lock()
+        self._shutdown = False
+        self._connect_abort = threading.Event()
         
         # 静态信息（一次性采集的数据）
         self.static_info = {}
@@ -81,24 +84,51 @@ class BaseDevice:
 
     async def connect(self) -> bool:
         """建立 SSH 连接"""
+        if self._shutdown:
+            self.connected = False
+            return False
         if self.connected and self.check_connection():
             return True
             
         async with self._lock:
+            if self._shutdown:
+                self.connected = False
+                return False
+            self._connect_abort.clear()
             try:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self._connect_sync)
+                conn = await loop.run_in_executor(None, self._connect_sync)
+                if not conn:
+                    self.connected = False
+                    return False
+                if self._shutdown:
+                    try:
+                        conn.disconnect()
+                    except Exception:
+                        pass
+                    self.connected = False
+                    return False
+                self.connection = conn
                 self.connected = True
                 logger.info(f"已连接到设备 {self.ip}")
                 return True
+            except asyncio.CancelledError:
+                self._connect_abort.set()
+                raise
             except Exception as e:
                 # 简化错误日志，只保留关键信息
                 error_msg = str(e).split('\n')[0] # 只取第一行错误信息
                 logger.error(f"连接设备 {self.ip} 失败: {error_msg}")
                 self.connected = False
                 return False
+                
+    def request_shutdown(self) -> None:
+        self._shutdown = True
+        self._connect_abort.set()
 
     def _connect_sync(self):
+        if self._shutdown or self._connect_abort.is_set():
+            return None
         # 增加 keepalive 配置
         device_params = {
             'device_type': self.device_type,
@@ -118,17 +148,28 @@ class BaseDevice:
         # 尝试连接，带简单的重试机制
         max_retries = 3
         for attempt in range(max_retries):
+            if self._shutdown or self._connect_abort.is_set():
+                return None
             try:
-                self.connection = ConnectHandler(**device_params)
-                break
+                conn = ConnectHandler(**device_params)
+                if self._shutdown or self._connect_abort.is_set():
+                    try:
+                        conn.disconnect()
+                    except Exception:
+                        pass
+                    return None
+                return conn
             except Exception as e:
+                if self._shutdown or self._connect_abort.is_set():
+                    return None
                 if attempt == max_retries - 1:
                     raise e
                 logger.warning(
                     f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {self._compact_exception_message(e)}，正在重试..."
                 )
-                import time
-                time.sleep(2) # 等待 2 秒后重试
+                if self._connect_abort.wait(2):
+                    return None
+        return None
         
         # 配置 Paramiko Transport 层 Keepalive
         # 注意：在某些设备（如 eNSP 模拟器）上，Transport Keepalive 可能会导致连接不稳定（误判断开）
@@ -166,6 +207,7 @@ class BaseDevice:
 
     async def disconnect(self):
         """断开连接"""
+        self._connect_abort.set()
         if self.connection:
             try:
                 loop = asyncio.get_event_loop()
@@ -174,6 +216,8 @@ class BaseDevice:
                 pass
             self.connection = None
         self.connected = False
+        if not self._shutdown:
+            self._connect_abort.clear()
 
     async def send_command(self, cmd: str) -> str:
         """发送命令并返回结果"""

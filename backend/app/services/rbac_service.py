@@ -10,6 +10,9 @@ class RbacService:
     """
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
+        "sys:location:add": ["sys:location:view"],
+        "sys:location:edit": ["sys:location:view"],
+        "sys:location:del": ["sys:location:view"],
         "sys:device:add": ["sys:device:list"],
         "sys:device:edit": ["sys:device:list"],
         "sys:device:del": ["sys:device:list"],
@@ -36,6 +39,9 @@ class RbacService:
         {"name": "编辑通知配置", "code": "sys:notify:config:edit", "description": ""},
         {"name": "测试通知推送", "code": "sys:notify:test", "description": ""},
         {"name": "查看位置", "code": "sys:location:view", "description": ""},
+        {"name": "新增位置", "code": "sys:location:add", "description": ""},
+        {"name": "编辑位置", "code": "sys:location:edit", "description": ""},
+        {"name": "删除位置", "code": "sys:location:del", "description": ""},
         {"name": "查看设备", "code": "sys:device:list", "description": ""},
         {"name": "新增设备", "code": "sys:device:add", "description": ""},
         {"name": "编辑设备", "code": "sys:device:edit", "description": ""},

@@ -282,6 +282,7 @@ class UserService:
         port = SystemConfig.get("email_port")
         username = SystemConfig.get("email_username")
         password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
 
         if not all([host, port, username, password]):
             await SystemConfig.load()
@@ -289,6 +290,7 @@ class UserService:
             port = SystemConfig.get("email_port")
             username = SystemConfig.get("email_username")
             password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
 
         if not all([host, port, username, password]):
             await db.execute("DELETE FROM user_email_verifications WHERE id = $1", int(verify_id))
@@ -303,7 +305,7 @@ class UserService:
             "如非本人操作，请忽略本邮件。"
         )
 
-        ok, msg = await send_email(host, port, username, password, email, subject, content)
+        ok, msg = await send_email(host, port, username, password, email, subject, content, nickname=nickname)
         if not ok:
             await db.execute("DELETE FROM user_email_verifications WHERE id = $1", int(verify_id))
             raise ValueError(f"验证邮件发送失败: {msg}")

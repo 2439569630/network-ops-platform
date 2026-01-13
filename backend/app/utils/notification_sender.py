@@ -1,11 +1,13 @@
 from email.mime.text import MIMEText
 from email.header import Header
+from email.utils import formataddr, parseaddr
 import logging
 import json
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-async def send_email(host, port, username, password, to_email, subject, content):
+async def send_email(host, port, username, password, to_email, subject, content, nickname: Optional[str] = None):
     """发送邮件"""
     try:
         try:
@@ -14,7 +16,13 @@ async def send_email(host, port, username, password, to_email, subject, content)
             return False, "邮件依赖未安装：aiosmtplib"
 
         message = MIMEText(content, 'plain', 'utf-8')
-        message['From'] = username
+        from_addr = str(parseaddr(str(username or ""))[1] or str(username or ""))
+        display_name = str(nickname or "").strip()
+        if display_name:
+            encoded_name = str(Header(display_name, "utf-8"))
+            message["From"] = formataddr((encoded_name, from_addr))
+        else:
+            message["From"] = username
         message['To'] = to_email
         message['Subject'] = Header(subject, 'utf-8')
 

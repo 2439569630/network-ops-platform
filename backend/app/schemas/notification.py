@@ -4,7 +4,6 @@ from datetime import datetime
 
 class NotificationConfig(BaseModel):
     enable_email: bool
-    use_global_email: bool
     email_config: Optional[Dict] = None
     enable_pushplus: bool
     pushplus_token: Optional[str] = None

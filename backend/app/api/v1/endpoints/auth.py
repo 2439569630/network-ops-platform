@@ -337,12 +337,14 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     port = SystemConfig.get("email_port")
     username = SystemConfig.get("email_username")
     password = SystemConfig.get("email_password")
+    nickname = SystemConfig.get("email_nickname")
     if not all([host, port, username, password]):
         await SystemConfig.load()
         host = SystemConfig.get("email_host")
         port = SystemConfig.get("email_port")
         username = SystemConfig.get("email_username")
         password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
     if not all([host, port, username, password]):
         return JSONResponse(status_code=500, content={"code": 500, "message": "系统未配置邮箱服务，无法发送邮件"})
 
@@ -361,7 +363,7 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
         f"{reset_url}\n\n"
         "如非本人操作，请忽略本邮件。"
     )
-    ok, msg = await send_email(host, port, username, password, email_norm, subject, content)
+    ok, msg = await send_email(host, port, username, password, email_norm, subject, content, nickname=nickname)
     if not ok:
         await redis_client.delete(token_key)
         return JSONResponse(status_code=500, content={"code": 500, "message": f"邮件发送失败: {msg}"})

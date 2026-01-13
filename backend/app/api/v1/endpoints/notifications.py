@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from app.core.security import PermissionChecker, verify_token_ws, user_is_super, user_has_permission
+from app.core.security import PermissionChecker, user_is_super, user_has_permission
 from app.services.notification_service import NotificationService
 from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate
 from app.core.redis import redis_manager
 import logging
 import json
 import asyncio
-import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,19 +46,24 @@ async def get_site_message_detail(
 @router.post("/site-messages", response_model=dict)
 async def create_site_message(
     data: SiteMessageCreate,
-    user: dict = Depends(PermissionChecker("sys:notify:global")),
+    user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
     try:
         if not user_is_super(user):
             return {"code": 403, "message": "权限不足"}
+
+        title = str(data.title or "").strip()
+        content = str(data.content or "").strip()
+        target_user_id = int(data.target_user_id) if data.target_user_id is not None else None
+        is_global = bool(data.is_global) if target_user_id is None else False
         row = await NotificationService.create_site_message(
             sender_id=int(user.get("id")) if user.get("id") is not None else None,
             sender_name=str(user.get("username") or user.get("name") or ""),
-            title=data.title,
-            content=data.content,
+            title=title,
+            content=content,
             source="管理员",
-            target_user_id=data.target_user_id,
-            is_global=bool(data.is_global) if data.target_user_id is None else False,
+            target_user_id=target_user_id,
+            is_global=is_global,
         )
         return {"code": 200, "data": row, "message": "发布成功"}
     except ValueError as e:
@@ -125,10 +129,6 @@ async def update_config(
 ):
     """更新用户通知配置"""
     try:
-        if getattr(data, "use_global_email", False):
-            if not user_is_super(user):
-                if not await user_has_permission(user, "sys:notify:global"):
-                    return {"code": 403, "message": "权限不足"}
         await NotificationService.update_config(user.get('id'), data)
         return {"code": 200, "message": "配置保存成功"}
     except ValueError as e:
@@ -143,10 +143,6 @@ async def test_notification(
 ):
     """测试通知发送"""
     try:
-        if data.channel == "email" and data.config and data.config.get("use_global_email"):
-            if not user_is_super(user):
-                if not await user_has_permission(user, "sys:notify:global"):
-                    return {"code": 403, "message": "权限不足"}
         success, msg = await NotificationService.test_notification(data)
         if success:
             return {"code": 200, "message": "发送成功"}
@@ -158,64 +154,61 @@ async def test_notification(
         logger.error(f"Test notification error: {e}")
         return {"code": 500, "message": str(e)}
 
-@router.websocket("/ws/alerts")
-async def websocket_alerts(websocket: WebSocket):
-    await websocket.accept()
-    
-    token = websocket.query_params.get("token")
-    user = await verify_token_ws(websocket, token)
-    if not user:
-        return
-    if not (user_is_super(user) or (await user_has_permission(user, "sys:alert:subscribe"))):
-        await websocket.close(code=4003, reason="权限不足")
-        return
+@router.get("/sse/device-notifications")
+async def sse_device_notifications(user: dict = Depends(PermissionChecker("sys:alert:subscribe"))):
+    async def event_stream():
+        redis_client = redis_manager.get_client()
+        pubsub = redis_client.pubsub()
+        channels = [NotificationService.SYSTEM_ALERTS_CHANNEL]
 
-    redis_client = redis_manager.get_client()
-    pubsub = redis_client.pubsub()
-    
-    # WebSocket 发送锁
-    ws_lock = asyncio.Lock()
-
-    async def send_safe_json(data):
         try:
-            async with ws_lock:
-                await websocket.send_json(data)
-        except:
-            pass 
+            await pubsub.subscribe(*channels)
 
-    # 监听任务
-    async def redis_listener():
-        try:
-            await pubsub.subscribe("system_alerts")
-            
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                
-                if message and message['type'] == 'message':
+            yield "retry: 3000\n\n"
+
+            try:
+                raw_items = await redis_client.lrange(NotificationService.SYSTEM_ALERTS_RECENT_KEY, 0, 49)
+                items = []
+                for raw in raw_items or []:
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8")
                     try:
-                        data_str = message['data']
-                        if isinstance(data_str, bytes):
-                            data_str = data_str.decode('utf-8')
-                        
-                        alert_data = json.loads(data_str)
-                        await send_safe_json(alert_data)
-                    except Exception as e:
-                        logger.error(f"Alert WS parse error: {e}")
-                
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            logger.error(f"Alert WS listener error: {e}")
+                        parsed = json.loads(raw) if raw else None
+                    except Exception:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        items.append(parsed)
+                yield f"event: init\ndata: {json.dumps({'items': items}, ensure_ascii=False)}\n\n"
+            except Exception:
+                pass
 
-    listener_task = asyncio.create_task(redis_listener())
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
+                if message and message.get("type") == "message":
+                    payload = None
+                    try:
+                        raw = message.get("data")
+                        if isinstance(raw, bytes):
+                            raw = raw.decode("utf-8")
+                        payload = json.loads(raw) if raw else None
+                    except Exception:
+                        payload = None
 
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
-    finally:
-        listener_task.cancel()
-        await pubsub.close()
+                    if isinstance(payload, dict):
+                        yield f"event: notification\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                else:
+                    yield ": ping\n\n"
+        except asyncio.CancelledError:
+            raise
+        finally:
+            try:
+                await pubsub.unsubscribe(*channels)
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
 
 @router.get("/sse/site-messages")
 async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:access"))):
@@ -232,12 +225,13 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
         try:
             await pubsub.subscribe(*channels)
 
+            yield "retry: 3000\n\n"
+
             init_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
             yield f"event: unread\ndata: {json.dumps({'count': int(init_count)}, ensure_ascii=False)}\n\n"
 
-            last_ping = time.monotonic()
             while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
                 if message and message.get("type") == "message":
                     payload = None
                     try:
@@ -257,12 +251,8 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
 
                     next_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
                     yield f"event: unread\ndata: {json.dumps({'count': int(next_count)}, ensure_ascii=False)}\n\n"
-
-                if time.monotonic() - last_ping >= 15:
+                else:
                     yield ": ping\n\n"
-                    last_ping = time.monotonic()
-
-                await asyncio.sleep(0.2)
         except asyncio.CancelledError:
             raise
         finally:
@@ -279,7 +269,8 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )

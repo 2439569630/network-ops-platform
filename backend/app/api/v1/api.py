@@ -6,7 +6,8 @@ from app.api.v1.endpoints import (
     system,
     notifications,
     repair_orders,
-    rbac
+    rbac,
+    locations,
 )
 
 api_router = APIRouter()
@@ -27,3 +28,4 @@ api_router.include_router(system.router, prefix="/system", tags=["System"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(repair_orders.router, prefix="/repair-orders", tags=["Repair"])
 api_router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])
+api_router.include_router(locations.router, prefix="/locations", tags=["Locations"])

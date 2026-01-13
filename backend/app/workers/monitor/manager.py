@@ -123,6 +123,12 @@ class MonitorManager:
             except asyncio.CancelledError:
                 pass
             self.boost_task = None
+
+        for device in self.devices.values():
+            try:
+                device.request_shutdown()
+            except Exception:
+                pass
         
         # 2. 取消所有设备监控任务
         for task in self.tasks.values():
@@ -309,6 +315,10 @@ class MonitorManager:
             
             # 2. 断开连接并移除对象
             if did in self.devices:
+                try:
+                    self.devices[did].request_shutdown()
+                except Exception:
+                    pass
                 await self.devices[did].disconnect()
                 del self.devices[did]
             
