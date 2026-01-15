@@ -1,80 +1,246 @@
 <template>
-  <div class="repair-detail-container">
-    <el-card v-loading="loading">
-      <template #header>
-        <div class="card-header">
-          <div class="left">
-            <el-button icon="ArrowLeft" @click="$router.back()">返回</el-button>
-            <span class="title">工单详情 #{{ order?.id }}</span>
-            <el-tag v-if="order" :type="getStatusType(order.status)" class="status-tag">
-                {{ getStatusLabel(order.status) }}
-            </el-tag>
-          </div>
-          <div class="right">
-             <!-- 管理员操作区 -->
-             <div v-if="isAdmin && order?.status === 'pending'">
-                 <el-button type="primary" @click="dialogAssignVisible = true">派单</el-button>
-                 <el-button @click="handleAutoAssign">自动派单</el-button>
-             </div>
-             <!-- 维修人员操作区 -->
-             <div v-if="isMaintenance && order?.status === 'pending'">
-                 <el-button type="primary" @click="handleAccept">接单</el-button>
-             </div>
-             <div v-if="(isMaintenance || isAdmin) && order?.status === 'processing'">
-                 <el-button type="success" @click="handleComplete">完成工单</el-button>
-             </div>
-          </div>
-        </div>
-      </template>
+  <div class="repair-detail-wrapper">
+    <div class="page-header">
+        <el-page-header @back="goBack" title="返回列表">
+            <template #content>
+                <div class="header-content">
+                    <span class="header-title">工单详情 #{{ order?.id }}</span>
+                    <el-tag v-if="order" :type="getStatusType(order)" effect="dark" round>
+                        {{ getStatusLabel(order) }}
+                    </el-tag>
+                </div>
+            </template>
+            <template #extra>
+                <div class="header-actions">
+                    <el-button
+                        style="background-color: #409EFF; border-color: #409EFF; color: #fff;"
+                        @mouseover="this.style.backgroundColor='#66b1ff'; this.style.borderColor='#66b1ff'"
+                        @mouseout="this.style.backgroundColor='#409EFF'; this.style.borderColor='#409EFF'"
+                        @click="goBack"
+                    >返回列表</el-button>
+                     <!-- 管理员特殊权限：修改状态 -->
+                    <el-button 
+                        v-if="isAdmin" 
+                        type="warning" 
+                        plain 
+                        icon="Edit"
+                        @click="dialogStatusVisible = true"
+                    >修改状态</el-button>
+                    
+                    <el-button icon="Refresh" circle @click="fetchDetail" />
+                </div>
+            </template>
+        </el-page-header>
+    </div>
 
-      <div v-if="order" class="detail-content">
-        <el-descriptions border :column="2">
-            <el-descriptions-item label="标题" :span="2">{{ order.title }}</el-descriptions-item>
-            <el-descriptions-item label="报修人">{{ order.submitter_name }}</el-descriptions-item>
-            <el-descriptions-item label="提交时间">{{ formatDate(order.created_at) }}</el-descriptions-item>
-            <el-descriptions-item label="关联设备">{{ order.device_name || '无' }}</el-descriptions-item>
-            <el-descriptions-item label="优先级">
-                <el-tag :type="getPriorityType(order.priority)">{{ getPriorityLabel(order.priority) }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="当前处理人">{{ order.assignee_name || '未指派' }}</el-descriptions-item>
-            <el-descriptions-item label="问题描述" :span="2">
-                <div class="description-box">{{ order.description }}</div>
-            </el-descriptions-item>
-        </el-descriptions>
+    <div v-loading="loading" class="main-content">
+        <el-row :gutter="20">
+            <!-- 左侧主要内容 -->
+            <el-col :xs="24" :lg="16">
+                <!-- 流程进度 -->
+                <el-card class="step-card" shadow="hover">
+                    <el-steps :active="currentStep" finish-status="success" align-center>
+                        <el-step title="提交工单" :description="formatDate(order?.created_at)" />
+                        <el-step title="待接单" description="等待分配/抢单" />
+                        <el-step title="维修中" description="师傅已接单" />
+                        <el-step title="已完成" description="服务已结束" />
+                        <el-step title="已评价" description="用户已反馈" />
+                    </el-steps>
+                </el-card>
 
-        <!-- 评价信息 -->
-        <div v-if="order.review" class="section review-section">
-            <h3>用户评价</h3>
-            <el-rate v-model="order.review.rating" disabled show-score text-color="#ff9900" />
-            <div class="review-text">{{ order.review.comment }}</div>
-        </div>
+                <!-- 故障详情 -->
+                <el-card class="detail-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">
+                            <el-icon><Document /></el-icon> 故障详情
+                        </div>
+                    </template>
+                    
+                    <div class="info-grid">
+                        <div class="info-item full-width">
+                            <label>故障标题</label>
+                            <div class="content title-text">{{ order?.title }}</div>
+                        </div>
+                         <div class="info-item full-width">
+                            <label>问题描述</label>
+                            <div class="content description-box">{{ order?.description }}</div>
+                        </div>
+                        <div class="info-item">
+                            <label>报修位置</label>
+                            <div class="content"><el-icon><Location /></el-icon> {{ order?.location_name || '未指定' }}</div>
+                        </div>
+                        <div class="info-item">
+                            <label>优先级</label>
+                            <div class="content">
+                                <el-tag :type="getPriorityType(order?.priority)" size="small" effect="plain">
+                                    {{ getPriorityLabel(order?.priority) }}
+                                </el-tag>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 图片附件展示区 (预留) -->
+                    <!-- <div class="attachments" v-if="order?.images?.length">...</div> -->
+                </el-card>
 
-        <!-- 流转日志 -->
-        <div class="section log-section">
-            <h3>处理记录</h3>
-            <el-timeline>
-                <el-timeline-item
-                    v-for="(log, index) in order.logs"
-                    :key="index"
-                    :timestamp="formatDate(log.created_at)"
-                    :type="getLogType(log.action)"
-                >
-                    <h4>{{ getActionLabel(log.action) }} - {{ log.operator_name || '系统' }}</h4>
-                    <p v-if="log.remark">{{ log.remark }}</p>
-                    <p v-if="log.from_status !== log.to_status" class="status-change">
-                        状态变更: {{ getStatusLabel(log.from_status) }} -> {{ getStatusLabel(log.to_status) }}
-                    </p>
-                </el-timeline-item>
-            </el-timeline>
-        </div>
-      </div>
-    </el-card>
+                <!-- 工作记录 (新增) -->
+                <el-card class="work-log-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">
+                            <el-icon><Tools /></el-icon> 维修工作记录
+                             <el-button 
+                                v-if="isMaintenance && order?.status === 'processing'" 
+                                type="primary" 
+                                size="small" 
+                                link 
+                                @click="dialogWorkLogVisible = true"
+                                style="margin-left: auto;"
+                            >添加记录</el-button>
+                        </div>
+                    </template>
+                    
+                    <div v-if="order?.work_logs?.length" class="work-logs">
+                        <div v-for="log in order.work_logs" :key="log.id" class="work-log-item">
+                            <div class="work-log-header">
+                                <span class="operator">{{ log.operator_name }}</span>
+                                <span class="time">{{ formatDate(log.created_at) }}</span>
+                            </div>
+                            <div class="work-log-content">{{ log.content }}</div>
+                            <div v-if="log.images && log.images.length" class="work-log-images">
+                                <!-- Placeholder for images -->
+                                <el-image 
+                                    v-for="(img, idx) in log.images" 
+                                    :key="idx" 
+                                    :src="img" 
+                                    :preview-src-list="log.images"
+                                    fit="cover"
+                                    class="log-image"
+                                ></el-image>
+                            </div>
+                        </div>
+                    </div>
+                    <el-empty v-else description="暂无工作记录" :image-size="60"></el-empty>
+                </el-card>
 
-    <!-- 派单弹窗 -->
-    <el-dialog v-model="dialogAssignVisible" title="派发工单" width="400px">
-        <el-form>
+                <!-- 处理记录 -->
+                <el-card class="log-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">
+                            <el-icon><Timer /></el-icon> 处理记录
+                        </div>
+                    </template>
+                    <el-timeline>
+                        <el-timeline-item
+                            v-for="(log, index) in processedLogs"
+                            :key="index"
+                            :timestamp="formatDate(log.created_at)"
+                            :type="getLogType(log.action)"
+                            :hollow="log.action === 'remark'"
+                            size="large"
+                        >
+                            <div class="log-content">
+                                <div class="log-header">
+                                    <span class="log-action">{{ getActionLabel(log.action) }}</span>
+                                    <span class="log-operator">{{ log.operator_name || '系统' }}</span>
+                                </div>
+                                <div v-if="log.remark" class="log-remark">{{ log.remark }}</div>
+                                <div v-if="log.from_status !== log.to_status" class="log-status-change">
+                                    <el-tag size="small" type="info">{{ getStatusLabel(log.from_status) }}</el-tag>
+                                    <el-icon><Right /></el-icon>
+                                    <el-tag size="small" :type="getStatusType(log.to_status)">{{ getStatusLabel(log.to_status) }}</el-tag>
+                                </div>
+                            </div>
+                        </el-timeline-item>
+                    </el-timeline>
+                </el-card>
+
+                 <!-- 用户评价 -->
+                <el-card v-if="order?.review" class="review-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">
+                            <el-icon><Star /></el-icon> 用户评价
+                        </div>
+                    </template>
+                    <div class="review-content">
+                        <div class="review-header">
+                            <el-rate v-model="order.review.rating" disabled show-score text-color="#ff9900" />
+                            <span class="review-time">{{ formatDate(order.review.created_at) }}</span>
+                        </div>
+                        <p class="review-text">{{ order.review.comment || '用户未填写文字评价' }}</p>
+                    </div>
+                </el-card>
+            </el-col>
+
+            <!-- 右侧侧边栏 -->
+            <el-col :xs="24" :lg="8">
+                <!-- 操作面板 -->
+                <el-card class="action-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">工单操作</div>
+                    </template>
+                    
+                    <div class="action-buttons">
+                        <!-- 管理员: 派单 -->
+                        <div v-if="isAdmin && order?.status === 'pending'" class="action-group">
+                             <el-button type="primary" class="block-btn" @click="dialogAssignVisible = true">指派维修人员</el-button>
+                             <el-button class="block-btn" @click="handleAutoAssign">自动智能派单</el-button>
+                        </div>
+
+                        <!-- 维修人员: 接单 -->
+                         <div v-if="isMaintenance && order?.status === 'pending'" class="action-group">
+                             <el-button type="primary" class="block-btn" @click="handleAccept">立即接单</el-button>
+                         </div>
+
+                        <!-- 处理中: 完成 -->
+                        <div v-if="(isMaintenance || isAdmin) && order?.status === 'processing'" class="action-group">
+                             <el-button type="success" class="block-btn" @click="handleComplete">完成工单</el-button>
+                        </div>
+
+                        <!-- 通用: 取消 (仅未结束) -->
+                         <div v-if="['pending', 'processing'].includes(order?.status)" class="action-group mt-4">
+                             <el-popconfirm title="确定要取消这个工单吗？" @confirm="handleCancel">
+                                <template #reference>
+                                    <el-button type="danger" link>取消工单</el-button>
+                                </template>
+                             </el-popconfirm>
+                         </div>
+                         
+                         <div v-if="['completed', 'closed', 'cancelled'].includes(order?.status)" class="no-action">
+                            当前状态无需操作
+                         </div>
+                    </div>
+                </el-card>
+
+                <!-- 基本信息卡片 -->
+                <el-card class="meta-card" shadow="hover">
+                    <div class="meta-list">
+                        <div class="meta-item">
+                            <span class="label">报修人</span>
+                            <span class="value">{{ order?.submitter_name }}</span>
+                        </div>
+                         <div class="meta-item">
+                            <span class="label">当前处理人</span>
+                            <span class="value">{{ order?.assignee_name || '-' }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="label">创建时间</span>
+                            <span class="value">{{ formatDate(order?.created_at) }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="label">更新时间</span>
+                            <span class="value">{{ formatDate(order?.updated_at) }}</span>
+                        </div>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+    </div>
+
+    <!-- 弹窗：派单 -->
+    <el-dialog v-model="dialogAssignVisible" title="指派维修人员" width="400px" append-to-body>
+        <el-form label-position="top">
             <el-form-item label="选择维修人员">
-                <el-select v-model="assignForm.assignee_id" placeholder="请选择">
+                <el-select v-model="assignForm.assignee_id" placeholder="请选择" style="width: 100%">
                     <el-option 
                         v-for="user in maintenanceUsers" 
                         :key="user.id" 
@@ -86,46 +252,204 @@
         </el-form>
         <template #footer>
             <el-button @click="dialogAssignVisible = false">取消</el-button>
-            <el-button type="primary" @click="handleAssign">确定</el-button>
+            <el-button type="primary" @click="handleAssign">确定指派</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- 弹窗：强制修改状态 -->
+    <el-dialog v-model="dialogStatusVisible" title="修改工单状态" width="400px" append-to-body>
+        <el-alert title="警告：强制修改状态可能会跳过正常的业务流程校验，请谨慎操作。" type="warning" :closable="false" class="mb-4" />
+        <el-form label-position="top">
+            <el-form-item label="新状态">
+                <el-select v-model="statusForm.status" placeholder="请选择状态" style="width: 100%">
+                    <el-option label="待受理 (Pending)" value="pending" />
+                    <el-option label="处理中 (Processing)" value="processing" />
+                    <el-option label="已完成 (Completed)" value="completed" />
+                    <el-option label="已关闭 (Closed)" value="closed" />
+                    <el-option label="已取消 (Cancelled)" value="cancelled" />
+                    <el-option label="需补充信息 (Need Info)" value="need_info" />
+                </el-select>
+            </el-form-item>
+             <el-form-item label="备注说明">
+                <el-input v-model="statusForm.remark" type="textarea" placeholder="请输入修改原因..." />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="dialogStatusVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleForceUpdateStatus">保存修改</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- 弹窗：添加工作记录 -->
+    <el-dialog v-model="dialogWorkLogVisible" title="添加工作记录" width="500px" append-to-body>
+        <el-form label-position="top">
+            <el-form-item label="工作内容描述">
+                <el-input 
+                    v-model="workLogForm.content" 
+                    type="textarea" 
+                    :rows="4"
+                    placeholder="请详细描述维修过程、更换配件或处理结果..." 
+                />
+            </el-form-item>
+             <!-- Image Upload Placeholder -->
+             <el-form-item label="上传现场照片 (暂未接入文件服务)">
+                <el-upload
+                    action="#"
+                    list-type="picture-card"
+                    :auto-upload="false"
+                    disabled
+                >
+                    <el-icon><Plus /></el-icon>
+                </el-upload>
+                <div class="el-upload__tip">由于文件服务暂未配置，目前仅支持文本记录。</div>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="dialogWorkLogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleAddWorkLog" :loading="workLogSubmitting">提交记录</el-button>
         </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
-import { ArrowLeft } from '@element-plus/icons-vue';
+import { ref, onMounted, computed, reactive } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { 
+    ArrowLeft, Document, Location, Timer, Right, Star, 
+    Edit, Refresh, Check, Tools, Plus
+} from '@element-plus/icons-vue';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
 
 const route = useRoute();
+const router = useRouter();
 const orderId = route.params.id;
 const order = ref(null);
 const loading = ref(false);
 const roleCodes = ref([]);
+const permissions = ref([]);
 const isSuper = ref(false);
 
-// 派单相关
+// Dialogs
 const dialogAssignVisible = ref(false);
-const maintenanceUsers = ref([]); // 维修人员列表
-const assignForm = ref({ assignee_id: null });
+const dialogStatusVisible = ref(false);
+const dialogWorkLogVisible = ref(false);
 
+// Data
+const maintenanceUsers = ref([]);
+const assignForm = reactive({ assignee_id: null });
+const statusForm = reactive({ status: '', remark: '' });
+const workLogForm = reactive({ content: '', images: [] });
+const workLogSubmitting = ref(false);
+
+const processedLogs = computed(() => {
+    if (!order.value?.logs) return [];
+    
+    // Group logs by timestamp (seconds precision) to merge simultaneous actions
+    const merged = [];
+    const logs = [...order.value.logs]; // Copy
+    
+    // Sort just in case
+    logs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    let lastLog = null;
+
+    for (const log of logs) {
+        // Skip redundant update_status logs if they happen same time as assign/auto_assign
+        if (log.action === 'update_status' && lastLog) {
+            const timeDiff = Math.abs(new Date(log.created_at) - new Date(lastLog.created_at));
+            if (timeDiff < 2000 && ['assign', 'auto_assign', 'accept'].includes(lastLog.action)) {
+                continue;
+            }
+        }
+        
+        // If current is assign/accept, it might update status too, so we prefer the specific action
+        merged.push(log);
+        lastLog = log;
+    }
+    
+    return merged.reverse(); // Newest first
+});
+
+// Computeds
 const isAdmin = computed(() => isSuper.value);
-const isMaintenance = computed(() => roleCodes.value.includes('yunwei'));
+const isMaintenance = computed(() => roleCodes.value.includes('yunwei') || permissions.value.includes('sys:repair:accept'));
 
-// Helper functions (Same as List.vue, ideally move to utils)
+const currentStep = computed(() => {
+    if (!order.value) return 0;
+    const s = order.value.status;
+    // Step 0: 提交工单 (Created) - 0
+    // Step 1: 待接单 (Pending) - 1
+    // Step 2: 维修中 (Processing) - 2
+    // Step 3: 已完成 (Completed) - 3
+    // Step 4: 已评价 (Closed) - 5
+    
+    if (s === 'pending') return 1;
+    if (s === 'processing') return 2;
+    if (s === 'completed') return 3; 
+    if (s === 'closed') return 5; // All done
+    if (s === 'cancelled') return 0; 
+    return 1;
+});
+
+// Helpers
 const getPriorityLabel = (val) => ({ low: '低', medium: '中', high: '高', emergency: '紧急' }[val] || val);
-const getPriorityType = (val) => ({ low: 'info', medium: '', high: 'warning', emergency: 'danger' }[val] || '');
-const getStatusLabel = (val) => ({ 
-    pending: '待受理', processing: '处理中', completed: '已完成', closed: '已关闭', cancelled: '已取消', need_info: '需补充信息'
-}[val] || val);
-const getStatusType = (val) => ({ 
-    pending: 'info', processing: 'primary', completed: 'success', closed: 'success', cancelled: 'info' 
-}[val] || 'info');
-const formatDate = (str) => str ? new Date(str).toLocaleString() : '-';
+const getPriorityType = (val) => ({ low: 'info', medium: 'warning', high: 'danger', emergency: 'danger' }[val] || '');
+
+const getStatusLabel = (val) => {
+    // Check if input is object (row) or string
+    let status = val;
+    let assigneeId = null;
+    
+    // Check if val is order object
+    if (typeof val === 'object' && val !== null && 'status' in val) {
+        status = val.status;
+        assigneeId = val.assignee_id;
+    }
+
+    if (status === 'pending') {
+        if (assigneeId) return '待接单';
+        return '待受理'; // Detail view default
+    }
+
+    const map = { 
+        pending: '待受理', 
+        processing: '处理中', 
+        completed: '已完成', 
+        closed: '已关闭', 
+        cancelled: '已取消',
+        need_info: '需补充信息'
+    };
+    return map[status] || status;
+};
+
+const getStatusType = (val) => {
+    let status = val;
+    let assigneeId = null;
+
+    if (typeof val === 'object' && val !== null && 'status' in val) {
+        status = val.status;
+        assigneeId = val.assignee_id;
+    }
+
+    if (status === 'pending') {
+        if (assigneeId) return 'warning';
+        return 'info';
+    }
+
+    const map = { 
+        pending: 'info', 
+        processing: 'primary', 
+        completed: 'success', 
+        closed: 'success', 
+        cancelled: 'info',
+        need_info: 'warning'
+    };
+    return map[status] || 'info';
+};
 
 const getActionLabel = (val) => ({
     create: '创建工单', assign: '指派工单', accept: '接单', complete: '完成工单', 
@@ -133,18 +457,27 @@ const getActionLabel = (val) => ({
 }[val] || val);
 
 const getLogType = (action) => {
-    if (action === 'create') return 'primary';
-    if (action === 'complete') return 'success';
-    if (action === 'cancel') return 'danger';
+    if (['create', 'assign', 'accept'].includes(action)) return 'primary';
+    if (['complete', 'review'].includes(action)) return 'success';
+    if (['cancel'].includes(action)) return 'danger';
+    if (['update_status'].includes(action)) return 'warning';
     return '';
 };
 
+const formatDate = (str) => str ? new Date(str).toLocaleString() : '-';
+
+const goBack = () => {
+    router.push('/user/repair/list');
+};
+
+// API Actions
 const fetchDetail = async () => {
     loading.value = true;
     try {
         const res = await axios.get(`/api/v1/repair-orders/${orderId}`);
         if (res.data.code === 200) {
             order.value = res.data.data;
+            statusForm.status = order.value.status; // Init status form
         } else {
             ElMessage.error(res.data.message);
         }
@@ -165,9 +498,9 @@ const fetchMaintenanceUsers = async () => {
 };
 
 const handleAssign = async () => {
-    if (!assignForm.value.assignee_id) return;
+    if (!assignForm.assignee_id) return;
     try {
-        const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, { assignee_id: assignForm.value.assignee_id });
+        const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, { assignee_id: assignForm.assignee_id });
         if (res.data.code === 200) {
             ElMessage.success('派单成功');
             dialogAssignVisible.value = false;
@@ -183,7 +516,6 @@ const handleAutoAssign = async () => {
         const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, {});
         if (res.data.code === 200) {
             ElMessage.success('自动派单成功');
-            dialogAssignVisible.value = false;
             fetchDetail();
         } else {
             ElMessage.error(res.data.message || '操作失败');
@@ -217,8 +549,69 @@ const handleComplete = async () => {
                 fetchDetail();
             }
         });
+    } catch (e) {}
+};
+
+const handleCancel = async () => {
+     try {
+        await ElMessageBox.prompt('请输入取消原因', '取消工单', {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            inputPattern: /\S+/,
+            inputErrorMessage: '原因不能为空'
+        }).then(async ({ value }) => {
+            const res = await axios.post(`/api/v1/repair-orders/${orderId}/cancel`, { reason: value });
+            if (res.data.code === 200) {
+                ElMessage.success('工单已取消');
+                fetchDetail();
+            }
+        });
+    } catch (e) {}
+}
+
+const handleForceUpdateStatus = async () => {
+    if (!statusForm.status) return;
+    try {
+        const res = await axios.post(`/api/v1/repair-orders/${orderId}/status`, {
+            status: statusForm.status,
+            remark: statusForm.remark
+        });
+        if (res.data.code === 200) {
+            ElMessage.success('状态修改成功');
+            dialogStatusVisible.value = false;
+            fetchDetail();
+        } else {
+             ElMessage.error(res.data.message);
+        }
     } catch (e) {
-        // ignore
+        ElMessage.error('修改失败');
+    }
+}
+
+const handleAddWorkLog = async () => {
+    if (!workLogForm.content.trim()) {
+        ElMessage.warning('请输入工作内容');
+        return;
+    }
+    workLogSubmitting.value = true;
+    try {
+        const res = await axios.post(`/api/v1/repair-orders/${orderId}/work_logs`, {
+            content: workLogForm.content,
+            images: workLogForm.images
+        });
+        if (res.data.code === 200) {
+            ElMessage.success('工作记录添加成功');
+            dialogWorkLogVisible.value = false;
+            workLogForm.content = '';
+            workLogForm.images = [];
+            fetchDetail();
+        } else {
+            ElMessage.error(res.data.message || '添加失败');
+        }
+    } catch (e) {
+        ElMessage.error('添加失败');
+    } finally {
+        workLogSubmitting.value = false;
     }
 };
 
@@ -230,6 +623,19 @@ onMounted(() => {
             const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
             roleCodes.value = roles;
             isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+            
+            // Note: permissions are usually fetched from API in store, but here we might not have them easily if we don't use store.
+            // Let's try to get them from store if available, or fetch them.
+            // Assuming homeDataStore is available globally or we can use axios.
+            // For now, let's just use what we have or try to fetch permissions if not present.
+            // Actually, jwt might have perm_ver but not the full list.
+            // Let's try to fetch permissions.
+            axios.get('/api/v1/auth/permissions').then(res => {
+                if (res.data.code === 200) {
+                    permissions.value = res.data.data.permissions || [];
+                }
+            });
+
         } catch (e) {}
     }
     fetchDetail();
@@ -240,42 +646,259 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.card-header {
+.repair-detail-wrapper {
+    min-height: 100%;
+    background-color: #f5f7fa;
+    padding-bottom: 40px;
+}
+
+.page-header {
+    background: #fff;
+    padding: 16px 24px;
+    box-shadow: 0 1px 4px rgba(0,21,41,.08);
+    margin-bottom: 24px;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2f3d;
+}
+
+.main-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Cards */
+.step-card, .detail-card, .log-card, .review-card, .action-card, .meta-card {
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border: none;
+    box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05) !important;
+}
+
+.card-title {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Info Grid */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.info-item.full-width {
+    grid-column: span 2;
+}
+
+.info-item label {
+    font-size: 13px;
+    color: #909399;
+}
+
+.info-item .content {
+    font-size: 15px;
+    color: #303133;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.title-text {
+    font-weight: 600;
+    font-size: 16px !important;
+}
+
+.description-box {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: #606266;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.block-btn {
+    width: 100%;
+    margin-left: 0 !important;
+    margin-bottom: 8px;
+}
+
+.no-action {
+    text-align: center;
+    color: #909399;
+    font-size: 13px;
+    padding: 10px 0;
+}
+
+/* Meta List */
+.meta-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.meta-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+}
+
+.meta-item .label {
+    color: #909399;
+}
+
+.meta-item .value {
+    color: #606266;
+    font-family: monospace;
+}
+
+/* Log Styles */
+.work-log-card {
+    margin-bottom: 20px;
+}
+.work-log-item {
+    border-bottom: 1px solid #ebeef5;
+    padding: 16px 0;
+}
+.work-log-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.work-log-item:first-child {
+    padding-top: 0;
+}
+.work-log-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #909399;
+}
+.work-log-header .operator {
+    font-weight: 600;
+    color: #303133;
+}
+.work-log-content {
+    font-size: 14px;
+    color: #606266;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+.work-log-images {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.log-image {
+    width: 80px;
+    height: 80px;
+    border-radius: 4px;
+    border: 1px solid #ebeef5;
+}
+
+.log-content {
+    background: #f8f9fa;
+    padding: 10px 14px;
+    border-radius: 6px;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.log-action {
+    font-weight: 600;
+    color: #303133;
+}
+
+.log-operator {
+    font-size: 12px;
+    color: #909399;
+}
+
+.log-remark {
+    font-size: 13px;
+    color: #606266;
+    margin-top: 4px;
+}
+
+.log-status-change {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.review-content {
+    background: #fff9e6;
+    padding: 16px;
+    border-radius: 6px;
+}
+
+.review-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 8px;
 }
-.left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.title {
-    font-weight: bold;
-    font-size: 16px;
-}
-.detail-content {
-    margin-top: 20px;
-}
-.description-box {
-    white-space: pre-wrap;
-    line-height: 1.5;
-}
-.section {
-    margin-top: 30px;
-}
-.section h3 {
-    margin-bottom: 15px;
-    border-left: 4px solid #409eff;
-    padding-left: 10px;
-}
-.review-section {
-    background: #fdf6ec;
-    padding: 15px;
-    border-radius: 4px;
-}
-.status-change {
+
+.review-time {
     font-size: 12px;
     color: #909399;
+}
+
+.review-text {
+    color: #606266;
+    line-height: 1.5;
+}
+
+.mb-4 {
+    margin-bottom: 16px;
+}
+.mt-4 {
+    margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        padding: 0 10px;
+    }
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+    .info-item.full-width {
+        grid-column: span 1;
+    }
 }
 </style>

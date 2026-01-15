@@ -7,15 +7,23 @@
             <span><el-icon><List /></el-icon> {{ headerTitle }}</span>
           </div>
           <div class="right">
-            <el-button type="primary" icon="Plus" @click="$router.push('/user/repair/apply')">提交报修</el-button>
+            <!-- <el-button type="primary" icon="Plus" @click="$router.push('/user/repair/apply')">提交报修</el-button> -->
           </div>
         </div>
       </template>
 
+      <!-- 运维人员视图切换 -->
+      <div v-if="isYunwei" style="margin-bottom: 20px;">
+        <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+            <el-tab-pane label="派单列表" name="assigned"></el-tab-pane>
+            <el-tab-pane label="我的报修" name="created"></el-tab-pane>
+        </el-tabs>
+      </div>
+
       <!-- 筛选栏 -->
       <div class="filter-bar">
         <el-radio-group v-model="statusFilter" @change="fetchOrders">
-          <el-radio-button label="">全部</el-radio-button>
+          <el-radio-button label="">{{ isYunwei && activeTab === 'assigned' ? '待办任务' : '全部' }}</el-radio-button>
           <el-radio-button label="pending">待受理</el-radio-button>
           <el-radio-button label="processing">处理中</el-radio-button>
           <el-radio-button label="completed">已完成</el-radio-button>
@@ -23,35 +31,117 @@
         </el-radio-group>
       </div>
 
-      <!-- 列表 -->
-      <el-table :data="tableData" style="width: 100%" v-loading="loading">
-        <el-table-column prop="id" label="单号" width="80" />
-        <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="device_name" label="关联设备" width="150">
+      <!-- 运维人员 - 派单列表 - 卡片视图 -->
+      <div v-if="isYunwei && activeTab === 'assigned'" class="order-grid" v-loading="loading">
+        <el-empty v-if="tableData.length === 0" description="暂无工单"></el-empty>
+        <el-row :gutter="20">
+            <el-col v-for="order in tableData" :key="order.id" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+                <el-card class="order-card" :class="{'priority-high': order.priority === 'emergency' || order.priority === 'high'}">
+                    <template #header>
+                        <div class="order-card-header">
+                            <div class="header-top">
+                                <span class="order-id">#{{ order.id }}</span>
+                                <el-tag :type="getStatusType(order)" size="small" effect="dark">{{ getStatusLabel(order) }}</el-tag>
+                            </div>
+                            <div class="header-title" :title="order.title" @click="viewDetail(order.id)" style="cursor: pointer;">{{ order.title }}</div>
+                        </div>
+                    </template>
+                    <div class="order-card-body" @click="viewDetail(order.id)" style="cursor: pointer;">
+                         <div class="info-row">
+                            <el-icon><Location /></el-icon>
+                            <span class="text-truncate">{{ order.location_name || '未指定位置' }}</span>
+                        </div>
+                        <div class="info-row">
+                             <el-icon><User /></el-icon>
+                             <span>{{ order.submitter_name || '未知用户' }}</span>
+                        </div>
+                        <div class="info-row">
+                            <el-icon><Clock /></el-icon>
+                            <span>{{ formatDate(order.created_at) }}</span>
+                        </div>
+                         <div class="info-row priority-row">
+                            <span class="label">优先级:</span>
+                             <el-tag :type="getPriorityType(order.priority)" size="small" effect="plain" round>
+                                {{ getPriorityLabel(order.priority) }}
+                            </el-tag>
+                        </div>
+                    </div>
+                    <div class="order-card-footer">
+                        <el-button 
+                            v-if="order.status === 'pending'" 
+                            type="primary" 
+                            size="small" 
+                            class="action-btn"
+                            @click="acceptOrder(order.id)"
+                        >
+                            {{ order.assignee_id === currentUserId ? '确认接单' : '快速抢单' }}
+                        </el-button>
+                         <el-button 
+                            v-else-if="order.status === 'processing' && order.assignee_id === currentUserId" 
+                            type="success" 
+                            size="small" 
+                            class="action-btn"
+                            @click="viewDetail(order.id)"
+                        >去处理</el-button>
+                         <el-button 
+                            v-else
+                            plain 
+                            size="small" 
+                            class="action-btn"
+                            @click="viewDetail(order.id)"
+                        >查看详情</el-button>
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+      </div>
+
+      <!-- 列表 (非运维或运维的"我的报修"视图) -->
+      <el-table 
+        v-else
+        :data="tableData" 
+        style="width: 100%" 
+        v-loading="loading"
+        :header-cell-style="{ background: '#f5f7fa', color: '#606266' }"
+      >
+        <el-table-column prop="id" label="单号" width="90" align="center">
             <template #default="scope">
-                {{ scope.row.device_name || '-' }}
+                <span style="font-family: monospace; color: #909399">#{{ scope.row.id }}</span>
             </template>
         </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="100">
+        <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip>
+             <template #default="scope">
+                <span style="font-weight: 500">{{ scope.row.title }}</span>
+            </template>
+        </el-table-column>
+        <el-table-column prop="location_name" label="位置" width="180" show-overflow-tooltip>
+            <template #default="scope">
+                <div style="display: flex; align-items: center; gap: 4px; color: #606266;">
+                    <el-icon><Location /></el-icon>
+                    <span>{{ scope.row.location_name || '-' }}</span>
+                </div>
+            </template>
+        </el-table-column>
+        <el-table-column prop="priority" label="优先级" width="100" align="center">
           <template #default="scope">
-            <el-tag :type="getPriorityType(scope.row.priority)" size="small">
+            <el-tag :type="getPriorityType(scope.row.priority)" size="small" effect="plain" round>
               {{ getPriorityLabel(scope.row.priority) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="status" label="状态" width="100" align="center">
           <template #default="scope">
-            <el-tag :type="getStatusType(scope.row.status)" size="small" effect="dark">
-              {{ getStatusLabel(scope.row.status) }}
+            <el-tag :type="getStatusType(scope.row)" size="small" effect="light" round>
+              {{ getStatusLabel(scope.row) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="提交时间" width="180">
+        <el-table-column prop="created_at" label="提交时间" width="170" align="center">
             <template #default="scope">
-                {{ formatDate(scope.row.created_at) }}
+                <span style="font-size: 13px; color: #909399">{{ formatDate(scope.row.created_at) }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right" align="center">
           <template #default="scope">
             <el-button type="primary" link size="small" @click="viewDetail(scope.row.id)">详情</el-button>
             <el-button 
@@ -114,14 +204,17 @@
 
 <script setup>
 import { ref, onMounted, reactive, computed } from 'vue';
-import { List, Plus } from '@element-plus/icons-vue';
+import { List, Plus, Location, Search, User, Clock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from '@/axios/axios';
 import { useRouter } from 'vue-router';
+import { homeDataStore } from '@/components/home/home/data';
 import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
 
 const router = useRouter();
+const store = homeDataStore();
+
 const loading = ref(false);
 const tableData = ref([]);
 const page = ref(1);
@@ -130,13 +223,29 @@ const total = ref(0);
 const statusFilter = ref('');
 const roleCodes = ref([]);
 const isSuper = ref(false);
-const currentUserId = ref(null);
+const currentScope = ref('');
+const activeTab = ref('assigned');
+
+// 使用 store 中的权限判断
+const isAdminOrManage = computed(() => {
+    return store.isSuper || 
+           (store.permissions && (store.permissions.includes('sys:repair:manage') || store.permissions.includes('sys:repair:list_all')));
+});
+
+const isYunwei = computed(() => {
+    // 运维人员且非管理员
+    return !isAdminOrManage.value && (roleCodes.value.includes('yunwei') || (store.permissions && store.permissions.includes('sys:repair:accept')));
+});
 
 const headerTitle = computed(() => {
-    if (isSuper.value) return '工单列表';
-    if (roleCodes.value.includes('yunwei')) return '待处理工单';
+    if (isAdminOrManage.value) return '工单列表';
+    if (isYunwei.value) {
+        return activeTab.value === 'assigned' ? '派单列表' : '我的报修';
+    }
     return '我的工单';
 });
+
+const currentUserId = ref(null);
 
 // 评价相关
 const reviewDialogVisible = ref(false);
@@ -157,6 +266,20 @@ const getPriorityType = (val) => {
     return map[val] || '';
 };
 const getStatusLabel = (val) => {
+    // Check if input is object (row) or string
+    let status = val;
+    let assigneeId = null;
+    
+    if (typeof val === 'object' && val !== null) {
+        status = val.status;
+        assigneeId = val.assignee_id;
+    }
+
+    if (status === 'pending') {
+        if (assigneeId) return '待接单'; // Assigned but not accepted
+        return '待抢单'; // Unassigned
+    }
+
     const map = { 
         pending: '待受理', 
         processing: '处理中', 
@@ -165,9 +288,23 @@ const getStatusLabel = (val) => {
         cancelled: '已取消',
         need_info: '需补充信息'
     };
-    return map[val] || val;
+    return map[status] || status;
 };
+
 const getStatusType = (val) => {
+    let status = val;
+    let assigneeId = null;
+
+    if (typeof val === 'object' && val !== null) {
+        status = val.status;
+        assigneeId = val.assignee_id;
+    }
+
+    if (status === 'pending') {
+        if (assigneeId) return 'warning'; // Orange for waiting accept
+        return 'danger'; // Red for urgent pickup
+    }
+
     const map = { 
         pending: 'info', 
         processing: 'primary', 
@@ -176,7 +313,7 @@ const getStatusType = (val) => {
         cancelled: 'info',
         need_info: 'warning'
     };
-    return map[val] || 'info';
+    return map[status] || 'info';
 };
 
 const formatDate = (str) => {
@@ -191,7 +328,8 @@ const fetchOrders = async () => {
             params: {
                 page: page.value,
                 page_size: pageSize.value,
-                status: statusFilter.value || undefined
+                status: statusFilter.value || undefined,
+                scope: currentScope.value || undefined
             }
         });
         if (res.data.code === 200) {
@@ -205,12 +343,23 @@ const fetchOrders = async () => {
     }
 };
 
+const handleTabChange = (tab) => {
+    if (tab === 'assigned') {
+        currentScope.value = 'assigned_to_me';
+    } else if (tab === 'created') {
+        currentScope.value = 'created_by_me';
+    }
+    page.value = 1;
+    fetchOrders();
+};
+
 const viewDetail = (id) => {
     router.push(`/user/repair/detail/${id}`);
 };
 
 const canCancel = (row) => {
-    return row?.status === 'pending' && Number(row?.submitter_id) === Number(currentUserId.value);
+    // 允许待受理或处理中的工单取消
+    return ['pending', 'processing'].includes(row?.status) && Number(row?.submitter_id) === Number(currentUserId.value);
 };
 
 const canReview = (row) => {
@@ -241,6 +390,25 @@ const reviewOrder = (id) => {
     reviewDialogVisible.value = true;
 };
 
+const acceptOrder = async (id) => {
+    try {
+        await ElMessageBox.confirm('确定要接此工单吗?', '接单确认', {
+            confirmButtonText: '确定接单',
+            cancelButtonText: '取消',
+            type: 'info',
+        });
+        const res = await axios.post(`/api/v1/repair-orders/${id}/accept`);
+        if (res.data.code === 200) {
+            ElMessage.success('接单成功');
+            fetchOrders();
+        }
+    } catch (e) {
+        if (e !== 'cancel') {
+             ElMessage.error('接单失败');
+        }
+    }
+};
+
 const submitReview = async () => {
     try {
         const res = await axios.post(`/api/v1/repair-orders/${currentReviewOrderId.value}/review`, reviewForm);
@@ -263,6 +431,15 @@ onMounted(() => {
             roleCodes.value = roles;
             isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
             currentUserId.value = decoded.id;
+
+            if (isYunwei.value) {
+                currentScope.value = 'assigned_to_me';
+                activeTab.value = 'assigned';
+            } else if (isAdminOrManage.value) {
+                currentScope.value = '';
+            } else {
+                currentScope.value = 'created_by_me';
+            }
         } catch (e) {
             // ignore
         }
@@ -284,5 +461,83 @@ onMounted(() => {
     margin-top: 20px;
     display: flex;
     justify-content: flex-end;
+}
+
+/* Card View Styles */
+.order-grid {
+    margin-bottom: 20px;
+}
+.order-card {
+    margin-bottom: 20px;
+    transition: all 0.3s;
+    border-radius: 8px;
+    border: 1px solid #ebeef5;
+}
+.order-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.order-card.priority-high {
+    border-top: 3px solid #f56c6c;
+}
+.order-card-header {
+    padding-bottom: 0;
+}
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.order-id {
+    font-size: 12px;
+    color: #909399;
+    font-family: monospace;
+}
+.header-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.order-card-body {
+    padding: 10px 0;
+    font-size: 14px;
+    color: #606266;
+}
+.info-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+.info-row .el-icon {
+    font-size: 16px;
+    color: #909399;
+}
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.priority-row {
+    margin-top: 12px;
+    justify-content: space-between;
+}
+.priority-row .label {
+    font-size: 12px;
+    color: #909399;
+}
+.order-card-footer {
+    border-top: 1px solid #ebeef5;
+    padding-top: 12px;
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+.action-btn {
+    width: 100%;
 }
 </style>

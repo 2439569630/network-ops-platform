@@ -38,34 +38,22 @@
 
             <el-row :gutter="24">
               <el-col :span="24">
-                <el-form-item prop="device_id" label="关联设备 (可选)">
-                  <div class="device-input-group">
-                    <el-select 
-                      v-model="form.device_id" 
-                      placeholder="搜索设备..." 
-                      clearable 
+                <el-form-item prop="location_id" label="报修位置">
+                  <div class="location-input-group">
+                    <el-cascader
+                      v-model="form.location_id"
+                      :options="locationOptions"
+                      :props="{ value: 'id', label: 'label', children: 'children', checkStrictly: true, emitPath: false }"
+                      placeholder="请选择故障位置"
+                      clearable
                       filterable
-                      remote
-                      :remote-method="searchDevices"
-                      :loading="deviceLoading"
-                      class="device-select"
+                      class="location-select"
                       size="large"
                     >
                       <template #prefix>
-                        <el-icon><Monitor /></el-icon>
+                        <el-icon><Location /></el-icon>
                       </template>
-                      <el-option
-                        v-for="item in deviceOptions"
-                        :key="item.id"
-                        :label="item.device_name"
-                        :value="item.id"
-                      >
-                        <span style="float: left">{{ item.device_name }}</span>
-                        <span style="float: right; color: var(--el-text-color-secondary); font-size: 13px">
-                          {{ item.ipv4 }}
-                        </span>
-                      </el-option>
-                    </el-select>
+                    </el-cascader>
                     <el-button 
                         type="primary" 
                         size="large" 
@@ -77,7 +65,6 @@
                         扫码
                     </el-button>
                   </div>
-                  <div class="form-tip">支持扫描设备标签上的二维码快速关联</div>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -167,7 +154,7 @@ import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { 
   Edit, EditPen, Monitor, InfoFilled, WarningFilled, Document, 
   Promotion, Check, CoffeeCup, Timer, Warning, CircleCloseFilled,
-  FullScreen as Scan 
+  FullScreen as Scan, Location
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import axios from '@/axios/axios';
@@ -178,8 +165,7 @@ const router = useRouter();
 const repairFormRef = ref(null);
 const loading = ref(false);
 const submitting = ref(false);
-const deviceLoading = ref(false);
-const deviceOptions = ref([]);
+const locationOptions = ref([]);
 
 // Scan
 const scanDialogVisible = ref(false);
@@ -187,7 +173,7 @@ let html5QrCode = null;
 
 const form = reactive({
   title: '',
-  device_id: null,
+  location_id: null,
   priority: 'medium',
   description: ''
 });
@@ -213,38 +199,15 @@ const rules = reactive({
   ]
 });
 
-// 搜索设备
-const searchDevices = async (query) => {
-  if (query) {
-    deviceLoading.value = true;
+// 获取位置树
+const fetchLocations = async () => {
     try {
-      // 复用设备列表接口，简单过滤
-      const res = await axios.get('/api/v1/user/device/get');
-      if (res.data && Array.isArray(res.data)) {
-          deviceOptions.value = res.data.filter(item => 
-              item.device_name.toLowerCase().includes(query.toLowerCase()) || 
-              item.ipv4.includes(query)
-          );
-      }
-    } catch (error) {
-      console.error("Device search error", error);
-    } finally {
-      deviceLoading.value = false;
-    }
-  } else {
-    deviceOptions.value = [];
-  }
-};
-
-// 初始化加载部分设备
-const initDevices = async () => {
-    try {
-        const res = await axios.get('/api/v1/user/device/get');
-        if (res.data && Array.isArray(res.data)) {
-            deviceOptions.value = res.data.slice(0, 20); 
+        const res = await axios.get('/api/v1/locations/tree');
+        if (res.data && res.data.code === 200) {
+            locationOptions.value = res.data.data;
         }
     } catch (error) {
-        // ignore error
+        console.error("Location fetch error", error);
     }
 };
 
@@ -252,7 +215,7 @@ const resetForm = (formEl) => {
   if (!formEl) return;
   formEl.resetFields();
   form.priority = 'medium';
-  deviceOptions.value = [];
+  form.location_id = null;
 };
 
 const submitForm = async (formEl) => {
@@ -265,12 +228,12 @@ const submitForm = async (formEl) => {
           title: form.title,
           description: form.description,
           priority: form.priority,
-          device_id: form.device_id
+          location_id: form.location_id
         };
         const res = await axios.post('/api/v1/repair-orders/', payload);
         if (res.data && res.data.code === 200) {
           ElMessage.success('报修单提交成功');
-          router.push('/user/repair');
+          router.push('/user/repair/list');
         } else {
           ElMessage.error(res.data.message || '提交失败');
         }
@@ -309,27 +272,21 @@ const startScan = () => {
 
 const onScanSuccess = (decodedText, decodedResult) => {
   console.log(`Scan result: ${decodedText}`, decodedResult);
-  // Expected format: "DeviceID:123" or just "123"
+  // Expected format: "LocationID:123"
   let id = null;
-  if (decodedText.startsWith("DeviceID:")) {
+  if (decodedText.startsWith("LocationID:")) {
       id = decodedText.split(":")[1];
-  } else if (decodedText.startsWith("LocationID:")) {
-      // If it's a location, maybe we can't directly bind device, but let's see. 
-      // For now, assume device scan.
-      ElMessage.warning("扫描到的是位置码，请扫描设备码");
-      return; 
   } else if (/^\d+$/.test(decodedText)) {
+      // Assuming number only is location ID for now if we don't have prefix
       id = decodedText;
   }
   
   if (id) {
       handleScanClose();
-      form.device_id = Number(id);
-      // Optional: Fetch device info to display correct label
-      fetchDeviceInfo(id);
-      ElMessage.success("扫码成功，已自动关联设备");
+      form.location_id = Number(id);
+      ElMessage.success("扫码成功，已自动选择位置");
   } else {
-      ElMessage.warning(`无法识别的二维码格式: ${decodedText}`);
+      ElMessage.warning(`无法识别的二维码: ${decodedText}`);
   }
 };
 
@@ -351,30 +308,8 @@ const handleScanClose = () => {
   }
 };
 
-const fetchDeviceInfo = async (id) => {
-    try {
-        // API path correction: /detail/{id}
-        // Note: The backend returns the device object directly, not wrapped in { code: 200, data: ... }
-        const res = await axios.get(`/api/v1/user/device/detail/${id}`);
-        const dev = res.data;
-        if (dev && dev.id) {
-            deviceOptions.value = [dev];
-            form.device_id = dev.id;
-        } else {
-             // In case it is wrapped (defensive)
-             if (dev.data && dev.code === 200) {
-                 deviceOptions.value = [dev.data];
-                 form.device_id = dev.data.id;
-             }
-        }
-    } catch(e) {
-        console.error("Fetch device error", e);
-        ElMessage.warning("获取设备信息失败，请确认设备ID是否正确");
-    }
-}
-
 onMounted(() => {
-    initDevices();
+    fetchLocations();
 });
 
 onBeforeUnmount(() => {
@@ -556,12 +491,12 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
-.device-input-group {
+.location-input-group {
     display: flex;
     gap: 8px;
     width: 100%;
 }
-.device-select {
+.location-select {
     flex: 1;
     min-width: 0; /* 防止 flex item 溢出 */
 }

@@ -23,25 +23,19 @@
                          </el-badge>
                     </el-menu-item>
 
-                    <!-- 2. 个人工作台 (所有人可见) -->
-                    <el-sub-menu index="workspace">
-                        <template #title>
-                            <el-icon><User /></el-icon>
-                            <span>个人工作台</span>
-                        </template>
-                        <el-menu-item index="profile" @click="goto('/user/home')">
-                             <el-icon><UserFilled /></el-icon>
-                             <span>个人中心</span>
-                        </el-menu-item>
-                    </el-sub-menu>
+                    <!-- 2. 个人中心 (所有人可见) -->
+                    <el-menu-item index="profile" @click="goto('/user/home')">
+                         <el-icon><UserFilled /></el-icon>
+                         <span>个人中心</span>
+                    </el-menu-item>
 
                     <!-- 3. 业务管理 (设备与位置) -->
-                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:view'])">
+                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:manage'])">
                          <template #title>
                             <el-icon><OfficeBuilding /></el-icon>
                             <span>业务管理</span>
                         </template>
-                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasPerm('sys:location:view')">
+                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasPerm('sys:location:manage')">
                             <el-icon><Location /></el-icon>
                             <span>位置管理</span>
                         </el-menu-item>
@@ -122,7 +116,7 @@ const activeMenu = computed(() => {
     const path = route.path;
     if (path.includes('/user/dashboard')) return 'dashboard';
     
-    // 个人工作台
+    // 个人中心
     if (path.includes('/user/home')) return 'profile';
     if (path.includes('/user/message')) return 'message';
 

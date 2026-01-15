@@ -6,7 +6,7 @@
       </div>
     </template>
 
-    <div class="mini" v-loading="store.profileLoading">
+    <div class="mini">
       <div class="mini__top">
         <el-avatar :size="56" class="mini__avatar">
           <span>{{ store.initials }}</span>

@@ -2,7 +2,7 @@
   <div class="pc">
     <PcHero />
 
-    <div class="content">
+    <div class="content" v-loading="isLoading">
       <el-row :gutter="16">
         <el-col :lg="6" :md="24" :sm="24" :xs="24">
           <PcNav :active-page="activePage" @select="setPage" />
@@ -30,6 +30,10 @@ import PcSecurity from './PcSecurity.vue';
 const router = useRouter();
 const route = useRoute();
 const store = homeDataStore();
+
+const isLoading = computed(() => {
+  return store.profileLoading || store.summaryLoading || store.ordersLoading || store.historyLoading;
+});
 
 const activePage = computed(() => {
   const p = String(route.query.page || 'overview');

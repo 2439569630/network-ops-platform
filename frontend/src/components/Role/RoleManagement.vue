@@ -511,6 +511,7 @@ const currentUserId = ref(null);
 // --- Computed ---
 
 const permissionDepsByCode = {
+  'sys:location:del': ['sys:location:view'],
   'sys:device:add': ['sys:device:list'],
   'sys:device:edit': ['sys:device:list'],
   'sys:device:del': ['sys:device:list'],
@@ -521,6 +522,8 @@ const permissionDepsByCode = {
   'sys:repair:create': ['sys:repair:view'],
   'sys:repair:handle': ['sys:repair:view'],
   'sys:repair:manage': ['sys:repair:view', 'sys:repair:handle'],
+  'sys:role:manage': ['sys:role:view'],
+  'sys:menu:manage': ['sys:menu:view'],
 };
 
 const normalizePermCode = (code) => String(code || '').trim();
@@ -545,6 +548,8 @@ const moduleNameMap = {
   config: '系统配置',
   notify: '通知',
   repair: '工单系统',
+  role: '角色权限',
+  menu: '菜单管理',
 };
 
 const getPermGroupName = (code) => {

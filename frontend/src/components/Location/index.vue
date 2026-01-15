@@ -46,9 +46,11 @@
             <template #default="{ node, data }">
                 <div class="custom-tree-node" :class="{ 'is-disabled': data.status === false }">
                      <span class="node-main">
-                         <el-icon :color="getTypeColor(data.type)" class="node-icon">
-                             <component :is="getTypeIcon(data.type)" />
-                         </el-icon>
+                         <component 
+                            :is="getTypeIcon(data.type)" 
+                            class="node-icon" 
+                            :style="{ color: getTypeColor(data.type), width: '1.2em', height: '1.2em', marginRight: '8px', verticalAlign: '-2px' }"
+                         />
                          <span class="node-label" v-html="highlightText(node.label)"></span>
                          <span v-if="data.status === false" class="status-badge off">停</span>
                      </span>
@@ -147,12 +149,6 @@
                     <el-descriptions-item label="位置编码">
                         <el-tag type="info" effect="plain">{{ currentNode.code || '未设置' }}</el-tag>
                     </el-descriptions-item>
-                    <el-descriptions-item label="绑定角色">
-                        <div v-if="currentNodeRoleLabels.length" class="tag-list">
-                            <el-tag v-for="t in currentNodeRoleLabels" :key="t" type="primary" effect="plain" class="mr-1">{{ t }}</el-tag>
-                        </div>
-                        <span v-else>-</span>
-                    </el-descriptions-item>
                     <el-descriptions-item label="绑定用户">
                         <div v-if="currentNodeUserLabels.length" class="tag-list">
                             <el-tag v-for="t in currentNodeUserLabels" :key="t" type="success" effect="plain" class="mr-1">{{ t }}</el-tag>
@@ -172,7 +168,17 @@
             <div class="device-section">
                 <div class="section-header">
                     <span class="section-title">关联设备列表</span>
-                    <el-button link type="primary">查看全部</el-button>
+                    <div class="header-actions">
+                        <template v-if="!canBindDevice">
+                            <el-tooltip content="该节点类型无法直接绑定设备，请在下级位置添加" placement="top">
+                                <span>
+                                    <el-button type="primary" link :icon="Plus" disabled>添加设备</el-button>
+                                </span>
+                            </el-tooltip>
+                        </template>
+                        <el-button v-else type="primary" link :icon="Plus" @click="handleAddDevice">添加设备</el-button>
+                        <el-button link type="primary">查看全部</el-button>
+                    </div>
                 </div>
                 <el-table :data="deviceList" style="width: 100%" height="400" stripe>
                     <el-table-column prop="name" label="设备名称" show-overflow-tooltip />
@@ -184,6 +190,17 @@
                                     {{ row.status === 'online' ? '在线' : '离线' }}
                                 </el-tag>
                             </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="80" align="center" fixed="right">
+                        <template #default="{ row }">
+                             <el-button 
+                                type="danger" 
+                                link 
+                                :icon="Delete" 
+                                @click="handleRemoveDevice(row)"
+                                :disabled="!canEdit"
+                             />
+                        </template>
                     </el-table-column>
                 </el-table>
             </div>
@@ -220,11 +237,14 @@
                 </el-col>
                 <el-col :span="12">
                     <el-form-item label="类型" prop="type">
-                      <el-select v-model="form.type" placeholder="请选择类型" :disabled="formType === 'edit' && form.type === 'campus'" style="width: 100%">
+                      <el-select v-model="form.type" placeholder="请选择类型" :disabled="formType === 'edit' && form.type === 'school'" style="width: 100%">
                         <template #prefix><el-icon><Menu /></el-icon></template>
-                        <el-option label="校区" value="campus" v-if="isRoot || form.type === 'campus'" />
-                        <el-option label="楼宇" value="building" />
+                        <el-option label="学校" value="school" v-if="isRoot || form.type === 'school'" />
+                        <el-option label="校区" value="campus" />
+                        <el-option label="院系" value="department" />
+                        <el-option label="教学楼" value="building" />
                         <el-option label="楼层" value="floor" />
+                        <el-option label="教室" value="classroom" />
                         <el-option label="房间/区域" value="room" />
                       </el-select>
                     </el-form-item>
@@ -292,26 +312,46 @@
                 </el-col>
                 <el-col :span="24">
                      <el-form-item label="绑定用户">
-                        <el-select
-                            v-model="form.userIds"
-                            multiple
-                            filterable
-                            remote
-                            :remote-method="handleUsersRemoteSearch"
-                            :reserve-keyword="false"
-                            collapse-tags
-                            collapse-tags-tooltip
-                            placeholder="可选，绑定到该节点的具体用户"
-                            style="width: 100%"
-                            :loading="usersLoading"
-                        >
-                            <el-option
-                                v-for="u in userOptions"
-                                :key="u.id"
-                                :label="`${u.nickname || u.username} (${u.username})`"
-                                :value="u.id"
-                            />
-                        </el-select>
+                        <div class="user-binding-container" style="width: 100%">
+                            <div class="filter-bar" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                <el-select 
+                                    v-model="userFilterRole" 
+                                    placeholder="按角色筛选" 
+                                    clearable 
+                                    style="width: 160px"
+                                    @change="handleUserFilterRoleChange"
+                                    size="small"
+                                >
+                                    <el-option
+                                        v-for="r in roleOptions"
+                                        :key="r.id"
+                                        :label="r.name"
+                                        :value="r.id"
+                                    />
+                                </el-select>
+                                <el-checkbox v-model="form.inheritUser" label="继承到子节点" size="small" />
+                            </div>
+                            <el-select
+                                v-model="form.userIds"
+                                multiple
+                                filterable
+                                remote
+                                :remote-method="handleUsersRemoteSearch"
+                                :reserve-keyword="false"
+                                collapse-tags
+                                collapse-tags-tooltip
+                                placeholder="可选，绑定到该节点的具体用户"
+                                style="width: 100%"
+                                :loading="usersLoading"
+                            >
+                                <el-option
+                                    v-for="u in userOptions"
+                                    :key="u.id"
+                                    :label="`${u.nickname || u.username} (${u.username})`"
+                                    :value="u.id"
+                                />
+                            </el-select>
+                        </div>
                      </el-form-item>
                 </el-col>
             </el-row>
@@ -348,6 +388,34 @@
             <el-button type="primary" @click="downloadQr" style="width: 100%">下载二维码</el-button>
         </template>
     </el-dialog>
+
+    <!-- Add Device Dialog -->
+    <el-dialog v-model="deviceDialogVisible" title="添加设备" width="500px" append-to-body>
+        <el-form :model="deviceForm" label-width="80px">
+            <el-form-item label="选择设备">
+                 <el-select 
+                    v-model="deviceForm.deviceId" 
+                    placeholder="请输入名称或IP搜索设备" 
+                    filterable 
+                    remote
+                    :remote-method="handleDeviceRemoteSearch"
+                    :loading="deviceSearchLoading"
+                    style="width: 100%"
+                 >
+                    <el-option 
+                        v-for="d in deviceOptions" 
+                        :key="d.id" 
+                        :label="`${d.device_name || d.name || '未知设备'} (${d.ipv4 || '-'})`" 
+                        :value="d.id" 
+                    />
+                 </el-select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="deviceDialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="confirmAddDevice" :loading="deviceSaving">确定</el-button>
+        </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -358,7 +426,7 @@ import {
     Plus, Edit, Delete, Search, Download, Refresh, Sort, 
     School, OfficeBuilding, House, Location,
     Printer, CopyDocument, Warning, ArrowDown, User, Monitor, Lock,
-    Menu, Setting, Key
+    Menu, Setting, Key, Reading, Management, Place
 } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { homeDataStore } from '@/components/home/home/data'
@@ -385,6 +453,14 @@ const currentParent = ref(null)
 const qrVisible = ref(false)
 const qrNode = ref(null)
 
+const deviceDialogVisible = ref(false)
+const deviceForm = reactive({ deviceId: null })
+const deviceOptions = ref([])
+const deviceSearchLoading = ref(false)
+const deviceSaving = ref(false)
+
+const userFilterRole = ref(null)
+
 // Form Data
 const form = reactive({
     id: null,
@@ -395,7 +471,8 @@ const form = reactive({
     description: '',
     status: true,
     roleIds: [],
-    userIds: []
+    userIds: [],
+    inheritUser: false
 })
 
 const rules = {
@@ -440,6 +517,13 @@ const canAdd = computed(() => Boolean(store.isSuper) || (Array.isArray(store.per
 const canEdit = computed(() => Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:location:edit')))
 const canDel = computed(() => Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:location:del')))
 
+const canBindDevice = computed(() => {
+    if (!currentNode.value) return false
+    // restrict broad types
+    const broadTypes = ['school', 'campus', 'department']
+    return !broadTypes.includes(currentNode.value.type)
+})
+
 const roleLabelById = computed(() => {
     const m = new Map()
     for (const r of roleOptions.value || []) {
@@ -483,17 +567,29 @@ const highlightText = (text) => {
     return text.replace(reg, (match) => `<span style="color: var(--el-color-primary); font-weight: bold">${match}</span>`);
 }
 
-const handleNodeClick = (data) => {
+const handleNodeClick = async (data) => {
     detailLoading.value = true
     currentNode.value = data
     ensureUsersByIds(currentNode.value?.userIds)
-    // Mock device data for now
-    deviceList.value = []
     
-    // Simulate fetching delay
-    setTimeout(() => {
-        detailLoading.value = false
-    }, 300)
+    // Fetch real devices
+    try {
+        const res = await axios.get('/api/v1/user/device/get', { 
+            params: { 
+                location_node_id: data.id,
+                page: 1,
+                page_size: 100
+            } 
+        })
+        deviceList.value = res.data || []
+    } catch {
+        deviceList.value = []
+    } finally {
+        // Simulate fetching delay
+        setTimeout(() => {
+            detailLoading.value = false
+        }, 300)
+    }
 }
 
 const handleCommand = (command) => {
@@ -504,7 +600,7 @@ const handleCommand = (command) => {
 
 // Icons & Styles
 const getTypeIcon = (type) => {
-    const map = { campus: School, building: OfficeBuilding, floor: House, room: Location }
+    const map = { school: School, campus: Place, department: Management, building: OfficeBuilding, floor: House, classroom: Reading, room: Location }
     return map[type] || Location
 }
 
@@ -608,7 +704,7 @@ const handleEdit = (data) => {
         ElMessage.warning('无权限编辑位置')
         return
     }
-    isRoot.value = data.type === 'campus'
+    isRoot.value = !data.parent_id
     currentParent.value = null
     formType.value = 'edit'
     dialogTitle.value = `编辑 [${data.label}]`
@@ -688,6 +784,7 @@ const handleSave = async () => {
                 status: form.status,
                 roleIds: form.roleIds,
                 userIds: form.userIds,
+                inherit_users: form.inheritUser
             }
             const res = await axios.post('/api/v1/locations/', payload)
             const out = res?.data || {}
@@ -719,6 +816,7 @@ const handleSave = async () => {
             status: form.status,
             roleIds: form.roleIds,
             userIds: form.userIds,
+            inherit_users: form.inheritUser
         }
         const res = await axios.put(`/api/v1/locations/${form.id}`, updatePayload)
         const out = res?.data || {}
@@ -748,6 +846,8 @@ const resetForm = () => {
     form.status = true
     form.roleIds = []
     form.userIds = []
+    form.inheritUser = false
+    userFilterRole.value = null
     if(formRef.value) formRef.value.resetFields()
 }
 
@@ -801,11 +901,20 @@ const fetchUsers = async ({ q } = {}) => {
     if (!canAdd.value && !canEdit.value) return
     usersLoading.value = true
     try {
-        const res = await axios.get('/api/v1/locations/bind/users', { params: { q: String(q ?? '') || '', page: 1, page_size: 50 } })
+        const params = { q: String(q ?? '') || '', page: 1, page_size: 50 }
+        if (userFilterRole.value) params.role_id = userFilterRole.value
+        const res = await axios.get('/api/v1/locations/bind/users', { params })
         const out = res?.data || {}
         if (out?.code === 200) mergeUserOptions(out?.data)
     } catch {}
     finally { usersLoading.value = false }
+}
+
+const handleUserFilterRoleChange = async () => {
+    // Keep only selected users in options to avoid display issues
+    const selected = new Set((form.userIds || []).map(Number))
+    userOptions.value = userOptions.value.filter(u => selected.has(Number(u.id)))
+    await fetchUsers({ q: usersQuery.value })
 }
 
 const handleUsersRemoteSearch = async (query) => {
@@ -865,6 +974,82 @@ const handleQrCode = (data) => {
 const downloadQr = () => {
     ElMessage.success('二维码已开始下载')
     qrVisible.value = false
+}
+
+const handleAddDevice = () => {
+    if (!currentNode.value) return
+    deviceForm.deviceId = null
+    deviceOptions.value = []
+    deviceDialogVisible.value = true
+    fetchDeviceOptions()
+}
+
+const fetchDeviceOptions = async (query = '') => {
+    deviceSearchLoading.value = true
+    try {
+        const res = await axios.get('/api/v1/user/device/get', { params: { search: query, page: 1, page_size: 100 } })
+        const data = res?.data || []
+        deviceOptions.value = Array.isArray(data) ? data : []
+    } catch {
+        deviceOptions.value = []
+    } finally {
+        deviceSearchLoading.value = false
+    }
+}
+
+const handleDeviceRemoteSearch = (query) => {
+    fetchDeviceOptions(query)
+}
+
+const confirmAddDevice = async () => {
+    if (!deviceForm.deviceId) {
+        ElMessage.warning('请选择设备')
+        return
+    }
+    
+    // Check if device already in list
+    const exists = deviceList.value.some(d => d.id === deviceForm.deviceId)
+    if (exists) {
+        ElMessage.warning('该设备已在此位置')
+        return
+    }
+
+    deviceSaving.value = true
+    try {
+        await axios.post(`/api/v1/locations/${currentNode.value.id}/devices`, {
+            device_ids: [deviceForm.deviceId]
+        })
+        ElMessage.success('设备添加成功')
+        deviceDialogVisible.value = false
+        // Refresh detail to show new device
+        await handleNodeClick(currentNode.value)
+    } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '添加失败')
+    } finally {
+        deviceSaving.value = false
+    }
+}
+
+const handleRemoveDevice = (row) => {
+    ElMessageBox.confirm(
+        `确定要移除设备 [${row.name || row.device_name}] 吗？`,
+        '移除确认',
+        {
+            confirmButtonText: '移除',
+            cancelButtonText: '取消',
+            type: 'warning'
+        }
+    ).then(async () => {
+        try {
+            await axios.delete(`/api/v1/locations/${currentNode.value.id}/devices`, {
+                data: { device_ids: [row.id] }
+            })
+            ElMessage.success('移除成功')
+            await handleNodeClick(currentNode.value)
+        } catch (e) {
+            ElMessage.error(e?.response?.data?.message || '移除失败')
+        }
+    })
 }
 
 onMounted(async () => {

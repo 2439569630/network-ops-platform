@@ -96,7 +96,7 @@ const homeRoutes = [
                 path: 'location',
                 name: 'location',
                 component: Location,
-                meta: { title: '位置管理', perms: ['sys:location:view'] } // 管理员和运维可见
+                meta: { title: '位置管理', perms: ['sys:location:manage'] } // 仅管理员和有权限者可见
             },
             {
                 path: 'config',

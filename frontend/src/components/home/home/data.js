@@ -362,6 +362,7 @@ export const homeDataStore = defineStore('homeData', () => {
       const res = await axios.get('/api/v1/users/profile/summary');
       if (res.data.code === 200) Object.assign(summary, res.data.data || {});
     } catch (e) {
+      console.error('获取统计数据失败:', e);
       return;
     } finally {
       summaryLoading.value = false;
@@ -371,7 +372,10 @@ export const homeDataStore = defineStore('homeData', () => {
   const fetchRecentOrders = async () => {
     ordersLoading.value = true;
     try {
-      const res = await axios.get('/api/v1/repair-orders/', { params: { page: 1, page_size: 6 } });
+      // 在个人中心仅展示与我相关的工单（我创建的或指派给我的），即使是管理员也不显示全局工单
+      const res = await axios.get('/api/v1/repair-orders/', { 
+        params: { page: 1, page_size: 6, scope: 'personal' } 
+      });
       if (res.data.code === 200) recentOrders.value = res.data.data?.items || [];
     } catch (e) {
       return;
@@ -381,6 +385,12 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const fetchNotificationHistory = async () => {
+    const hasPerm = isSuper.value || (Array.isArray(permissions.value) ? permissions.value : []).includes('sys:notify:history');
+    if (!hasPerm) {
+      notificationHistory.value = [];
+      return;
+    }
+
     historyLoading.value = true;
     try {
       const res = await axios.get('/api/v1/notifications/history');

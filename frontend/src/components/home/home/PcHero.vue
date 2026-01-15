@@ -24,7 +24,7 @@
       </div>
 
       <div class="kpi-wrap">
-        <div class="kpi-grid" v-loading="store.summaryLoading">
+        <div class="kpi-grid" :style="gridStyle">
           <div class="kpi">
             <div class="kpi__label">待处理工单</div>
             <div class="kpi__value">{{ store.summary.order_open || 0 }}</div>
@@ -37,7 +37,7 @@
             <div class="kpi__label">已完成</div>
             <div class="kpi__value">{{ store.summary.order_done || 0 }}</div>
           </div>
-          <div class="kpi">
+          <div class="kpi" v-if="canShowDeviceStats">
             <div class="kpi__label">我创建的设备</div>
             <div class="kpi__value">{{ store.summary.device_count || 0 }}</div>
           </div>
@@ -48,9 +48,21 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { homeDataStore } from './data';
 
 const store = homeDataStore();
+
+const canShowDeviceStats = computed(() => {
+  return Boolean(store.isSuper) || (Array.isArray(store.permissions) && store.permissions.includes('sys:device:add'));
+});
+
+const gridStyle = computed(() => {
+  const count = canShowDeviceStats.value ? 4 : 3;
+  return {
+    gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`
+  };
+});
 </script>
 
 <style scoped>
@@ -178,7 +190,7 @@ const store = homeDataStore();
 
 @media (max-width: 1100px) {
   .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 

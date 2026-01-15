@@ -7,8 +7,7 @@
         </div>
       </template>
 
-      <el-skeleton v-if="store.ordersLoading" :rows="5" animated />
-      <div v-else>
+      <div>
         <el-empty v-if="store.recentOrders.length === 0" description="暂无工单" />
         <el-table v-else :data="store.recentOrders" size="small" style="width: 100%">
           <el-table-column prop="id" label="ID" width="80" />
@@ -34,8 +33,7 @@
         </div>
       </template>
 
-      <el-skeleton v-if="store.historyLoading" :rows="4" animated />
-      <div v-else class="notify-list">
+      <div class="notify-list">
         <el-empty v-if="store.notificationHistory.length === 0" description="暂无通知" />
         <div v-else class="notify-item" v-for="n in store.notificationHistory" :key="n.id || n.created_at">
           <div class="notify-item__time">{{ formatTime(n.created_at) }}</div>

@@ -23,7 +23,10 @@
         <el-tab-pane label="概览" name="overview">
           <el-card :class="$style.section" shadow="never">
             <template #header>
-              <div :class="$style.sectionHeader">状态</div>
+              <div :class="$style.auditHeader">
+                <div :class="$style.sectionHeader">状态</div>
+                <el-button size="small" type="primary" plain @click="handleBoost" :loading="boostLoading">加快巡检</el-button>
+              </div>
             </template>
 
             <div :class="$style.stats">
@@ -334,6 +337,20 @@ const sshAuditLogs = ref([])
 const sshAuditTotal = ref(0)
 const sshAuditPage = ref(1)
 const sshAuditPageSize = ref(50)
+
+const boostLoading = ref(false)
+
+const handleBoost = async () => {
+  boostLoading.value = true
+  try {
+    await boostMonitor()
+    ElMessage.success('已开启加快巡检')
+  } catch (e) {
+    ElMessage.error('加快巡检请求失败')
+  } finally {
+    boostLoading.value = false
+  }
+}
 
 const formatDateTime = (val) => {
   if (!val) return '-'
