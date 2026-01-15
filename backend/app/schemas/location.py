@@ -22,6 +22,7 @@ class LocationNodeBase(BaseModel):
 
 class LocationNodeCreate(LocationNodeBase):
     parent_id: Optional[int] = None
+    inherit_users: Optional[bool] = False
 
 
 class LocationNodeUpdate(BaseModel):
@@ -38,6 +39,7 @@ class LocationNodeUpdate(BaseModel):
     status: Optional[bool] = None
     roleIds: Optional[List[int]] = None
     userIds: Optional[List[int]] = None
+    inherit_users: Optional[bool] = None
 
 
 class LocationNodeMove(BaseModel):

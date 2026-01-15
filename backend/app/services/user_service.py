@@ -13,43 +13,55 @@ from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email
 from app.core.security import bump_user_auth_version
 
+# ORM Imports
+from app.models.orm.user import User
+from app.models.orm.device import NetworkDevice
+from app.models.orm.repair import RepairOrder
+from tortoise.functions import Count
+from tortoise.expressions import Q
+
 class UserService:
     _email_verify_table_ready: bool = False
 
     @staticmethod
     async def get_user_list() -> List[dict]:
-        sql = "SELECT id, username, nickname, email, is_approved, permissions, created_at FROM users ORDER BY id"
-        users = await db.fetch_all(sql)
-        # Ensure permissions is a list (JSON deserialization might be automatic in asyncpg, but let's be safe)
+        users = await User.all().order_by("id")
         result = []
         for u in users:
-            u_dict = dict(u)
-            if isinstance(u_dict.get('permissions'), str):
-                try:
-                    u_dict['permissions'] = json.loads(u_dict['permissions'])
-                except:
-                    u_dict['permissions'] = []
+            u_dict = {
+                "id": u.id,
+                "username": u.username,
+                "nickname": u.nickname,
+                "email": u.email,
+                "is_approved": u.is_approved,
+                "permissions": u.permissions if isinstance(u.permissions, list) else [],
+                "created_at": u.created_at
+            }
+            # Permissions is already JSONField, so it's a list or dict
             result.append(u_dict)
         return result
 
     @staticmethod
     async def get_user_by_id(user_id: int) -> Optional[dict]:
-        sql = "SELECT id, username, nickname, email, is_approved, permissions, created_at FROM users WHERE id = $1"
-        user = await db.fetch_one(sql, user_id)
+        user = await User.filter(id=user_id).first()
         if user:
-            u_dict = dict(user)
-            if isinstance(u_dict.get('permissions'), str):
-                try:
-                    u_dict['permissions'] = json.loads(u_dict['permissions'])
-                except:
-                    u_dict['permissions'] = []
-            return u_dict
+            return {
+                "id": user.id,
+                "username": user.username,
+                "nickname": user.nickname,
+                "email": user.email,
+                "is_approved": user.is_approved,
+                "permissions": user.permissions if isinstance(user.permissions, list) else [],
+                "created_at": user.created_at
+            }
         return None
 
     @staticmethod
     async def get_user_by_username(username: str) -> Optional[dict]:
-        sql = "SELECT id FROM users WHERE username = $1"
-        return await db.fetch_one(sql, username)
+        user = await User.filter(username=username).first()
+        if user:
+             return {"id": user.id}
+        return None
 
     @staticmethod
     async def create_user(data: UserCreate) -> int:
@@ -64,26 +76,28 @@ class UserService:
         if perms is None:
             perms = ["sys:monitor:view"]
 
-        sql = """
-            INSERT INTO users (username, password, nickname, email, is_approved, permissions)
-            VALUES ($1, $2, $3, $4, true, $5::jsonb)
-            RETURNING id
-        """
-        user_id = await db.fetch_val(sql, data.username, hashed_pw, nickname, data.email, perms)
+        user = await User.create(
+            username=data.username,
+            password=hashed_pw,
+            nickname=nickname,
+            email=data.email,
+            is_approved=True,
+            permissions=perms
+        )
 
         default_role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
         if default_role_id:
             await db.execute(
                 "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                int(user_id),
+                int(user.id),
                 int(default_role_id),
             )
-        return user_id
+        return user.id
 
     @staticmethod
     async def update_user_role(user_id: int, data: RoleUpdate):
         if data.permissions is not None:
-             await db.execute("UPDATE users SET permissions = $1::jsonb WHERE id = $2", data.permissions, user_id)
+             await User.filter(id=user_id).update(permissions=data.permissions)
              try:
                  from app.services.rbac_service import RbacService
                  await RbacService.bump_user_perm_version(int(user_id))
@@ -92,11 +106,11 @@ class UserService:
 
     @staticmethod
     async def delete_user(user_id: int):
-        await db.execute("DELETE FROM users WHERE id = $1", user_id)
+        await User.filter(id=user_id).delete()
 
     @staticmethod
     async def update_status(user_id: int, is_approved: bool):
-        await db.execute("UPDATE users SET is_approved = $1 WHERE id = $2", is_approved, user_id)
+        await User.filter(id=user_id).update(is_approved=is_approved)
 
     @staticmethod
     async def update_profile(user_id: int, data: UserUpdate):
@@ -106,78 +120,68 @@ class UserService:
                  raise ValueError("修改密码需要提供旧密码")
              
              # Verify old password
-             # This requires fetching the current password hash, which isn't in get_user_by_id usually for security
-             # But we need it here.
-             sql = "SELECT password FROM users WHERE id = $1"
-             stored_pw = await db.fetch_val(sql, user_id)
+             user = await User.filter(id=user_id).first()
+             stored_pw = user.password if user else None
+             
              from app.core.security import verify_password
              if not stored_pw or not verify_password(data.old_password, stored_pw):
                  raise ValueError("旧密码错误")
              
              new_hash = get_password_hash(data.new_password)
-             await db.execute("UPDATE users SET password = $1 WHERE id = $2", new_hash, user_id)
+             await User.filter(id=user_id).update(password=new_hash)
              try:
                  await bump_user_auth_version(int(user_id))
              except Exception:
                  pass
 
-        updates = []
-        values = []
-        idx = 1
+        updates = {}
         
         if data.nickname is not None:
-            updates.append(f"nickname = ${idx}")
-            values.append(data.nickname)
-            idx += 1
+            updates['nickname'] = data.nickname
             
         if data.email is not None:
             raise ValueError("邮箱需通过验证邮件绑定")
             
         if updates:
-            values.append(user_id)
-            sql = f"UPDATE users SET {', '.join(updates)} WHERE id = ${idx}"
-            await db.execute(sql, *values)
+            await User.filter(id=user_id).update(**updates)
 
     @staticmethod
     async def get_profile_summary(user_id: int, username: str) -> dict:
-        created_at = await db.fetch_val("SELECT created_at FROM users WHERE id = $1", user_id)
+        # 1. 计算注册天数
+        user = await User.filter(id=user_id).first()
+        created_at = user.created_at if user else None
+        
         register_days = 1
         if created_at:
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at)
-                except Exception:
-                    created_at = None
-            if isinstance(created_at, datetime):
-                now = datetime.now(tz=timezone.utc) if created_at.tzinfo else datetime.now()
-                delta = now.date() - created_at.date()
-                register_days = max(delta.days + 1, 1)
+            # 使用 UTC 时间进行计算，避免时区带来的日期差异
+            now = datetime.now(tz=timezone.utc) if created_at.tzinfo else datetime.now()
+            delta = now.date() - created_at.date()
+            register_days = max(delta.days + 1, 1)
 
-        device_count = await db.fetch_val(
-            "SELECT COUNT(*) FROM network_devices WHERE created_by = $1 OR created_by = $2",
-            username,
-            str(user_id),
-        )
+        # 2. 统计设备 (匹配用户名或ID)
+        device_count = await NetworkDevice.filter(
+            Q(created_by=str(username)) | Q(created_by=str(user_id))
+        ).count()
 
-        order_total = await db.fetch_val(
-            "SELECT COUNT(*) FROM repair_orders WHERE submitter_id = $1",
-            user_id,
-        )
-        order_open = await db.fetch_val(
-            "SELECT COUNT(*) FROM repair_orders WHERE submitter_id = $1 AND status IN ('pending','processing','need_info')",
-            user_id,
-        )
-        order_done = await db.fetch_val(
-            "SELECT COUNT(*) FROM repair_orders WHERE submitter_id = $1 AND status IN ('completed','closed')",
-            user_id,
-        )
+        # 3. 统计工单 (使用 ORM 替代原生 SQL，提高稳定性)
+        order_total = await RepairOrder.filter(submitter_id=user_id).count()
+        
+        order_open = await RepairOrder.filter(
+            submitter_id=user_id, 
+            status__in=['pending', 'processing', 'need_info']
+        ).count()
+        
+        order_done = await RepairOrder.filter(
+            submitter_id=user_id, 
+            status__in=['completed', 'closed']
+        ).count()
 
         return {
             "register_days": int(register_days),
-            "device_count": int(device_count or 0),
-            "order_total": int(order_total or 0),
-            "order_open": int(order_open or 0),
-            "order_done": int(order_done or 0),
+            "device_count": device_count,
+            "order_total": order_total,
+            "order_open": order_open,
+            "order_done": order_done
         }
 
     @staticmethod

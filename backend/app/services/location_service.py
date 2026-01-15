@@ -1,80 +1,13 @@
+
 import re
 from typing import Any, Dict, List, Optional, Tuple
+from tortoise import Tortoise
+from tortoise.transactions import in_transaction
 
-import asyncpg
-
-from app.core.database import db
-
+from app.models.orm.location import LocationNode, LocationNodeRole, LocationNodeUser, LocationNodeDevice
 
 class LocationService:
-    _tables_ready: bool = False
     _auto_code_re = re.compile(r"^[0-9A-Fa-f]+(\.[0-9A-Fa-f]+)*$")
-
-    @staticmethod
-    async def _ensure_tables() -> None:
-        if LocationService._tables_ready:
-            return
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS location_nodes (
-                id BIGSERIAL PRIMARY KEY,
-                parent_id BIGINT REFERENCES location_nodes(id) ON DELETE CASCADE,
-                name TEXT NOT NULL,
-                type TEXT NOT NULL,
-                code TEXT,
-                manager_dept TEXT,
-                manager TEXT,
-                phone TEXT,
-                capacity INTEGER,
-                area DOUBLE PRECISION,
-                address TEXT,
-                description TEXT,
-                status BOOLEAN NOT NULL DEFAULT TRUE,
-                sort_order INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """
-        )
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS location_node_roles (
-                node_id BIGINT NOT NULL,
-                role_id BIGINT NOT NULL,
-                PRIMARY KEY (node_id, role_id)
-            )
-            """
-        )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_location_node_roles_node ON location_node_roles(node_id)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_location_node_roles_role ON location_node_roles(role_id)")
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS location_node_users (
-                node_id BIGINT NOT NULL,
-                user_id BIGINT NOT NULL,
-                PRIMARY KEY (node_id, user_id)
-            )
-            """
-        )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_location_node_users_node ON location_node_users(node_id)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_location_node_users_user ON location_node_users(user_id)")
-
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_location_nodes_parent_sort ON location_nodes(parent_id, sort_order, id)"
-        )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_location_nodes_code ON location_nodes(code)")
-        await db.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_location_nodes_code_nonempty
-            ON location_nodes (code)
-            WHERE code IS NOT NULL AND btrim(code) <> ''
-            """
-        )
-
-        LocationService._tables_ready = True
 
     @staticmethod
     def _normalize_optional_str(value: Any) -> Optional[str]:
@@ -118,34 +51,19 @@ class LocationService:
         if not ids:
             return {}, {}
 
-        role_rows = await db.fetch_all(
-            """
-            SELECT node_id, role_id
-            FROM location_node_roles
-            WHERE node_id = ANY($1::bigint[])
-            ORDER BY node_id, role_id
-            """,
-            ids,
-        )
-        user_rows = await db.fetch_all(
-            """
-            SELECT node_id, user_id
-            FROM location_node_users
-            WHERE node_id = ANY($1::bigint[])
-            ORDER BY node_id, user_id
-            """,
-            ids,
-        )
+        # ORM fetch
+        role_rows = await LocationNodeRole.filter(node_id__in=ids).all()
+        user_rows = await LocationNodeUser.filter(node_id__in=ids).all()
 
         role_map: Dict[int, List[int]] = {}
-        for r in role_rows or []:
-            nid = int(r["node_id"])
-            role_map.setdefault(nid, []).append(int(r["role_id"]))
+        for r in role_rows:
+            nid = int(r.node_id)
+            role_map.setdefault(nid, []).append(int(r.role_id))
 
         user_map: Dict[int, List[int]] = {}
-        for r in user_rows or []:
-            nid = int(r["node_id"])
-            user_map.setdefault(nid, []).append(int(r["user_id"]))
+        for r in user_rows:
+            nid = int(r.node_id)
+            user_map.setdefault(nid, []).append(int(r.user_id))
 
         return role_map, user_map
 
@@ -154,22 +72,17 @@ class LocationService:
         nid = int(node_id)
         if role_ids is not None:
             ids = LocationService._normalize_id_list(role_ids)
-            await db.execute("DELETE FROM location_node_roles WHERE node_id = $1", nid)
+            await LocationNodeRole.filter(node_id=nid).delete()
             for rid in ids:
-                await db.execute(
-                    "INSERT INTO location_node_roles(node_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                    nid,
-                    int(rid),
-                )
+                # Use get_or_create to avoid unique constraint violation if race condition, 
+                # but we just deleted, so create should be fine.
+                await LocationNodeRole.create(node_id=nid, role_id=int(rid))
+                
         if user_ids is not None:
             ids = LocationService._normalize_id_list(user_ids)
-            await db.execute("DELETE FROM location_node_users WHERE node_id = $1", nid)
+            await LocationNodeUser.filter(node_id=nid).delete()
             for uid in ids:
-                await db.execute(
-                    "INSERT INTO location_node_users(node_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                    nid,
-                    int(uid),
-                )
+                await LocationNodeUser.create(node_id=nid, user_id=int(uid))
 
     @staticmethod
     def _is_auto_code(code: Optional[str]) -> bool:
@@ -190,31 +103,23 @@ class LocationService:
 
     @staticmethod
     async def _get_node_brief(node_id: int) -> Optional[dict]:
-        row = await db.fetch_one(
-            "SELECT id, parent_id, code FROM location_nodes WHERE id = $1",
-            int(node_id),
-        )
-        return dict(row) if row else None
+        node = await LocationNode.filter(id=node_id).only("id", "parent_id", "code").first()
+        return dict(node) if node else None
 
     @staticmethod
     async def _next_auto_child_number(*, parent_id: Optional[int], parent_code: Optional[str]) -> int:
         parent_code_norm = LocationService._normalize_optional_str(parent_code)
         parent_depth = len(LocationService._split_code_segments(parent_code_norm)) if parent_code_norm else 0
 
-        rows = await db.fetch_all(
-            """
-            SELECT code
-            FROM location_nodes
-            WHERE parent_id IS NOT DISTINCT FROM $1
-              AND code IS NOT NULL
-              AND btrim(code) <> ''
-            """,
-            int(parent_id) if parent_id is not None else None,
-        )
+        # Fetch codes of children
+        if parent_id is not None:
+            nodes = await LocationNode.filter(parent_id=parent_id).exclude(code__isnull=True).exclude(code="").all()
+        else:
+            nodes = await LocationNode.filter(parent_id__isnull=True).exclude(code__isnull=True).exclude(code="").all()
 
         max_n = -1
-        for r in rows or []:
-            code = LocationService._normalize_optional_str(r.get("code"))
+        for r in nodes:
+            code = LocationService._normalize_optional_str(r.code)
             if not code:
                 continue
             segs = LocationService._split_code_segments(code)
@@ -232,15 +137,37 @@ class LocationService:
         return max_n + 1
 
     @staticmethod
+    async def get_descendant_ids(root_id: int) -> List[int]:
+        return await LocationService._get_descendant_ids(root_id)
+
+    @staticmethod
+    async def _get_descendant_ids(root_id: int) -> List[int]:
+        conn = Tortoise.get_connection("default")
+        sql = """
+            WITH RECURSIVE sub AS (
+                SELECT id
+                FROM location_nodes
+                WHERE parent_id = $1
+                UNION ALL
+                SELECT n.id
+                FROM location_nodes n
+                JOIN sub s ON n.parent_id = s.id
+            )
+            SELECT id FROM sub
+        """
+        _, rows = await conn.execute_query(sql, [root_id])
+        return [int(r["id"]) for r in rows]
+
+    @staticmethod
     async def _ensure_node_has_code(node_id: int) -> Optional[str]:
-        node = await LocationService._get_node_brief(int(node_id))
+        node = await LocationNode.filter(id=node_id).first()
         if not node:
             return None
-        existing = LocationService._normalize_optional_str(node.get("code"))
+        existing = LocationService._normalize_optional_str(node.code)
         if existing:
             return existing
 
-        parent_id = node.get("parent_id")
+        parent_id = node.parent_id
         parent_code = None
         if parent_id is not None:
             parent_code = await LocationService._ensure_node_has_code(int(parent_id))
@@ -249,22 +176,18 @@ class LocationService:
             n = await LocationService._next_auto_child_number(parent_id=int(parent_id) if parent_id is not None else None, parent_code=parent_code)
             seg = format(int(n), "X")
             new_code = seg if not parent_code else f"{parent_code}.{seg}"
-            try:
-                exists = await db.fetch_val(
-                    "SELECT 1 FROM location_nodes WHERE code = $1 AND id <> $2 LIMIT 1",
-                    new_code,
-                    int(node_id),
-                )
-                if exists:
-                    continue
-                await db.execute(
-                    "UPDATE location_nodes SET code = $1, updated_at = NOW() WHERE id = $2",
-                    new_code,
-                    int(node_id),
-                )
-                return new_code
-            except asyncpg.exceptions.UniqueViolationError:
+            
+            exists = await LocationNode.filter(code=new_code).exclude(id=node_id).exists()
+            if exists:
                 continue
+            
+            node.code = new_code
+            try:
+                await node.save()
+                return new_code
+            except Exception: # Unique violation likely
+                continue
+                
         raise ValueError("生成位置编码失败：重复冲突过多")
 
     @staticmethod
@@ -277,38 +200,32 @@ class LocationService:
             n = await LocationService._next_auto_child_number(parent_id=int(parent_id) if parent_id is not None else None, parent_code=parent_code)
             seg = format(int(n), "X")
             code = seg if not parent_code else f"{parent_code}.{seg}"
-            exists = await db.fetch_val(
-                "SELECT 1 FROM location_nodes WHERE code = $1 LIMIT 1",
-                code,
-            )
+            
+            exists = await LocationNode.filter(code=code).exists()
             if exists:
-                try:
-                    await db.execute("SELECT 1")
-                except Exception:
-                    pass
                 continue
             return code
         raise ValueError("生成位置编码失败：可用编码耗尽或冲突过多")
 
     @staticmethod
-    def _row_to_node(row: dict) -> dict:
+    def _model_to_dict(node: LocationNode) -> dict:
         return {
-            "id": int(row["id"]),
-            "parent_id": int(row["parent_id"]) if row.get("parent_id") is not None else None,
-            "label": row.get("name"),
-            "type": row.get("type"),
-            "code": row.get("code"),
-            "managerDept": row.get("manager_dept"),
-            "manager": row.get("manager"),
-            "phone": row.get("phone"),
-            "capacity": row.get("capacity"),
-            "area": row.get("area"),
-            "address": row.get("address"),
-            "description": row.get("description"),
-            "status": bool(row.get("status")) if row.get("status") is not None else True,
-            "sortOrder": int(row.get("sort_order") or 0),
-            "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
-            "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+            "id": int(node.id),
+            "parent_id": int(node.parent_id) if node.parent_id is not None else None,
+            "label": node.name,
+            "type": node.type,
+            "code": node.code,
+            "managerDept": node.manager_dept,
+            "manager": node.manager,
+            "phone": node.phone,
+            "capacity": node.capacity,
+            "area": node.area,
+            "address": node.address,
+            "description": node.description,
+            "status": bool(node.status),
+            "sortOrder": int(node.sort_order),
+            "createdAt": node.created_at.isoformat() if node.created_at else None,
+            "updatedAt": node.updated_at.isoformat() if node.updated_at else None,
             "roleIds": [],
             "userIds": [],
             "children": [],
@@ -316,19 +233,9 @@ class LocationService:
 
     @staticmethod
     async def get_tree() -> List[dict]:
-        await LocationService._ensure_tables()
-
-        rows = await db.fetch_all(
-            """
-            SELECT
-                id, parent_id, name, type, code,
-                manager_dept, manager, phone, capacity, area, address, description,
-                status, sort_order, created_at, updated_at
-            FROM location_nodes
-            ORDER BY COALESCE(parent_id, 0), sort_order, id
-            """
-        )
-        items = [LocationService._row_to_node(dict(r)) for r in (rows or [])]
+        nodes = await LocationNode.all().order_by("parent_id", "sort_order", "id")
+        
+        items = [LocationService._model_to_dict(n) for n in nodes]
         node_ids = [int(it["id"]) for it in items if it and it.get("id") is not None]
         role_map, user_map = await LocationService._get_bindings_map(node_ids)
         for it in items:
@@ -349,24 +256,29 @@ class LocationService:
                 continue
             parent["children"].append(it)
 
+        # Cleanup empty children for frontend components (e.g. Cascader)
+        for it in items:
+            if not it["children"]:
+                del it["children"]
+
         return roots
 
     @staticmethod
     async def create_node(data: Dict[str, Any]) -> dict:
-        await LocationService._ensure_tables()
-
         parent_id = data.get("parent_id")
         parent_id_val = int(parent_id) if parent_id is not None else None
 
-        next_sort = await db.fetch_val(
-            """
+        # Max sort order
+        conn = Tortoise.get_connection("default")
+        # Raw SQL for max sort order is cleaner
+        sql = """
             SELECT COALESCE(MAX(sort_order), -1) + 1
             FROM location_nodes
             WHERE ($1::bigint IS NULL AND parent_id IS NULL)
                OR (parent_id = $1::bigint)
-            """,
-            parent_id_val,
-        )
+        """
+        _, rows = await conn.execute_query(sql, [parent_id_val])
+        next_sort = rows[0][0] if rows else 0
 
         code = await LocationService._generate_code_for_new_node(parent_id_val)
         role_ids = LocationService._normalize_id_list(data.get("roleIds"))
@@ -374,56 +286,47 @@ class LocationService:
 
         for _ in range(20):
             try:
-                row = await db.fetch_one(
-                    """
-                    INSERT INTO location_nodes
-                      (parent_id, name, type, code, manager_dept, manager, phone, capacity, area, address, description, status, sort_order)
-                    VALUES
-                      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                    RETURNING
-                      id, parent_id, name, type, code,
-                      manager_dept, manager, phone, capacity, area, address, description,
-                      status, sort_order, created_at, updated_at
-                    """,
-                    parent_id_val,
-                    str(data.get("label") or "").strip(),
-                    str(data.get("type") or "").strip(),
-                    code,
-                    LocationService._normalize_optional_str(data.get("managerDept")),
-                    LocationService._normalize_optional_str(data.get("manager")),
-                    LocationService._normalize_optional_str(data.get("phone")),
-                    int(data.get("capacity")) if data.get("capacity") is not None else None,
-                    float(data.get("area")) if data.get("area") is not None else None,
-                    LocationService._normalize_optional_str(data.get("address")),
-                    LocationService._normalize_optional_str(data.get("description")),
-                    bool(data.get("status")) if data.get("status") is not None else True,
-                    int(next_sort or 0),
+                node = await LocationNode.create(
+                    parent_id=parent_id_val,
+                    name=str(data.get("label") or "").strip(),
+                    type=str(data.get("type") or "").strip(),
+                    code=code,
+                    manager_dept=LocationService._normalize_optional_str(data.get("managerDept")),
+                    manager=LocationService._normalize_optional_str(data.get("manager")),
+                    phone=LocationService._normalize_optional_str(data.get("phone")),
+                    capacity=int(data.get("capacity")) if data.get("capacity") is not None else None,
+                    area=float(data.get("area")) if data.get("area") is not None else None,
+                    address=LocationService._normalize_optional_str(data.get("address")),
+                    description=LocationService._normalize_optional_str(data.get("description")),
+                    status=bool(data.get("status")) if data.get("status") is not None else True,
+                    sort_order=int(next_sort or 0)
                 )
-                node = LocationService._row_to_node(dict(row)) if row else {}
-                if node and node.get("id") is not None:
-                    await LocationService._set_node_bindings(
-                        node_id=int(node["id"]),
-                        role_ids=role_ids,
-                        user_ids=user_ids,
-                    )
-                    node["roleIds"] = role_ids
-                    node["userIds"] = user_ids
-                return node
-            except asyncpg.exceptions.UniqueViolationError:
-                code = await LocationService._generate_code_for_new_node(parent_id_val)
-                continue
+                
+                res = LocationService._model_to_dict(node)
+                await LocationService._set_node_bindings(
+                    node_id=int(node.id),
+                    role_ids=role_ids,
+                    user_ids=user_ids,
+                )
+                res["roleIds"] = role_ids
+                res["userIds"] = user_ids
+                return res
+            except Exception as e:
+                # Check for unique violation on code
+                if "unique" in str(e).lower() and "code" in str(e).lower():
+                    code = await LocationService._generate_code_for_new_node(parent_id_val)
+                    continue
+                raise e
         raise ValueError("创建失败：编码冲突过多")
 
     @staticmethod
     async def update_node(node_id: int, patch: Dict[str, Any]) -> Optional[dict]:
-        await LocationService._ensure_tables()
+        node = await LocationNode.filter(id=node_id).first()
+        if not node:
+            return None
 
         role_ids_patch = patch.get("roleIds") if "roleIds" in patch else None
         user_ids_patch = patch.get("userIds") if "userIds" in patch else None
-
-        fields = []
-        values: List[Any] = []
-        idx = 1
 
         mapping = {
             "label": "name",
@@ -438,6 +341,7 @@ class LocationService:
             "status": "status",
         }
 
+        updated = False
         for k, col in mapping.items():
             if k not in patch or patch.get(k) is None:
                 continue
@@ -452,59 +356,14 @@ class LocationService:
                 val = float(val) if val is not None else None
             elif k == "status":
                 val = bool(val)
-            fields.append(f"{col} = ${idx}")
-            values.append(val)
-            idx += 1
+            
+            setattr(node, col, val)
+            updated = True
 
-        if not fields:
-            row = await db.fetch_one(
-                """
-                SELECT
-                  id, parent_id, name, type, code,
-                  manager_dept, manager, phone, capacity, area, address, description,
-                  status, sort_order, created_at, updated_at
-                FROM location_nodes
-                WHERE id = $1
-                """,
-                int(node_id),
-            )
-            node = LocationService._row_to_node(dict(row)) if row else None
-            if node and node.get("id") is not None:
-                role_map, user_map = await LocationService._get_bindings_map([int(node["id"])])
-                node["roleIds"] = role_map.get(int(node["id"]), [])
-                node["userIds"] = user_map.get(int(node["id"]), [])
-            if role_ids_patch is not None or user_ids_patch is not None:
-                await LocationService._set_node_bindings(
-                    node_id=int(node_id),
-                    role_ids=role_ids_patch if role_ids_patch is not None else None,
-                    user_ids=user_ids_patch if user_ids_patch is not None else None,
-                )
-                if node:
-                    if role_ids_patch is not None:
-                        node["roleIds"] = LocationService._normalize_id_list(role_ids_patch)
-                    if user_ids_patch is not None:
-                        node["userIds"] = LocationService._normalize_id_list(user_ids_patch)
-            return node
+        if updated:
+            await node.save()
 
-        fields.append("updated_at = NOW()")
-        values.append(int(node_id))
-
-        row = await db.fetch_one(
-            f"""
-            UPDATE location_nodes
-            SET {', '.join(fields)}
-            WHERE id = ${idx}
-            RETURNING
-              id, parent_id, name, type, code,
-              manager_dept, manager, phone, capacity, area, address, description,
-              status, sort_order, created_at, updated_at
-            """,
-            *values,
-        )
-        updated = LocationService._row_to_node(dict(row)) if row else None
-        if not updated:
-            return None
-
+        # Update bindings
         if role_ids_patch is not None or user_ids_patch is not None:
             await LocationService._set_node_bindings(
                 node_id=int(node_id),
@@ -512,71 +371,82 @@ class LocationService:
                 user_ids=user_ids_patch if user_ids_patch is not None else None,
             )
 
+            # Inheritance Logic
+            if user_ids_patch is not None and patch.get("inherit_users"):
+                descendants = await LocationService._get_descendant_ids(int(node_id))
+                uids = LocationService._normalize_id_list(user_ids_patch)
+                if descendants and uids:
+                    # Fetch existing bindings to avoid conflicts
+                    existing = await LocationNodeUser.filter(node_id__in=descendants, user_id__in=uids).all()
+                    existing_set = {(r.node_id, r.user_id) for r in existing}
+                    
+                    to_create = []
+                    for did in descendants:
+                        for uid in uids:
+                            if (did, uid) not in existing_set:
+                                to_create.append(LocationNodeUser(node_id=did, user_id=uid))
+                    
+                    if to_create:
+                        await LocationNodeUser.bulk_create(to_create)
+
+        # Return updated structure
+        res = LocationService._model_to_dict(node)
         role_map, user_map = await LocationService._get_bindings_map([int(node_id)])
-        updated["roleIds"] = role_map.get(int(node_id), [])
-        updated["userIds"] = user_map.get(int(node_id), [])
-        return updated
+        res["roleIds"] = role_map.get(int(node_id), [])
+        res["userIds"] = user_map.get(int(node_id), [])
+        return res
 
     @staticmethod
     async def delete_node(node_id: int) -> bool:
-        await LocationService._ensure_tables()
-        res = await db.execute("DELETE FROM location_nodes WHERE id = $1", int(node_id))
-        return "DELETE" in str(res or "").upper()
+        # Get all descendant IDs to delete the whole subtree
+        ids = await LocationService._get_descendant_ids(node_id)
+        ids.append(node_id)
+        
+        # 1. Delete device mappings
+        await LocationNodeDevice.filter(node_id__in=ids).delete()
+        
+        # 2. Delete role mappings
+        await LocationNodeRole.filter(node_id__in=ids).delete()
+        
+        # 3. Delete user mappings
+        await LocationNodeUser.filter(node_id__in=ids).delete()
+        
+        # 4. Delete nodes
+        count = await LocationNode.filter(id__in=ids).delete()
+        return count > 0
 
     @staticmethod
     async def move_node(node_id: int, parent_id: Optional[int]) -> Optional[dict]:
-        await LocationService._ensure_tables()
-
         parent_id_val = int(parent_id) if parent_id is not None else None
-        next_sort = await db.fetch_val(
-            """
+        
+        conn = Tortoise.get_connection("default")
+        sql = """
             SELECT COALESCE(MAX(sort_order), -1) + 1
             FROM location_nodes
             WHERE ($1::bigint IS NULL AND parent_id IS NULL)
                OR (parent_id = $1::bigint)
-            """,
-            parent_id_val,
-        )
+        """
+        _, rows = await conn.execute_query(sql, [parent_id_val])
+        next_sort = rows[0][0] if rows else 0
 
-        row = await db.fetch_one(
-            """
-            UPDATE location_nodes
-            SET parent_id = $1, sort_order = $2, updated_at = NOW()
-            WHERE id = $3
-            RETURNING
-              id, parent_id, name, type, code,
-              manager_dept, manager, phone, capacity, area, address, description,
-              status, sort_order, created_at, updated_at
-            """,
-            parent_id_val,
-            int(next_sort or 0),
-            int(node_id),
-        )
-        moved = LocationService._row_to_node(dict(row)) if row else None
-        if not moved:
+        node = await LocationNode.filter(id=node_id).first()
+        if not node:
             return None
+            
+        node.parent_id = parent_id_val
+        node.sort_order = next_sort
+        await node.save()
 
         await LocationService._regenerate_codes_if_needed(int(node_id))
-
-        row3 = await db.fetch_one(
-            """
-            SELECT
-              id, parent_id, name, type, code,
-              manager_dept, manager, phone, capacity, area, address, description,
-              status, sort_order, created_at, updated_at
-            FROM location_nodes
-            WHERE id = $1
-            """,
-            int(node_id),
-        )
-        return LocationService._row_to_node(dict(row3)) if row3 else moved
+        
+        # Reload
+        node = await LocationNode.filter(id=node_id).first()
+        return LocationService._model_to_dict(node)
 
     @staticmethod
     async def _regenerate_codes_if_needed(root_id: int) -> None:
-        await LocationService._ensure_tables()
-
-        rows = await db.fetch_all(
-            """
+        conn = Tortoise.get_connection("default")
+        sql = """
             WITH RECURSIVE sub AS (
                 SELECT id, parent_id, code, sort_order, 0 AS depth
                 FROM location_nodes
@@ -589,12 +459,14 @@ class LocationService:
             SELECT id, parent_id, code, sort_order, depth
             FROM sub
             ORDER BY depth, sort_order, id
-            """,
-            int(root_id),
-        )
+        """
+        _, rows = await conn.execute_query(sql, [root_id])
         if not rows:
             return
 
+        # rows is list of tuples/records.
+        # id=0, parent_id=1, code=2, sort_order=3, depth=4
+        
         code_map: Dict[int, Optional[str]] = {}
         next_n_cache: Dict[Optional[int], int] = {}
 
@@ -604,8 +476,8 @@ class LocationService:
 
         for r in rows:
             node_id = int(r["id"])
-            parent_id = int(r["parent_id"]) if r.get("parent_id") is not None else None
-            existing_code = LocationService._normalize_optional_str(r.get("code"))
+            parent_id = int(r["parent_id"]) if r["parent_id"] is not None else None
+            existing_code = LocationService._normalize_optional_str(r["code"])
 
             if not should_regen(existing_code):
                 code_map[node_id] = existing_code
@@ -631,14 +503,10 @@ class LocationService:
 
             for _ in range(20):
                 try:
-                    await db.execute(
-                        "UPDATE location_nodes SET code = $1, updated_at = NOW() WHERE id = $2",
-                        new_code,
-                        node_id,
-                    )
+                    await LocationNode.filter(id=node_id).update(code=new_code)
                     code_map[node_id] = new_code
                     break
-                except asyncpg.exceptions.UniqueViolationError:
+                except Exception:
                     n = next_n_cache[key]
                     next_n_cache[key] = n + 1
                     seg = format(int(n), "X")

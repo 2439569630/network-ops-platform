@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
-from typing import Optional
+from typing import Optional, List
 from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, OrderReviewCreate
 from app.services.repair_order_service import RepairOrderService
-from app.core.security import user_is_super, user_has_role, PermissionChecker
+from app.core.security import user_is_super, user_has_role, PermissionChecker, user_has_permission
 from app.services.notification_service import NotificationService
 import logging
 
@@ -37,17 +37,24 @@ async def list_orders(
     page: int = 1,
     page_size: int = 10,
     status: Optional[str] = None,
+    scope: Optional[str] = None,
     current_user: dict = Depends(PermissionChecker(["sys:repair:view"]))
 ):
     """获取工单列表"""
     try:
-        role_level = 0 if user_is_super(current_user) else (1 if user_has_role(current_user, "yunwei") else 2)
+        # Determine view permissions
+        can_view_all = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:list_all")
+        can_view_assigned = await user_has_permission(current_user, "sys:repair:accept") or user_has_role(current_user, "yunwei")
+
         result = await RepairOrderService.get_order_list(
             page=page, 
             page_size=page_size, 
             status=status,
             user_id=current_user['id'],
-            role_level=role_level
+            role_level=2, # Deprecated in service, pass 0 to ignore or use defaults
+            scope=scope,
+            can_view_all=can_view_all,
+            can_view_assigned=can_view_assigned
         )
         return {"code": 200, "data": result}
     except Exception as e:
@@ -72,15 +79,22 @@ async def get_order(
         if not order:
             return {"code": 404, "message": "工单不存在"}
         
-        role = 0 if user_is_super(current_user) else (1 if user_has_role(current_user, "yunwei") else 2)
         uid = current_user.get("id")
-        if role == 0:
-            return {"code": 200, "data": order}
+        
+        # Check permissions
+        can_view_all = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:list_all")
+        can_view_assigned = await user_has_permission(current_user, "sys:repair:accept") or user_has_role(current_user, "yunwei")
 
+        # 1. Submitter always has access
         if order.get("submitter_id") == uid:
             return {"code": 200, "data": order}
 
-        if role == 1:
+        # 2. Admin or Manager with list_all
+        if can_view_all:
+            return {"code": 200, "data": order}
+
+        # 3. Maintenance staff
+        if can_view_assigned:
             if order.get("assignee_id") == uid:
                 return {"code": 200, "data": order}
             if order.get("status") == "pending" and order.get("assignee_id") is None:
@@ -114,30 +128,37 @@ async def assign_order(
             if not target_assignee_id:
                 return {"code": 400, "message": "暂无可用维修人员"}
 
-        update_data = RepairOrderUpdate(status="processing", assignee_id=target_assignee_id)
-        await RepairOrderService.update_order(id, update_data, current_user["id"])
+        # 修改为 pending 状态，等待维修人员确认接单
+        update_data = RepairOrderUpdate(status="pending", assignee_id=target_assignee_id)
+        await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True)
         if auto_assign:
             await RepairOrderService.log_action(
                 id,
                 current_user["id"],
                 "auto_assign",
                 "pending",
-                "processing",
-                f"自动派单给用户ID: {target_assignee_id}",
+                "pending",
+                f"自动派单给用户ID: {target_assignee_id} (待接单)",
             )
-        return {"code": 200, "message": "派单成功"}
+        else:
+             await RepairOrderService.log_action(
+                id,
+                current_user["id"],
+                "assign",
+                "pending",
+                "pending",
+                f"指派给用户ID: {target_assignee_id} (待接单)",
+            )
+        return {"code": 200, "message": "派单成功，等待维修人员接单"}
     except Exception as e:
         return {"code": 500, "message": f"派单失败: {str(e)}"}
 
 @router.post("/{id}/accept", response_model=dict)
 async def accept_order(
     id: int,
-    current_user: dict = Depends(PermissionChecker(["sys:repair:handle"]))
+    current_user: dict = Depends(PermissionChecker(["sys:repair:accept"]))
 ):
     """接单 (维修人员)"""
-    if not user_has_role(current_user, "yunwei"):
-        return {"code": 403, "message": "权限不足"}
-        
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:
@@ -148,11 +169,39 @@ async def accept_order(
             return {"code": 403, "message": "该工单已被指派"}
 
         update_data = RepairOrderUpdate(status="processing", assignee_id=current_user["id"])
-        await RepairOrderService.update_order(id, update_data, current_user["id"])
+        await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True)
         await RepairOrderService.log_action(id, current_user["id"], "accept", "pending", "processing", "接单")
         return {"code": 200, "message": "接单成功"}
     except Exception as e:
         return {"code": 500, "message": f"接单失败: {str(e)}"}
+
+@router.post("/{id}/work_logs", response_model=dict)
+async def add_work_log(
+    id: int,
+    content: str = Body(..., embed=True),
+    images: List[str] = Body([], embed=True),
+    current_user: dict = Depends(PermissionChecker(["sys:repair:accept"]))
+):
+    """添加工作记录 (维修人员)"""
+    try:
+        order = await RepairOrderService.get_order_detail(id)
+        if not order:
+            return {"code": 404, "message": "工单不存在"}
+            
+        # Only assignee can add logs, or admin
+        is_super = user_is_super(current_user)
+        is_assignee = order.get("assignee_id") == current_user["id"]
+        
+        if not (is_super or is_assignee):
+            return {"code": 403, "message": "无权添加工作记录"}
+            
+        if order.get("status") not in ["processing"]:
+            return {"code": 400, "message": "仅处理中的工单可添加工作记录"}
+
+        await RepairOrderService.add_work_log(id, current_user["id"], content, images)
+        return {"code": 200, "message": "记录添加成功"}
+    except Exception as e:
+        return {"code": 500, "message": f"添加失败: {str(e)}"}
 
 @router.post("/{id}/complete", response_model=dict)
 async def complete_order(
@@ -178,7 +227,7 @@ async def complete_order(
 
     try:
         update_data = RepairOrderUpdate(status="completed")
-        await RepairOrderService.update_order(id, update_data, current_user['id'])
+        await RepairOrderService.update_order(id, update_data, current_user['id'], skip_log=True)
         await RepairOrderService.log_action(
             id,
             current_user["id"],
@@ -212,14 +261,14 @@ async def cancel_order(
     if role == 0:
         pass
     elif is_submitter:
-        if order.get("status") != "pending":
-            return {"code": 400, "message": "工单已在处理中，无法取消"}
+        if order.get("status") not in ["pending", "processing"]:
+            return {"code": 400, "message": "工单已完成或关闭，无法取消"}
     else:
         return {"code": 403, "message": "无权操作"}
             
     try:
         update_data = RepairOrderUpdate(status="cancelled")
-        await RepairOrderService.update_order(id, update_data, current_user['id'])
+        await RepairOrderService.update_order(id, update_data, current_user['id'], skip_log=True)
         await RepairOrderService.log_action(id, current_user['id'], "cancel", order['status'], "cancelled", reason)
         return {"code": 200, "message": "工单已取消"}
     except Exception as e:
@@ -245,7 +294,7 @@ async def review_order(
     try:
         await RepairOrderService.submit_review(id, review)
         # Update status to closed after review
-        await RepairOrderService.update_order(id, RepairOrderUpdate(status="closed"), current_user['id'])
+        await RepairOrderService.update_order(id, RepairOrderUpdate(status="closed"), current_user['id'], skip_log=True)
         await RepairOrderService.log_action(
             id,
             current_user["id"],
@@ -257,3 +306,41 @@ async def review_order(
         return {"code": 200, "message": "评价成功"}
     except Exception as e:
         return {"code": 500, "message": f"评价失败: {str(e)}"}
+
+@router.post("/{id}/status", response_model=dict)
+async def force_update_status(
+    id: int,
+    status: str = Body(..., embed=True),
+    remark: str = Body(None, embed=True),
+    current_user: dict = Depends(PermissionChecker(["sys:repair:manage"]))
+):
+    """强制修改工单状态 (管理员)"""
+    try:
+        order = await RepairOrderService.get_order_detail(id)
+        if not order:
+            return {"code": 404, "message": "工单不存在"}
+            
+        old_status = order.get("status")
+        new_status = str(status).strip()
+        
+        valid_statuses = ["pending", "processing", "completed", "closed", "cancelled", "need_info"]
+        if new_status not in valid_statuses:
+             return {"code": 400, "message": f"无效的状态: {new_status}"}
+
+        if old_status == new_status:
+            return {"code": 200, "message": "状态未变更"}
+
+        update_data = RepairOrderUpdate(status=new_status)
+        await RepairOrderService.update_order(id, update_data, current_user['id'], skip_log=True)
+        
+        await RepairOrderService.log_action(
+            id,
+            current_user["id"],
+            "update_status",
+            old_status,
+            new_status,
+            f"管理员强制修改状态: {remark or '无'}",
+        )
+        return {"code": 200, "message": "状态修改成功"}
+    except Exception as e:
+        return {"code": 500, "message": f"修改失败: {str(e)}"}

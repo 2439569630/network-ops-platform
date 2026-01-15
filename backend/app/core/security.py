@@ -309,7 +309,7 @@ async def user_has_permission(user: dict, perm: str) -> bool:
     perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
     return str(perm) in {str(p) for p in (perms or [])}
 
-async def verify_token(token: str = Cookie(None)):
+async def verify_token(token: Optional[str] = Cookie(None)):
     if token is None:
         raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
 

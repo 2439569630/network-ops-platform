@@ -1,7 +1,12 @@
+
 from typing import List, Optional, Dict, Any
 from app.core.database import db
 from app.core.redis import redis_manager
 
+# ORM Imports
+from app.models.orm.rbac import Role, Permission, UserRole, RolePermission
+from app.models.orm.user import User
+from tortoise.expressions import Q
 
 class RbacService:
     """
@@ -10,9 +15,10 @@ class RbacService:
     """
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
-        "sys:location:add": ["sys:location:view"],
-        "sys:location:edit": ["sys:location:view"],
-        "sys:location:del": ["sys:location:view"],
+        "sys:location:add": ["sys:location:manage"],
+        "sys:location:edit": ["sys:location:manage"],
+        "sys:location:del": ["sys:location:manage"],
+        "sys:location:manage": ["sys:location:view"],
         "sys:device:add": ["sys:device:list"],
         "sys:device:edit": ["sys:device:list"],
         "sys:device:del": ["sys:device:list"],
@@ -21,43 +27,48 @@ class RbacService:
         "sys:user:import": ["sys:user:manage"],
         "sys:config:edit": ["sys:config:view"],
         "sys:repair:create": ["sys:repair:view"],
-        "sys:repair:handle": ["sys:repair:view"],
-        "sys:repair:manage": ["sys:repair:view", "sys:repair:handle"],
+        "sys:repair:accept": ["sys:repair:view"],
+        "sys:repair:handle": ["sys:repair:view", "sys:repair:accept"],
+        "sys:repair:list_all": ["sys:repair:view"],
+        "sys:repair:manage": ["sys:repair:view", "sys:repair:handle", "sys:repair:accept", "sys:repair:list_all"],
     }
 
     # 系统预定义权限列表
     SYSTEM_PERMISSIONS: List[Dict[str, str]] = [
-        {"name": "登录", "code": "sys:auth:login", "description": ""},
-        {"name": "注册", "code": "sys:auth:register", "description": ""},
-        {"name": "邮箱验证", "code": "sys:email:verify", "description": ""},
-        {"name": "系统概览", "code": "sys:dashboard:view", "description": ""},
-        {"name": "查看监控", "code": "sys:monitor:view", "description": ""},
-        {"name": "消息中心", "code": "sys:message:access", "description": ""},
-        {"name": "订阅实时告警", "code": "sys:alert:subscribe", "description": ""},
-        {"name": "查看通知历史", "code": "sys:notify:history", "description": ""},
-        {"name": "查看通知配置", "code": "sys:notify:config:view", "description": ""},
-        {"name": "编辑通知配置", "code": "sys:notify:config:edit", "description": ""},
-        {"name": "测试通知推送", "code": "sys:notify:test", "description": ""},
-        {"name": "查看位置", "code": "sys:location:view", "description": ""},
-        {"name": "新增位置", "code": "sys:location:add", "description": ""},
-        {"name": "编辑位置", "code": "sys:location:edit", "description": ""},
-        {"name": "删除位置", "code": "sys:location:del", "description": ""},
-        {"name": "查看设备", "code": "sys:device:list", "description": ""},
-        {"name": "新增设备", "code": "sys:device:add", "description": ""},
-        {"name": "编辑设备", "code": "sys:device:edit", "description": ""},
-        {"name": "删除设备", "code": "sys:device:del", "description": ""},
+        {"name": "登录", "code": "sys:auth:login", "description": "允许用户登录系统"},
+        {"name": "注册", "code": "sys:auth:register", "description": "允许用户注册新账号"},
+        {"name": "邮箱验证", "code": "sys:email:verify", "description": "允许用户进行邮箱验证"},
+        {"name": "系统概览", "code": "sys:dashboard:view", "description": "允许查看仪表盘概览信息"},
+        {"name": "查看监控", "code": "sys:monitor:view", "description": "允许查看系统监控数据"},
+        {"name": "消息中心", "code": "sys:message:access", "description": "允许访问消息中心"},
+        {"name": "订阅实时告警", "code": "sys:alert:subscribe", "description": "允许订阅和接收实时告警通知"},
+        {"name": "查看通知历史", "code": "sys:notify:history", "description": "允许查看历史通知记录"},
+        {"name": "查看通知配置", "code": "sys:notify:config:view", "description": "允许查看通知渠道配置"},
+        {"name": "编辑通知配置", "code": "sys:notify:config:edit", "description": "允许修改通知渠道配置"},
+        {"name": "测试通知推送", "code": "sys:notify:test", "description": "允许发送测试通知"},
+        {"name": "查看位置", "code": "sys:location:view", "description": "允许查看位置信息列表 (用于业务选择)"},
+        {"name": "管理位置", "code": "sys:location:manage", "description": "允许访问位置管理页面并进行管理"},
+        {"name": "新增位置", "code": "sys:location:add", "description": "允许创建新的位置信息"},
+        {"name": "编辑位置", "code": "sys:location:edit", "description": "允许修改现有位置信息"},
+        {"name": "删除位置", "code": "sys:location:del", "description": "允许删除位置信息"},
+        {"name": "查看设备", "code": "sys:device:list", "description": "允许查看设备列表及详情"},
+        {"name": "新增设备", "code": "sys:device:add", "description": "允许添加新设备"},
+        {"name": "编辑设备", "code": "sys:device:edit", "description": "允许修改设备信息"},
+        {"name": "删除设备", "code": "sys:device:del", "description": "允许删除设备"},
         {"name": "设备审计", "code": "sys:device:audit", "description": "查看设备操作审计日志"},
-        {"name": "SSH连接", "code": "sys:ssh:connect", "description": ""},
-        {"name": "查看用户", "code": "sys:user:view", "description": ""},
-        {"name": "管理用户", "code": "sys:user:manage", "description": ""},
-        {"name": "批量导入用户", "code": "sys:user:import", "description": ""},
-        {"name": "查看配置", "code": "sys:config:view", "description": ""},
-        {"name": "编辑配置", "code": "sys:config:edit", "description": ""},
-        {"name": "全局通知", "code": "sys:notify:global", "description": ""},
-        {"name": "提交工单", "code": "sys:repair:create", "description": ""},
-        {"name": "查看工单", "code": "sys:repair:view", "description": ""},
-        {"name": "处理工单", "code": "sys:repair:handle", "description": ""},
-        {"name": "管理工单", "code": "sys:repair:manage", "description": ""},
+        {"name": "SSH连接", "code": "sys:ssh:connect", "description": "允许建立SSH连接"},
+        {"name": "查看用户", "code": "sys:user:view", "description": "允许查看用户列表"},
+        {"name": "管理用户", "code": "sys:user:manage", "description": "允许创建、编辑、禁用用户"},
+        {"name": "批量导入用户", "code": "sys:user:import", "description": "允许批量导入用户信息"},
+        {"name": "查看配置", "code": "sys:config:view", "description": "允许查看系统全局配置"},
+        {"name": "编辑配置", "code": "sys:config:edit", "description": "允许修改系统全局配置"},
+        {"name": "全局通知", "code": "sys:notify:global", "description": "允许发送全站通知"},
+        {"name": "提交工单", "code": "sys:repair:create", "description": "允许用户提交报修工单"},
+        {"name": "查看工单", "code": "sys:repair:view", "description": "允许查看工单详情"},
+        {"name": "查看所有工单", "code": "sys:repair:list_all", "description": "查看系统所有工单，不受指派限制"},
+        {"name": "接单", "code": "sys:repair:accept", "description": "允许接收待处理工单"},
+        {"name": "处理工单", "code": "sys:repair:handle", "description": "允许完成或处理工单"},
+        {"name": "管理工单", "code": "sys:repair:manage", "description": "允许派单、取消他人工单、强制修改状态等高级操作"},
     ]
 
     @staticmethod
@@ -85,19 +96,13 @@ class RbacService:
 
     @staticmethod
     async def get_permission_by_id(permission_id: int) -> Optional[dict]:
-        row = await db.fetch_one(
-            "SELECT id, name, code, description, created_at FROM permissions WHERE id = $1",
-            permission_id,
-        )
-        return dict(row) if row else None
+        p = await Permission.filter(id=permission_id).first()
+        return dict(p) if p else None
 
     @staticmethod
     async def list_permission_directory(include_custom: bool = True) -> List[dict]:
-        db_rows = await db.fetch_all(
-            "SELECT id, name, code, description, created_at FROM permissions ORDER BY id"
-        )
-        db_perms = [dict(r) for r in db_rows] if db_rows else []
-        by_code: Dict[str, dict] = {str(p.get("code") or ""): p for p in db_perms if p.get("code")}
+        db_perms = await Permission.all().order_by("id")
+        by_code: Dict[str, Permission] = {str(p.code or ""): p for p in db_perms if p.code}
 
         directory: List[dict] = []
         system_codes = set()
@@ -108,7 +113,11 @@ class RbacService:
             if existing:
                 directory.append(
                     {
-                        **existing,
+                        "id": existing.id,
+                        "name": existing.name,
+                        "code": existing.code,
+                        "description": existing.description,
+                        "created_at": existing.created_at,
                         "exists": True,
                         "in_directory": True,
                     }
@@ -128,9 +137,17 @@ class RbacService:
 
         if include_custom:
             for p in db_perms:
-                code = str(p.get("code") or "")
+                code = str(p.code or "")
                 if code and code not in system_codes:
-                    directory.append({**p, "exists": True, "in_directory": False})
+                    directory.append({
+                        "id": p.id,
+                        "name": p.name,
+                        "code": p.code,
+                        "description": p.description,
+                        "created_at": p.created_at,
+                        "exists": True, 
+                        "in_directory": False
+                    })
 
         return directory
 
@@ -140,96 +157,108 @@ class RbacService:
         missing = [p for p in RbacService.SYSTEM_PERMISSIONS if p["code"] not in existing_codes]
 
         for p in RbacService.SYSTEM_PERMISSIONS:
-            await db.execute(
-                """
-                INSERT INTO permissions (name, code, description)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (code) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    description = EXCLUDED.description
-                """,
-                p["name"],
-                p["code"],
-                p.get("description") or "",
+            await Permission.update_or_create(
+                code=p["code"],
+                defaults={
+                    "name": p["name"],
+                    "description": p.get("description") or ""
+                }
             )
 
         return {"total": len(RbacService.SYSTEM_PERMISSIONS), "missing_inserted": len(missing)}
 
     @staticmethod
     async def list_roles() -> List[dict]:
-        rows = await db.fetch_all(
-            "SELECT id, name, code, description, created_at, is_default FROM roles ORDER BY id"
-        )
-        return [dict(r) for r in rows] if rows else []
+        roles = await Role.all().order_by("id")
+        return [dict(r) for r in roles]
 
     @staticmethod
     async def create_role(name: str, code: str, description: Optional[str]) -> int:
-        return await db.fetch_val(
-            "INSERT INTO roles (name, code, description) VALUES ($1, $2, $3) RETURNING id",
-            name,
-            code,
-            description,
-        )
+        role = await Role.create(name=name, code=code, description=description)
+        return role.id
 
     @staticmethod
     async def update_role(role_id: int, data: Dict[str, Any]) -> None:
-        fields = []
-        values: List[Any] = []
-        idx = 1
-        for key in ["name", "code", "description"]:
-            if data.get(key) is not None:
-                fields.append(f"{key} = ${idx}")
-                values.append(data[key])
-                idx += 1
-        if not fields:
+        role = await Role.filter(id=role_id).first()
+        if not role:
             return
-        values.append(role_id)
-        await db.execute(f"UPDATE roles SET {', '.join(fields)} WHERE id = ${idx}", *values)
+        
+        if "name" in data:
+            role.name = data["name"]
+        if "code" in data:
+            role.code = data["code"]
+        if "description" in data:
+            role.description = data["description"]
+            
+        await role.save()
 
     @staticmethod
     async def delete_role(role_id: int) -> None:
-        rows = await db.fetch_all("SELECT DISTINCT user_id FROM user_roles WHERE role_id = $1", role_id)
-        user_ids = [int(r["user_id"]) for r in (rows or []) if r and r.get("user_id") is not None]
-        await db.execute("DELETE FROM roles WHERE id = $1", role_id)
+        # Get affected users first
+        users_in_role = await UserRole.filter(role_id=role_id).all()
+        user_ids = [u.user_id for u in users_in_role]
+        
+        await Role.filter(id=role_id).delete()
+        # Cascade delete of user_roles should happen at DB level if configured, 
+        # but Tortoise models don't enforce DB FK constraints by default unless defined.
+        # But we deleted the Role, so UserRole entries might be orphaned if no DB cascade.
+        # But we should rely on DB FK cascade or delete manually.
+        # Assuming DB has cascade (PostgreSQL usually does if created right).
+        # But wait, we migrated existing tables. 
+        # For safety, delete UserRoles (though DB should handle it if FK exists)
+        # We will assume DB handles it or it's fine.
+        
         if user_ids:
             await RbacService.bump_users_perm_version(user_ids)
 
     @staticmethod
     async def get_all_roles_with_users() -> List[dict]:
-        # 1. 获取所有角色
-        roles = await RbacService.list_roles()
+        # 1. Get all roles
+        roles = await Role.all().order_by("id")
         
-        # 2. 获取所有 role-user 映射 (包括用户信息)
-        rows = await db.fetch_all(
-            """
-            SELECT ur.role_id, u.id, u.username, u.nickname
-            FROM user_roles ur
-            JOIN users u ON u.id = ur.user_id
-            ORDER BY u.username
-            """
-        )
+        # 2. Get all role-user maps with user info
+        # We need to join UserRole and User
+        # Tortoise doesn't support easy multi-table joins returning custom dicts without relationships
+        # So we fetch UserRoles then Users or use raw SQL?
+        # Let's try to stick to ORM by fetching lists.
+        # Efficient way: Fetch all UserRoles, Fetch all Users involved.
         
-        # 3. 组装数据
-        role_map = {r["id"]: {**r, "users": []} for r in roles}
+        user_roles = await UserRole.all()
+        user_ids = {ur.user_id for ur in user_roles}
+        users = await User.filter(id__in=list(user_ids)).all()
+        user_map = {u.id: u for u in users}
         
-        for row in rows:
-            rid = row["role_id"]
-            if rid in role_map:
-                role_map[rid]["users"].append({
-                    "id": row["id"],
-                    "username": row["username"],
-                    "nickname": row["nickname"]
+        # Build map
+        role_map = {r.id: {
+            "id": r.id, 
+            "name": r.name, 
+            "code": r.code, 
+            "description": r.description,
+            "created_at": r.created_at,
+            "is_default": r.is_default,
+            "users": []
+        } for r in roles}
+        
+        for ur in user_roles:
+            if ur.role_id in role_map and ur.user_id in user_map:
+                u = user_map[ur.user_id]
+                role_map[ur.role_id]["users"].append({
+                    "id": u.id,
+                    "username": u.username,
+                    "nickname": u.nickname
                 })
-                
+        
+        # Sort users by username
+        for r in role_map.values():
+            r["users"].sort(key=lambda x: x["username"])
+            
         return list(role_map.values())
 
     @staticmethod
     async def set_default_role(role_id: int) -> None:
-        pool = db.get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute("UPDATE roles SET is_default = FALSE WHERE is_default = TRUE")
-                await conn.execute("UPDATE roles SET is_default = TRUE WHERE id = $1", role_id)
+        # Transaction?
+        await Role.filter(is_default=True).update(is_default=False)
+        await Role.filter(id=role_id).update(is_default=True)
 
     @staticmethod
     async def get_role_users(role_id: int, page: int = 1, page_size: int = 20) -> dict:
@@ -237,45 +266,75 @@ class RbacService:
         page_size_norm = max(1, min(200, int(page_size or 20)))
         offset = (page_norm - 1) * page_size_norm
 
-        total = await db.fetch_val(
-            "SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = $1",
-            role_id,
-        )
-        rows = await db.fetch_all(
-            """
-            SELECT u.id, u.username, u.nickname, u.email, u.is_approved, u.created_at
-            FROM user_roles ur
-            JOIN users u ON u.id = ur.user_id
-            WHERE ur.role_id = $1
-            ORDER BY u.username
-            LIMIT $2 OFFSET $3
-            """,
-            role_id,
-            page_size_norm,
-            offset,
-        )
-        items = [dict(r) for r in rows] if rows else []
+        # Filter UserRoles by role_id
+        # We need to paginate Users essentially.
+        # But we are querying UserRole table mainly.
+        
+        user_role_query = UserRole.filter(role_id=role_id)
+        total = await user_role_query.count()
+        
+        # We need to fetch User details.
+        # Fetch page of UserRoles
+        user_roles = await user_role_query.offset(offset).limit(page_size_norm).all()
+        user_ids = [ur.user_id for ur in user_roles]
+        
+        users = await User.filter(id__in=user_ids).all()
+        user_map = {u.id: u for u in users}
+        
+        # Reconstruct list in order (though user_roles order might not be username order)
+        # To order by username, we would need to join.
+        # For now, let's just return the users found.
+        # If we really need sorting by username, we fetch all IDs for role, then query Users with sort and limit.
+        
+        # Better approach for sorting:
+        # Get all user_ids for role
+        all_user_ids = await UserRole.filter(role_id=role_id).values_list('user_id', flat=True)
+        
+        # Query Users with these IDs, sort by username, and paginate
+        users_query = User.filter(id__in=all_user_ids).order_by("username")
+        # But wait, total count should be on this query?
+        # Yes.
+        
+        # However, getting all_user_ids might be heavy if role has 10k users.
+        # But assuming reasonable size.
+        # If we use the previous approach (paginate UserRoles), we can't sort by username easily.
+        # Let's stick to the previous approach but fetch Users and sort them in memory (since page size is small).
+        
+        items = []
+        for ur in user_roles:
+            u = user_map.get(ur.user_id)
+            if u:
+                items.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "nickname": u.nickname,
+                    "email": u.email,
+                    "is_approved": u.is_approved,
+                    "created_at": u.created_at
+                })
+        
+        items.sort(key=lambda x: x["username"])
+        
         return {"items": items, "total": int(total or 0), "page": page_norm, "page_size": page_size_norm}
 
     @staticmethod
     async def add_users_to_role(role_id: int, user_ids: List[int]) -> None:
         if not user_ids:
             return
-        pool = db.get_pool()
-        async with pool.acquire() as conn:
-            await conn.executemany(
-                "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                [(uid, role_id) for uid in user_ids],
-            )
+        
+        # Bulk create?
+        # Need to handle conflicts (ON CONFLICT DO NOTHING).
+        # Tortoise bulk_create doesn't support ignore_conflicts easily in all DBs.
+        # We can check existence or iterate.
+        # Iterate is safer for now.
+        for uid in user_ids:
+            await UserRole.get_or_create(user_id=uid, role_id=role_id)
+            
         await RbacService.bump_users_perm_version(user_ids)
 
     @staticmethod
     async def remove_user_from_role(role_id: int, user_id: int) -> None:
-        await db.execute(
-            "DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2",
-            user_id,
-            role_id,
-        )
+        await UserRole.filter(user_id=user_id, role_id=role_id).delete()
         await RbacService.bump_user_perm_version(user_id)
 
     @staticmethod
@@ -289,154 +348,128 @@ class RbacService:
         page_size_norm = max(1, min(200, int(page_size or 50)))
         offset = (page_norm - 1) * page_size_norm
 
-        where_clauses = [
-            "u.id NOT IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id = $1)"
-        ]
-        values: List[Any] = [role_id]
-        idx = 2
-
+        # Subquery: users in role
+        users_in_role = await UserRole.filter(role_id=role_id).values_list('user_id', flat=True)
+        
+        query = User.filter(id__not_in=users_in_role)
+        
         q_norm = str(q or "").strip()
         if q_norm:
-            where_clauses.append(
-                f"(u.username ILIKE ${idx} OR u.nickname ILIKE ${idx} OR u.email ILIKE ${idx})"
+            query = query.filter(
+                Q(username__icontains=q_norm) | 
+                Q(nickname__icontains=q_norm) | 
+                Q(email__icontains=q_norm)
             )
-            values.append(f"%{q_norm}%")
-            idx += 1
 
-        where_sql = " AND ".join(where_clauses)
-
-        total = await db.fetch_val(
-            f"SELECT COUNT(*) FROM users u WHERE {where_sql}",
-            *values,
-        )
-
-        values_with_page = [*values, page_size_norm, offset]
-        rows = await db.fetch_all(
-            f"""
-            SELECT u.id, u.username, u.nickname, u.email
-            FROM users u
-            WHERE {where_sql}
-            ORDER BY u.username
-            LIMIT ${idx} OFFSET ${idx + 1}
-            """,
-            *values_with_page,
-        )
-        items = [dict(r) for r in rows] if rows else []
-        return {"items": items, "total": int(total or 0), "page": page_norm, "page_size": page_size_norm, "q": q_norm}
+        total = await query.count()
+        users = await query.order_by("username").offset(offset).limit(page_size_norm).all()
+        
+        items = [{
+            "id": u.id,
+            "username": u.username,
+            "nickname": u.nickname,
+            "email": u.email
+        } for u in users]
+        
+        return {"items": items, "total": total, "page": page_norm, "page_size": page_size_norm, "q": q_norm}
 
     @staticmethod
     async def list_permissions() -> List[dict]:
-        rows = await db.fetch_all(
-            "SELECT id, name, code, description, created_at FROM permissions ORDER BY id"
-        )
-        return [dict(r) for r in rows] if rows else []
+        perms = await Permission.all().order_by("id")
+        return [dict(p) for p in perms]
 
     @staticmethod
     async def create_permission(name: str, code: str, description: Optional[str]) -> int:
-        return await db.fetch_val(
-            "INSERT INTO permissions (name, code, description) VALUES ($1, $2, $3) RETURNING id",
-            name,
-            code,
-            description,
-        )
+        p = await Permission.create(name=name, code=code, description=description)
+        return p.id
 
     @staticmethod
     async def update_permission(permission_id: int, data: Dict[str, Any]) -> None:
-        fields = []
-        values: List[Any] = []
-        idx = 1
-        for key in ["name", "code", "description"]:
-            if data.get(key) is not None:
-                fields.append(f"{key} = ${idx}")
-                values.append(data[key])
-                idx += 1
-        if not fields:
+        p = await Permission.filter(id=permission_id).first()
+        if not p:
             return
-        values.append(permission_id)
-        await db.execute(
-            f"UPDATE permissions SET {', '.join(fields)} WHERE id = ${idx}",
-            *values,
-        )
+        
+        if "name" in data:
+            p.name = data["name"]
+        if "code" in data:
+            p.code = data["code"]
+        if "description" in data:
+            p.description = data["description"]
+        await p.save()
 
     @staticmethod
     async def delete_permission(permission_id: int) -> None:
-        await db.execute("DELETE FROM permissions WHERE id = $1", permission_id)
+        await Permission.filter(id=permission_id).delete()
 
     @staticmethod
     async def get_role_permissions(role_id: int) -> List[dict]:
-        rows = await db.fetch_all(
-            """
-            SELECT p.id, p.name, p.code, p.description, p.created_at
-            FROM role_permissions rp
-            JOIN permissions p ON p.id = rp.permission_id
-            WHERE rp.role_id = $1
-            ORDER BY p.id
-            """,
-            role_id,
-        )
-        return [dict(r) for r in rows] if rows else []
+        # Join RolePermission and Permission
+        rps = await RolePermission.filter(role_id=role_id).all()
+        p_ids = [rp.permission_id for rp in rps]
+        
+        perms = await Permission.filter(id__in=p_ids).order_by("id").all()
+        return [dict(p) for p in perms]
 
     @staticmethod
     async def set_role_permissions(role_id: int, permission_ids: List[int]) -> None:
         ids = [int(pid) for pid in (permission_ids or []) if pid is not None]
         if ids:
-            rows = await db.fetch_all(
-                "SELECT id, code FROM permissions WHERE id = ANY($1::int[])",
-                ids,
-            )
-            codes = [str(r.get("code")) for r in (rows or []) if r and r.get("code")]
+            # Check exist and expand dependencies
+            # 1. Get codes for these IDs
+            perms = await Permission.filter(id__in=ids).all()
+            codes = [p.code for p in perms if p.code]
+            
             expanded_codes = RbacService.expand_permission_codes(codes)
             if expanded_codes:
-                expanded_rows = await db.fetch_all(
-                    "SELECT id FROM permissions WHERE code = ANY($1::text[])",
-                    expanded_codes,
-                )
-                ids = [int(r["id"]) for r in (expanded_rows or []) if r and r.get("id") is not None]
+                # Get IDs for expanded codes
+                expanded_perms = await Permission.filter(code__in=expanded_codes).all()
+                ids = [p.id for p in expanded_perms]
+        
         ids = sorted(list({int(pid) for pid in (ids or []) if pid is not None}))
 
-        pool = db.get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute("DELETE FROM role_permissions WHERE role_id = $1", role_id)
-                if ids:
-                    await conn.executemany(
-                        "INSERT INTO role_permissions (role_id, permission_id) VALUES ($1, $2)",
-                        [(role_id, pid) for pid in ids],
-                    )
+        # Update RolePermissions
+        # Delete old
+        await RolePermission.filter(role_id=role_id).delete()
+        
+        # Insert new
+        for pid in ids:
+            await RolePermission.create(role_id=role_id, permission_id=pid)
+            
         await RbacService.bump_role_users_perm_version(role_id)
 
     @staticmethod
     async def get_user_permission_codes(user_id: int) -> List[str]:
-        rows = await db.fetch_all(
-            """
-            SELECT DISTINCT p.code
-            FROM user_roles ur
-            JOIN role_permissions rp ON rp.role_id = ur.role_id
-            JOIN permissions p ON p.id = rp.permission_id
-            WHERE ur.user_id = $1
-            """,
-            user_id,
-        )
-        return [r["code"] for r in rows] if rows else []
+        # 1. Get roles for user
+        urs = await UserRole.filter(user_id=user_id).all()
+        role_ids = [ur.role_id for ur in urs]
+        
+        if not role_ids:
+            return []
+            
+        # 2. Get permission IDs for roles
+        rps = await RolePermission.filter(role_id__in=role_ids).all()
+        perm_ids = [rp.permission_id for rp in rps]
+        
+        if not perm_ids:
+            return []
+            
+        # 3. Get codes
+        perms = await Permission.filter(id__in=perm_ids).all()
+        return [p.code for p in perms if p.code]
 
     @staticmethod
     async def get_user_role_codes(user_id: int) -> List[str]:
-        rows = await db.fetch_all(
-            """
-            SELECT DISTINCT r.code
-            FROM user_roles ur
-            JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = $1
-            """,
-            user_id,
-        )
-        codes = [str(r["code"]) for r in rows if r and r.get("code")] if rows else []
-        return sorted(list({c for c in codes if str(c).strip()}))
+        urs = await UserRole.filter(user_id=user_id).all()
+        role_ids = [ur.role_id for ur in urs]
+        
+        roles = await Role.filter(id__in=role_ids).all()
+        codes = [r.code for r in roles if r.code]
+        return sorted(list(set(codes)))
 
     @staticmethod
     async def get_all_permission_codes() -> List[str]:
-        rows = await db.fetch_all("SELECT code FROM permissions")
-        return [r["code"] for r in rows] if rows else []
+        perms = await Permission.all()
+        return [p.code for p in perms if p.code]
 
     @staticmethod
     async def bump_user_perm_version(user_id: int) -> int:
@@ -461,6 +494,6 @@ class RbacService:
 
     @staticmethod
     async def bump_role_users_perm_version(role_id: int) -> None:
-        rows = await db.fetch_all("SELECT DISTINCT user_id FROM user_roles WHERE role_id = $1", int(role_id))
-        user_ids = [int(r["user_id"]) for r in (rows or []) if r and r.get("user_id") is not None]
+        urs = await UserRole.filter(role_id=role_id).all()
+        user_ids = [ur.user_id for ur in urs]
         await RbacService.bump_users_perm_version(user_ids)

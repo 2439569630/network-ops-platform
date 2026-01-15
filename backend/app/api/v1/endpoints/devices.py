@@ -38,8 +38,15 @@ class DeviceUpdateRequest(BaseModel):
 
 # 获取设备列表
 @router.get("/get", response_model=List[DeviceResponse])
-async def get_device(response: Response, type: int = 0, user_data: dict = Depends(PermissionChecker(["sys:device:list"]))):
-    return await device_service.get_device_list(type)
+async def get_device(
+    response: Response, 
+    type: int = 0, 
+    search: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    location_node_id: Optional[int] = Query(None),
+    user_data: dict = Depends(PermissionChecker(["sys:device:list"]))
+):
+    return await device_service.get_device_list(type, search_query=search, location_filter=location, location_node_id=location_node_id)
 
 # 添加设备
 @router.post("/add")

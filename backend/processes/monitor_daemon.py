@@ -3,11 +3,13 @@ import logging
 import os
 import signal
 import sys
+from tortoise import Tortoise
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from app.core.config import settings
 from app.core.database import db
 from app.core.logger import setup_logger
 from app.core.redis import redis_manager
@@ -32,6 +34,25 @@ async def _run() -> int:
     except Exception as e:
         logger.error(f"DB connect failed: {e}")
 
+    # Init Tortoise ORM
+    try:
+        await Tortoise.init(
+            db_url=settings.DATABASE_URL,
+            modules={"models": [
+                "app.models.orm.user", 
+                "app.models.orm.device", 
+                "app.models.orm.audit",
+                "app.models.orm.notification",
+                "app.models.orm.repair",
+                "app.models.orm.rbac",
+                "app.models.orm.location",
+                "app.models.orm.config"
+            ]},
+        )
+        logger.info("Tortoise ORM initialized")
+    except Exception as e:
+        logger.error(f"Tortoise ORM init failed: {e}")
+
     try:
         await NotificationService._ensure_site_message_tables()
     except Exception as e:
@@ -55,6 +76,7 @@ async def _run() -> int:
     logger.info("Monitor daemon stopping...")
     await monitor.stop()
     await asyncio.gather(db.disconnect(), redis_manager.close())
+    await Tortoise.close_connections()
     return 0
 
 

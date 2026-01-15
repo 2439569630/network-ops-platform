@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # 在线状态检查间隔（秒）
     ONLINE_CHECK_INTERVAL: int = 1
     
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgres://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    
     class Config:
         case_sensitive = True
         env_file = ".env"

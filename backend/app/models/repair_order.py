@@ -37,3 +37,13 @@ class OrderReview:
     comment: Optional[str] = None
     response_time_rating: Optional[int] = None
     service_quality_rating: Optional[int] = None
+
+@dataclass
+class WorkLog:
+    id: int
+    order_id: int
+    operator_id: int
+    content: str
+    images: list[str]
+    created_at: datetime
+    operator_name: Optional[str] = None

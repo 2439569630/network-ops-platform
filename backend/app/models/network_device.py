@@ -13,14 +13,11 @@ class NetworkDevice:
     created_by: str
     ipv6: Optional[str] = None
     mac: Optional[str] = None
-    location: Optional[str] = None
     vendor: Optional[str] = None
     model: Optional[str] = None
     serial_number: Optional[str] = None
     description: Optional[str] = None
     ssh_port: Optional[int] = None
-    snmp_community: Optional[str] = None
-    snmp_version: Optional[int] = None
     telnet_port: Optional[int] = None
     is_active: Optional[bool] = None
     online_status: Optional[bool] = None

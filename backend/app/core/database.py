@@ -73,3 +73,13 @@ class Database:
             return await conn.fetchval(query, *args)
 
 db = Database()
+
+TORTOISE_ORM = {
+    "connections": {"default": settings.DATABASE_URL},
+    "apps": {
+        "models": {
+            "models": ["app.models.orm.user", "app.models.orm.device", "app.models.orm.location", "app.models.orm.rbac", "app.models.orm.repair", "aerich.models"],
+            "default_connection": "default",
+        },
+    },
+}

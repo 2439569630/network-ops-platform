@@ -1,64 +1,79 @@
+
 import json
 from datetime import datetime
 from typing import List, Optional, Dict
 from app.core.database import db
 from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, OrderReviewCreate
 
+# ORM Imports
+from app.models.orm.repair import RepairOrder, OrderLog, OrderReview, WorkLog
+from app.models.orm.user import User
+from app.models.orm.device import NetworkDevice
+from app.models.orm.location import LocationNode
+from app.models.orm.rbac import Role, UserRole
+from tortoise.expressions import Q
+
 class RepairOrderService:
     @staticmethod
     async def pick_auto_assignee_id() -> Optional[int]:
-        sql = """
-            SELECT u.id
-            FROM users u
-            JOIN user_roles ur ON ur.user_id = u.id
-            JOIN roles ro ON ro.id = ur.role_id
-            WHERE ro.code = 'yunwei'
-              AND (u.is_approved IS NULL OR u.is_approved = true)
-            ORDER BY (
-                SELECT COUNT(*)
-                FROM repair_orders r
-                WHERE r.assignee_id = u.id
-                  AND r.status = 'processing'
-            ) ASC, u.id ASC
-            LIMIT 1
-        """
-        return await db.fetch_val(sql)
+        # 1. Find role 'yunwei'
+        role = await Role.filter(code='yunwei').first()
+        if not role:
+            return None
+            
+        # 2. Find users in that role
+        urs = await UserRole.filter(role_id=role.id).all()
+        user_ids = [ur.user_id for ur in urs]
+        
+        if not user_ids:
+            return None
+            
+        # 3. Filter active users
+        users = await User.filter(id__in=user_ids, is_approved=True).all()
+        
+        if not users:
+            return None
+            
+        # 4. Count processing orders for each user
+        # We can do this in loop or group by query. Loop is simple enough.
+        candidates = []
+        for u in users:
+            count = await RepairOrder.filter(assignee_id=u.id, status='processing').count()
+            candidates.append((u, count))
+            
+        # 5. Sort by count ASC, then ID ASC
+        candidates.sort(key=lambda x: (x[1], x[0].id))
+        
+        return candidates[0][0].id
 
     @staticmethod
     async def list_assignees() -> List[dict]:
-        rows = await db.fetch_all(
-            """
-            SELECT DISTINCT u.id, u.username
-            FROM users u
-            JOIN user_roles ur ON ur.user_id = u.id
-            JOIN roles ro ON ro.id = ur.role_id
-            WHERE ro.code = 'yunwei'
-              AND (u.is_approved IS NULL OR u.is_approved = true)
-            ORDER BY u.id ASC
-            """
-        )
-        return [dict(r) for r in rows] if rows else []
+        role = await Role.filter(code='yunwei').first()
+        if not role:
+            return []
+            
+        urs = await UserRole.filter(role_id=role.id).all()
+        user_ids = [ur.user_id for ur in urs]
+        
+        users = await User.filter(id__in=user_ids, is_approved=True).order_by("id").all()
+        
+        return [{"id": u.id, "username": u.username} for u in users]
 
     @staticmethod
     async def create_order(data: RepairOrderCreate, submitter_id: int) -> int:
-        sql = """
-            INSERT INTO repair_orders (
-                title, description, submitter_id, device_id, priority, status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, 'pending', NOW(), NOW())
-            RETURNING id
-        """
-        order_id = await db.fetch_val(
-            sql, 
-            data.title, 
-            data.description, 
-            submitter_id, 
-            data.device_id, 
-            data.priority
+        order = await RepairOrder.create(
+            title=data.title,
+            description=data.description,
+            submitter_id=submitter_id,
+            device_id=data.device_id,
+            location_id=data.location_id,
+            priority=data.priority,
+            status='pending'
         )
         
         # Log creation
-        await RepairOrderService.log_action(order_id, submitter_id, "create", "", "pending", "创建工单")
-        return order_id
+        await RepairOrderService.log_action(order.id, submitter_id, "create", "", "pending", "创建工单")
+        return order.id
 
     @staticmethod
     async def get_order_list(
@@ -66,163 +81,262 @@ class RepairOrderService:
         page_size: int = 10, 
         status: Optional[str] = None, 
         user_id: Optional[int] = None,
-        role_level: int = 2  # 0:admin, 1:maintenance, 2:user
+        scope: Optional[str] = None,
+        # New permission flags
+        can_view_all: bool = False,
+        can_view_assigned: bool = False,
+        role_level: int = 2,  # Deprecated
     ) -> Dict:
         offset = (page - 1) * page_size
         
-        # Base query
-        where_clauses = []
-        params = []
-        idx = 1
+        query = RepairOrder.all()
         
         if status:
-            where_clauses.append(f"status = ${idx}")
-            params.append(status)
-            idx += 1
+            query = query.filter(status=status)
             
-        # Role based filtering
-        if role_level == 2:
-            # Users only see their own
-            where_clauses.append(f"submitter_id = ${idx}")
-            params.append(user_id)
-            idx += 1
-        elif role_level == 1:
-            if status:
-                if status == "pending":
-                    where_clauses.append(f"(assignee_id = ${idx} OR assignee_id IS NULL)")
-                    params.append(user_id)
-                    idx += 1
+        if scope == 'personal':
+            # Force personal view: Created by me OR Assigned to me
+            if user_id:
+                query = query.filter(Q(submitter_id=user_id) | Q(assignee_id=user_id))
+        elif scope == 'created_by_me':
+            if user_id:
+                query = query.filter(submitter_id=user_id)
+        elif scope == 'assigned_to_me':
+            if user_id:
+                if status == 'pending':
+                    query = query.filter(Q(assignee_id=user_id) | Q(assignee_id__isnull=True))
+                elif status:
+                    query = query.filter(assignee_id=user_id)
                 else:
-                    where_clauses.append(f"assignee_id = ${idx}")
-                    params.append(user_id)
-                    idx += 1
+                    # Default: Active orders (pending or processing)
+                    # 1. Assigned to me AND not completed/closed/cancelled
+                    # 2. OR Pending AND Unassigned (Public pool)
+                    query = query.filter(
+                        Q(assignee_id=user_id, status__in=['pending', 'processing']) | 
+                        Q(status='pending', assignee_id__isnull=True)
+                    )
+        else:
+            # Permission based filtering
+            if can_view_all:
+                # View all
+                pass
+            elif can_view_assigned:
+                if status:
+                    if status == "pending":
+                        # Pending: assigned to me OR unassigned OR submitted by me
+                        query = query.filter(Q(assignee_id=user_id) | Q(assignee_id__isnull=True) | Q(submitter_id=user_id))
+                    else:
+                        query = query.filter(Q(assignee_id=user_id) | Q(submitter_id=user_id))
+                else:
+                    # All: assigned to me OR (pending AND unassigned) OR submitted by me
+                    query = query.filter(
+                        Q(assignee_id=user_id) | 
+                        Q(status='pending', assignee_id__isnull=True) |
+                        Q(submitter_id=user_id)
+                    )
             else:
-                where_clauses.append(f"(assignee_id = ${idx} OR (status = 'pending' AND assignee_id IS NULL))")
-                params.append(user_id)
-                idx += 1
+                # Users only see their own
+                query = query.filter(submitter_id=user_id)
             
-        where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        total = await query.count()
+        orders = await query.order_by("-created_at").offset(offset).limit(page_size).all()
         
-        # Count
-        count_sql = f"SELECT COUNT(*) FROM repair_orders {where_sql}"
-        total = await db.fetch_val(count_sql, *params)
+        # Fetch related info manually
+        # Users (submitter, assignee) and Device
+        s_ids = {o.submitter_id for o in orders if o.submitter_id}
+        a_ids = {o.assignee_id for o in orders if o.assignee_id}
+        d_ids = {o.device_id for o in orders if o.device_id}
+        l_ids = {o.location_id for o in orders if o.location_id}
         
-        # Data
-        data_sql = f"""
-            SELECT r.*, u.username as submitter_name, d.device_name, a.username as assignee_name
-            FROM repair_orders r
-            LEFT JOIN users u ON r.submitter_id = u.id
-            LEFT JOIN network_devices d ON r.device_id = d.id
-            LEFT JOIN users a ON r.assignee_id = a.id
-            {where_sql}
-            ORDER BY r.created_at DESC
-            LIMIT ${idx} OFFSET ${idx+1}
-        """
-        params.append(page_size)
-        params.append(offset)
+        all_u_ids = s_ids | a_ids
+        users = await User.filter(id__in=list(all_u_ids)).all()
+        user_map = {u.id: u.username for u in users}
         
-        rows = await db.fetch_all(data_sql, *params)
+        devices = await NetworkDevice.filter(id__in=list(d_ids)).all()
+        device_map = {d.id: d.device_name for d in devices}
+
+        locations = await LocationNode.filter(id__in=list(l_ids)).all()
+        location_map = {l.id: l.name for l in locations}
+        
+        items = []
+        for o in orders:
+            items.append({
+                "id": o.id,
+                "title": o.title,
+                "description": o.description,
+                "submitter_id": o.submitter_id,
+                "submitter_name": user_map.get(o.submitter_id),
+                "device_id": o.device_id,
+                "device_name": device_map.get(o.device_id),
+                "location_id": o.location_id,
+                "location_name": location_map.get(o.location_id),
+                "assignee_id": o.assignee_id,
+                "assignee_name": user_map.get(o.assignee_id) if o.assignee_id else None,
+                "priority": o.priority,
+                "status": o.status,
+                "actual_completion_time": o.actual_completion_time,
+                "created_at": o.created_at,
+                "updated_at": o.updated_at
+            })
+            
         return {
             "total": total,
-            "items": [dict(r) for r in rows]
+            "items": items
         }
 
     @staticmethod
     async def get_order_detail(order_id: int) -> Optional[dict]:
-        sql = """
-            SELECT r.*, u.username as submitter_name, d.device_name, a.username as assignee_name
-            FROM repair_orders r
-            LEFT JOIN users u ON r.submitter_id = u.id
-            LEFT JOIN network_devices d ON r.device_id = d.id
-            LEFT JOIN users a ON r.assignee_id = a.id
-            WHERE r.id = $1
-        """
-        row = await db.fetch_one(sql, order_id)
-        if not row:
+        o = await RepairOrder.filter(id=order_id).first()
+        if not o:
             return None
             
-        order = dict(row)
+        # Fetch related info
+        submitter = await User.filter(id=o.submitter_id).first()
+        assignee = await User.filter(id=o.assignee_id).first() if o.assignee_id else None
+        device = await NetworkDevice.filter(id=o.device_id).first() if o.device_id else None
+        location = await LocationNode.filter(id=o.location_id).first() if o.location_id else None
+        
+        order = {
+            "id": o.id,
+            "title": o.title,
+            "description": o.description,
+            "submitter_id": o.submitter_id,
+            "submitter_name": submitter.username if submitter else None,
+            "device_id": o.device_id,
+            "device_name": device.device_name if device else None,
+            "location_id": o.location_id,
+            "location_name": location.name if location else None,
+            "assignee_id": o.assignee_id,
+            "assignee_name": assignee.username if assignee else None,
+            "priority": o.priority,
+            "status": o.status,
+            "actual_completion_time": o.actual_completion_time,
+            "created_at": o.created_at,
+            "updated_at": o.updated_at
+        }
         
         # Fetch logs
-        log_sql = """
-            SELECT l.*, u.username as operator_name 
-            FROM order_logs l
-            LEFT JOIN users u ON l.operator_id = u.id
-            WHERE l.order_id = $1 ORDER BY l.created_at ASC
-        """
-        logs = await db.fetch_all(log_sql, order_id)
-        order['logs'] = [dict(l) for l in logs]
+        logs = await OrderLog.filter(order_id=order_id).order_by("created_at").all()
+        # Fetch operator names
+        op_ids = {l.operator_id for l in logs}
+        operators = await User.filter(id__in=list(op_ids)).all()
+        op_map = {u.id: u.username for u in operators}
+        
+        order['logs'] = []
+        for l in logs:
+            order['logs'].append({
+                "id": l.id,
+                "order_id": l.order_id,
+                "operator_id": l.operator_id,
+                "operator_name": op_map.get(l.operator_id),
+                "action": l.action,
+                "from_status": l.from_status,
+                "to_status": l.to_status,
+                "remark": l.remark,
+                "created_at": l.created_at
+            })
         
         # Fetch review
-        review_sql = "SELECT * FROM order_reviews WHERE order_id = $1"
-        review = await db.fetch_one(review_sql, order_id)
+        review = await OrderReview.filter(order_id=order_id).first()
         if review:
-            order['review'] = dict(review)
+            order['review'] = {
+                "id": review.id,
+                "order_id": review.order_id,
+                "rating": review.rating,
+                "comment": review.comment,
+                "response_time_rating": review.response_time_rating,
+                "service_quality_rating": review.service_quality_rating,
+                "created_at": review.created_at
+            }
+        
+        # Fetch work logs
+        order['work_logs'] = await RepairOrderService.get_work_logs(order_id)
             
         return order
 
     @staticmethod
-    async def update_order(order_id: int, data: RepairOrderUpdate, operator_id: int) -> bool:
+    async def update_order(order_id: int, data: RepairOrderUpdate, operator_id: int, skip_log: bool = False) -> bool:
         # Check current status
-        current = await RepairOrderService.get_order_detail(order_id)
+        # We need the current status for logging
+        current = await RepairOrder.filter(id=order_id).first()
         if not current:
             return False
             
-        updates = []
-        params = []
-        idx = 1
+        updates = {}
         
         if data.status:
-            updates.append(f"status = ${idx}")
-            params.append(data.status)
-            idx += 1
-            # Log status change
-            await RepairOrderService.log_action(order_id, operator_id, "update_status", current['status'], data.status, "更新状态")
+            if not skip_log and current.status != data.status:
+                # Log status change
+                await RepairOrderService.log_action(order_id, operator_id, "update_status", current.status, data.status, "更新状态")
+            updates['status'] = data.status
 
             if data.status == "completed":
-                updates.append("actual_completion_time = NOW()")
+                import datetime
+                updates['actual_completion_time'] = datetime.datetime.now()
             
         if data.assignee_id:
-            updates.append(f"assignee_id = ${idx}")
-            params.append(data.assignee_id)
-            idx += 1
-            await RepairOrderService.log_action(order_id, operator_id, "assign", current['status'], current['status'], f"指派给用户ID: {data.assignee_id}")
+            if not skip_log:
+                await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给用户ID: {data.assignee_id}")
+            updates['assignee_id'] = data.assignee_id
 
         if data.priority:
-            updates.append(f"priority = ${idx}")
-            params.append(data.priority)
-            idx += 1
+            updates['priority'] = data.priority
             
         if data.description:
-            updates.append(f"description = ${idx}")
-            params.append(data.description)
-            idx += 1
+            updates['description'] = data.description
             
         if not updates:
             return True
             
-        updates.append(f"updated_at = NOW()")
-        
-        sql = f"UPDATE repair_orders SET {', '.join(updates)} WHERE id = ${idx}"
-        params.append(order_id)
-        
-        await db.execute(sql, *params)
+        await RepairOrder.filter(id=order_id).update(**updates)
         return True
 
     @staticmethod
     async def log_action(order_id: int, operator_id: int, action: str, from_status: str, to_status: str, remark: str = ""):
-        sql = """
-            INSERT INTO order_logs (order_id, operator_id, action, from_status, to_status, remark, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
-        """
-        await db.execute(sql, order_id, operator_id, action, from_status, to_status, remark)
+        await OrderLog.create(
+            order_id=order_id,
+            operator_id=operator_id,
+            action=action,
+            from_status=from_status,
+            to_status=to_status,
+            remark=remark
+        )
 
     @staticmethod
     async def submit_review(order_id: int, data: OrderReviewCreate):
-        sql = """
-            INSERT INTO order_reviews (order_id, rating, comment, response_time_rating, service_quality_rating, created_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-        """
-        await db.execute(sql, order_id, data.rating, data.comment, data.response_time_rating, data.service_quality_rating)
+        await OrderReview.create(
+            order_id=order_id,
+            rating=data.rating,
+            comment=data.comment,
+            response_time_rating=data.response_time_rating,
+            service_quality_rating=data.service_quality_rating
+        )
+
+    @staticmethod
+    async def add_work_log(order_id: int, operator_id: int, content: str, images: List[str] = []) -> WorkLog:
+        return await WorkLog.create(
+            order_id=order_id,
+            operator_id=operator_id,
+            content=content,
+            images=images
+        )
+
+    @staticmethod
+    async def get_work_logs(order_id: int) -> List[dict]:
+        logs = await WorkLog.filter(order_id=order_id).order_by("created_at").all()
+        if not logs:
+            return []
+            
+        op_ids = {l.operator_id for l in logs}
+        operators = await User.filter(id__in=list(op_ids)).all()
+        op_map = {u.id: u.username for u in operators}
         
-        # Update order status to closed? Or handled separately.
+        return [{
+            "id": l.id,
+            "order_id": l.order_id,
+            "operator_id": l.operator_id,
+            "operator_name": op_map.get(l.operator_id),
+            "content": l.content,
+            "images": l.images,
+            "created_at": l.created_at
+        } for l in logs]

@@ -1,3 +1,4 @@
+
 import asyncio
 import logging
 import os
@@ -5,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from tortoise import Tortoise
 
 from app.api.v1.api import api_router
 from app.api.v1.endpoints import devices
@@ -42,6 +44,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"数据库连接失败: {e}")
 
+    # Init Tortoise ORM
+    try:
+        await Tortoise.init(
+            db_url=settings.DATABASE_URL,
+            modules={"models": [
+                "app.models.orm.user", 
+                "app.models.orm.device", 
+                "app.models.orm.audit",
+                "app.models.orm.notification",
+                "app.models.orm.repair",
+                "app.models.orm.rbac",
+                "app.models.orm.location",
+                "app.models.orm.config"
+            ]},
+        )
+        await Tortoise.generate_schemas()
+        logger.info("Tortoise ORM 初始化成功")
+    except Exception as e:
+        logger.error(f"Tortoise ORM 初始化失败: {e}")
+
     try:
         await NotificationService._ensure_site_message_tables()
     except Exception as e:
@@ -59,18 +81,38 @@ async def lifespan(app: FastAPI):
         monitor = MonitorManager()
         await monitor.start()
 
-    yield
+    try:
+        yield
+    except asyncio.CancelledError:
+        pass
 
     logger.info('服务关闭中...')
 
     if monitor:
-        await monitor.stop()
+        try:
+            await monitor.stop()
+        except asyncio.CancelledError:
+            logger.warning("监控服务停止过程被取消")
+        except Exception as e:
+            logger.error(f"监控服务停止失败: {e}")
+    
+    try:
+        await Tortoise.close_connections()
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Tortoise 关闭连接失败: {e}")
 
     close_tasks = [
         db.disconnect(),
         redis_manager.close()
     ]
-    await asyncio.gather(*close_tasks)
+    try:
+        await asyncio.gather(*close_tasks)
+    except asyncio.CancelledError:
+        logger.info("资源释放过程被取消")
+    except Exception as e:
+        logger.error(f"资源释放失败: {e}")
 
 
 app = FastAPI(

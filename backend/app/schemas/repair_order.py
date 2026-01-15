@@ -7,6 +7,7 @@ class RepairOrderCreate(BaseModel):
     description: str
     priority: str = 'medium'
     device_id: Optional[int] = None
+    location_id: Optional[int] = None
 
 class RepairOrderUpdate(BaseModel):
     title: Optional[str] = None
@@ -48,6 +49,7 @@ class RepairOrderResponse(BaseModel):
     description: str
     submitter_id: int
     device_id: Optional[int]
+    location_id: Optional[int]
     priority: str
     status: str
     assignee_id: Optional[int]
@@ -58,5 +60,6 @@ class RepairOrderResponse(BaseModel):
     submitter_name: Optional[str] = None
     assignee_name: Optional[str] = None
     device_name: Optional[str] = None
+    location_name: Optional[str] = None
     logs: Optional[List[OrderLogResponse]] = None
     review: Optional[OrderReviewResponse] = None

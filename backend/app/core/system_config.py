@@ -1,6 +1,7 @@
+
 import logging
 from typing import Dict, Any
-from app.core.database import db
+from app.models.orm.config import SystemSetting
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,10 @@ class SystemConfig:
         """从数据库加载所有配置到内存"""
         try:
             logger.info("正在加载系统配置...")
-            sql = "SELECT key, value FROM system_settings WHERE key <> 'trap_autostart'"
-            rows = await db.fetch_all(sql)
-            if rows:
-                for row in rows:
-                    cls._config[row['key']] = row['value']
+            settings = await SystemSetting.all()
+            for s in settings:
+                if s.key != 'trap_autostart':
+                    cls._config[s.key] = s.value or ""
             logger.info(f"系统配置加载完成: {cls._config}")
         except Exception as e:
             logger.error(f"加载系统配置失败: {e}")
@@ -52,18 +52,14 @@ class SystemConfig:
         try:
             if key == "trap_autostart":
                 raise ValueError("trap_autostart 配置已废弃")
-            # 1. 更新数据库
-            # 使用 UPSERT 语法 (PostgreSQL 特有: ON CONFLICT)
-            # 注意：system_settings 表有 not-null 约束的 group_name 字段，默认设为 'system'
-            sql = """
-                INSERT INTO system_settings (key, value, group_name) 
-                VALUES ($1, $2, 'system')
-                ON CONFLICT (key) 
-                DO UPDATE SET value = $2
-            """
-            await db.execute(sql, key, str(value))
             
-            # 2. 更新内存缓存
+            # Use update_or_create
+            await SystemSetting.update_or_create(
+                key=key,
+                defaults={"value": str(value), "group_name": "system"}
+            )
+            
+            # Update memory cache
             cls._config[key] = str(value)
             logger.info(f"更新系统配置: {key} = {value}")
             return True

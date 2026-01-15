@@ -413,7 +413,7 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
     return {"code": 200, "message": "密码已重置"}
 
 @router.post("/refresh")
-async def refresh_token(response: Response, token: str = Cookie(None)):
+async def refresh_token(response: Response, token: Optional[str] = Cookie(None)):
     if token is None:
         return JSONResponse(
             status_code=401,

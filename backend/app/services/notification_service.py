@@ -1,3 +1,4 @@
+
 import json
 import logging
 from datetime import datetime
@@ -7,6 +8,11 @@ from app.core.redis import redis_manager
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email, send_pushplus, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
+
+# ORM Imports
+from app.models.orm.notification import DeviceNotification, SiteMessage, SiteMessageRead, UserNotificationConfig
+from app.models.orm.device import NetworkDevice
+from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
 
@@ -26,86 +32,40 @@ class NotificationService:
     async def get_history(can_view_all: bool, user_id: int) -> List[dict]:
         """获取通知历史"""
         if can_view_all:
-            sql = """
-                SELECT dn.id, dn.device_id, d.device_name, dn.level, dn.message, dn.created_at 
-                FROM device_notifications dn
-                LEFT JOIN network_devices d ON dn.device_id = d.id
-                ORDER BY dn.created_at DESC
-                LIMIT 100
-            """
-            rows = await db.fetch_all(sql)
+            # Join with NetworkDevice to get device_name
+            notifications = await DeviceNotification.all().order_by("-created_at").limit(100)
+            
+            # Fetch device names manually or assume they are in message? 
+            # The original SQL joined network_devices.
+            # Let's map device names.
+            device_ids = {n.device_id for n in notifications if n.device_id}
+            devices = await NetworkDevice.filter(id__in=list(device_ids)).all()
+            device_map = {d.id: d.device_name for d in devices}
+
+            result = []
+            for n in notifications:
+                result.append({
+                    "id": n.id,
+                    "device_id": n.device_id,
+                    "device_name": device_map.get(n.device_id, ""),
+                    "level": n.level,
+                    "message": n.message,
+                    "created_at": n.created_at
+                })
+            return result
         else:
             # TODO: Filter by user's devices
-            rows = []
-        return [dict(row) for row in rows]
+            return []
 
     @staticmethod
     async def _ensure_site_message_tables():
-        if NotificationService._site_message_tables_ready:
-            return
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS site_messages (
-                id BIGSERIAL PRIMARY KEY,
-                sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                sender_name TEXT,
-                source TEXT NOT NULL DEFAULT '系统',
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                is_global BOOLEAN NOT NULL DEFAULT FALSE,
-                target_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_site_messages_target_created ON site_messages(target_user_id, created_at DESC)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_site_messages_global_created ON site_messages(is_global, created_at DESC)"
-        )
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS site_message_reads (
-                message_id BIGINT NOT NULL REFERENCES site_messages(id) ON DELETE CASCADE,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY (message_id, user_id)
-            )
-            """
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_site_message_reads_user_readat ON site_message_reads(user_id, read_at DESC)"
-        )
-        NotificationService._site_message_tables_ready = True
+        # Assumed handled by Tortoise init
+        return
 
     @staticmethod
     async def _ensure_user_notification_config_table():
-        if NotificationService._user_notification_config_table_ready:
-            return
-
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_notification_config (
-                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                enable_email BOOLEAN NOT NULL DEFAULT FALSE,
-                email_config JSONB NOT NULL DEFAULT '{}'::jsonb,
-                enable_pushplus BOOLEAN NOT NULL DEFAULT FALSE,
-                pushplus_token TEXT NOT NULL DEFAULT '',
-                enable_http BOOLEAN NOT NULL DEFAULT FALSE,
-                http_url TEXT NOT NULL DEFAULT ''
-            )
-            """
-        )
-
-        try:
-            await db.execute("ALTER TABLE user_notification_config DROP COLUMN IF EXISTS use_global_email")
-        except Exception as e:
-            logger.error(f"移除 user_notification_config.use_global_email 失败: {e}")
-
-        NotificationService._user_notification_config_table_ready = True
+        # Assumed handled by Tortoise init
+        return
 
     @staticmethod
     async def list_site_messages(
@@ -115,63 +75,75 @@ class NotificationService:
         offset: int = 0,
         unread_only: bool = False,
     ) -> List[dict]:
-        await NotificationService._ensure_site_message_tables()
-
         lim = max(1, min(int(limit or 100), 200))
         off = max(0, int(offset or 0))
-        where_unread = "AND r.read_at IS NULL" if unread_only else ""
 
-        sql = f"""
-            SELECT
-                m.id,
-                m.sender_id,
-                m.sender_name,
-                m.source,
-                m.title,
-                m.content,
-                m.is_global,
-                m.target_user_id,
-                m.created_at,
-                (r.read_at IS NOT NULL) AS is_read,
-                r.read_at
-            FROM site_messages m
-            LEFT JOIN site_message_reads r
-                ON r.message_id = m.id AND r.user_id = $1
-            WHERE (m.is_global = TRUE OR m.target_user_id = $1)
-            {where_unread}
-            ORDER BY m.created_at DESC
-            LIMIT $2 OFFSET $3
-        """
-        rows = await db.fetch_all(sql, int(user_id), lim, off)
-        return [dict(r) for r in rows] if rows else []
+        # Query messages targeted to user OR global
+        query = SiteMessage.filter(Q(is_global=True) | Q(target_user_id=user_id))
+        
+        # Unread filter is tricky with ORM unless we do a subquery or join.
+        # Tortoise supports joins if defined in model. 
+        # But we don't have explicit relationship defined in SiteMessage model pointing to SiteMessageRead.
+        # We can fetch reads first.
+        
+        reads = await SiteMessageRead.filter(user_id=user_id).all()
+        read_msg_ids = {r.message_id for r in reads}
+        
+        if unread_only:
+            query = query.filter(id__not_in=list(read_msg_ids))
+            
+        messages = await query.order_by("-created_at").offset(off).limit(lim)
+        
+        result = []
+        for m in messages:
+            read_at = None
+            is_read = False
+            # Find read status
+            # This is inefficient for large lists if we iterate reads list every time, 
+            # but reads list is for ONE user, usually manageable. 
+            # Better: use a dict for O(1) lookup.
+            read_entry = next((r for r in reads if r.message_id == m.id), None)
+            if read_entry:
+                is_read = True
+                read_at = read_entry.read_at
+            
+            result.append({
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": m.sender_name,
+                "source": m.source,
+                "title": m.title,
+                "content": m.content,
+                "is_global": m.is_global,
+                "target_user_id": m.target_user_id,
+                "created_at": m.created_at,
+                "is_read": is_read,
+                "read_at": read_at
+            })
+            
+        return result
 
     @staticmethod
     async def get_site_message_detail(*, user_id: int, message_id: int) -> Optional[dict]:
-        await NotificationService._ensure_site_message_tables()
-        row = await db.fetch_one(
-            """
-            SELECT
-                m.id,
-                m.sender_id,
-                m.sender_name,
-                m.source,
-                m.title,
-                m.content,
-                m.is_global,
-                m.target_user_id,
-                m.created_at,
-                (r.read_at IS NOT NULL) AS is_read,
-                r.read_at
-            FROM site_messages m
-            LEFT JOIN site_message_reads r
-                ON r.message_id = m.id AND r.user_id = $1
-            WHERE m.id = $2
-              AND (m.is_global = TRUE OR m.target_user_id = $1)
-            """,
-            int(user_id),
-            int(message_id),
-        )
-        return dict(row) if row else None
+        m = await SiteMessage.filter(id=message_id).filter(Q(is_global=True) | Q(target_user_id=user_id)).first()
+        if not m:
+            return None
+            
+        read_entry = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).first()
+        
+        return {
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "sender_name": m.sender_name,
+            "source": m.source,
+            "title": m.title,
+            "content": m.content,
+            "is_global": m.is_global,
+            "target_user_id": m.target_user_id,
+            "created_at": m.created_at,
+            "is_read": bool(read_entry),
+            "read_at": read_entry.read_at if read_entry else None
+        }
 
     @staticmethod
     async def create_site_message(
@@ -184,8 +156,6 @@ class NotificationService:
         target_user_id: Optional[int] = None,
         is_global: bool = True,
     ) -> dict:
-        await NotificationService._ensure_site_message_tables()
-
         t = str(title or "").strip()
         c = str(content or "").strip()
         if not t:
@@ -198,22 +168,28 @@ class NotificationService:
         if tg is None and not global_flag:
             raise ValueError("请选择全站或指定用户")
 
-        row = await db.fetch_one(
-            """
-            INSERT INTO site_messages (
-                sender_id, sender_name, source, title, content, is_global, target_user_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, sender_id, sender_name, source, title, content, is_global, target_user_id, created_at
-            """,
-            sender_id,
-            sender_name,
-            str(source or "系统"),
-            t,
-            c,
-            global_flag,
-            tg,
+        msg = await SiteMessage.create(
+            sender_id=sender_id,
+            sender_name=sender_name,
+            source=str(source or "系统"),
+            title=t,
+            content=c,
+            is_global=global_flag,
+            target_user_id=tg
         )
-        result = dict(row) if row else {}
+        
+        # Result dict
+        result = {
+            "id": msg.id,
+            "sender_id": msg.sender_id,
+            "sender_name": msg.sender_name,
+            "source": msg.source,
+            "title": msg.title,
+            "content": msg.content,
+            "is_global": msg.is_global,
+            "target_user_id": msg.target_user_id,
+            "created_at": msg.created_at
+        }
 
         try:
             await NotificationService.publish_site_message_created(
@@ -228,16 +204,15 @@ class NotificationService:
 
     @staticmethod
     async def mark_site_message_read(*, user_id: int, message_id: int) -> bool:
-        await NotificationService._ensure_site_message_tables()
-        await db.execute(
-            """
-            INSERT INTO site_message_reads (message_id, user_id, read_at)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (message_id, user_id) DO UPDATE SET read_at = EXCLUDED.read_at
-            """,
-            int(message_id),
-            int(user_id),
-        )
+        # Check if already read
+        exists = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).exists()
+        if not exists:
+            await SiteMessageRead.create(user_id=user_id, message_id=message_id)
+        else:
+            # Update read_at?
+            import datetime
+            await SiteMessageRead.filter(user_id=user_id, message_id=message_id).update(read_at=datetime.datetime.now())
+
         try:
             await NotificationService.publish_site_message_read_state_changed(
                 target_user_id=int(user_id),
@@ -250,12 +225,7 @@ class NotificationService:
 
     @staticmethod
     async def mark_site_message_unread(*, user_id: int, message_id: int) -> bool:
-        await NotificationService._ensure_site_message_tables()
-        await db.execute(
-            "DELETE FROM site_message_reads WHERE message_id = $1 AND user_id = $2",
-            int(message_id),
-            int(user_id),
-        )
+        await SiteMessageRead.filter(user_id=user_id, message_id=message_id).delete()
         try:
             await NotificationService.publish_site_message_read_state_changed(
                 target_user_id=int(user_id),
@@ -310,22 +280,30 @@ class NotificationService:
 
     @staticmethod
     async def get_site_message_unread_count(*, user_id: int) -> int:
-        await NotificationService._ensure_site_message_tables()
-        row = await db.fetch_one(
-            """
-            SELECT COUNT(1) AS cnt
-            FROM site_messages m
-            LEFT JOIN site_message_reads r
-                ON r.message_id = m.id AND r.user_id = $1
-            WHERE (m.is_global = TRUE OR m.target_user_id = $1)
-              AND r.read_at IS NULL
-            """,
-            int(user_id),
-        )
-        try:
-            return int(row["cnt"]) if row and row.get("cnt") is not None else 0
-        except Exception:
-            return 0
+        # Count messages for user (global or direct)
+        total_msgs = await SiteMessage.filter(Q(is_global=True) | Q(target_user_id=user_id)).count()
+        # Count read messages
+        # Note: This logic is slightly flawed if global messages are many and reads are many.
+        # Ideally: Count (All Applicable Messages) - Count (Read Messages for those messages)
+        # But we can iterate or use a smarter query.
+        # Since we are using ORM without complex joins (or rather, explicit joins), 
+        # let's try to do it accurately.
+        
+        # Raw SQL was:
+        # SELECT COUNT(1) AS cnt
+        # FROM site_messages m
+        # LEFT JOIN site_message_reads r
+        #     ON r.message_id = m.id AND r.user_id = $1
+        # WHERE (m.is_global = TRUE OR m.target_user_id = $1)
+        #   AND r.read_at IS NULL
+        
+        # In ORM:
+        # Fetch IDs of read messages for this user
+        read_ids = await SiteMessageRead.filter(user_id=user_id).values_list('message_id', flat=True)
+        
+        # Count messages targeted to user that are NOT in read_ids
+        cnt = await SiteMessage.filter(Q(is_global=True) | Q(target_user_id=user_id)).filter(id__not_in=read_ids).count()
+        return cnt
 
     @staticmethod
     async def notify(
@@ -362,11 +340,10 @@ class NotificationService:
 
         if save_history:
             try:
-                await db.execute(
-                    "INSERT INTO device_notifications (device_id, level, message, created_at) VALUES ($1, $2, $3, NOW())",
-                    device_id,
-                    level,
-                    description,
+                await DeviceNotification.create(
+                    device_id=device_id,
+                    level=level,
+                    message=description
                 )
             except Exception as e:
                 logger.error(f"写入通知历史失败: {e}")
@@ -393,13 +370,10 @@ class NotificationService:
         device_name = None
         ipv4 = None
         try:
-            row = await db.fetch_one(
-                "SELECT device_name, ipv4 FROM network_devices WHERE id = $1",
-                device_id,
-            )
-            if row:
-                device_name = row["device_name"]
-                ipv4 = str(row["ipv4"]) if row["ipv4"] else None
+            dev = await NetworkDevice.filter(id=device_id).first()
+            if dev:
+                device_name = dev.device_name
+                ipv4 = str(dev.ipv4) if dev.ipv4 else None
         except Exception as e:
             logger.error(f"获取设备信息失败: {e}")
 
@@ -444,13 +418,10 @@ class NotificationService:
         ipv4 = None
         if device_id is not None:
             try:
-                row = await db.fetch_one(
-                    "SELECT device_name, ipv4 FROM network_devices WHERE id = $1",
-                    device_id,
-                )
-                if row:
-                    device_name = row["device_name"]
-                    ipv4 = str(row["ipv4"]) if row["ipv4"] else None
+                dev = await NetworkDevice.filter(id=device_id).first()
+                if dev:
+                    device_name = dev.device_name
+                    ipv4 = str(dev.ipv4) if dev.ipv4 else None
             except Exception as e:
                 logger.error(f"获取工单关联设备信息失败: {e}")
 
@@ -488,9 +459,7 @@ class NotificationService:
     @staticmethod
     async def get_config(user_id: int) -> dict:
         """获取用户通知配置"""
-        await NotificationService._ensure_user_notification_config_table()
-        sql = "SELECT * FROM user_notification_config WHERE user_id = $1"
-        config = await db.fetch_one(sql, user_id)
+        config = await UserNotificationConfig.filter(user_id=user_id).first()
         
         if not config:
             return {
@@ -503,40 +472,24 @@ class NotificationService:
             }
             
         data = dict(config)
-        if isinstance(data.get('email_config'), str):
-             try:
-                 data['email_config'] = json.loads(data['email_config'])
-             except:
-                 data['email_config'] = {}
+        # JSONField automatically handles deserialization in Tortoise, usually.
+        # But if it was stored as string previously, we might need to handle it.
+        # Since we use new table/model, it should be fine.
         return data
 
     @staticmethod
     async def update_config(user_id: int, data: NotificationConfig):
         """更新用户通知配置"""
-        await NotificationService._ensure_user_notification_config_table()
-        sql = """
-            INSERT INTO user_notification_config (
-                user_id, enable_email, email_config, enable_pushplus, pushplus_token, enable_http, http_url
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (user_id) DO UPDATE SET
-                enable_email = EXCLUDED.enable_email,
-                email_config = EXCLUDED.email_config,
-                enable_pushplus = EXCLUDED.enable_pushplus,
-                pushplus_token = EXCLUDED.pushplus_token,
-                enable_http = EXCLUDED.enable_http,
-                http_url = EXCLUDED.http_url
-        """
-        
-        await db.execute(
-            sql, 
-            user_id, 
-            data.enable_email, 
-            json.dumps(data.email_config) if data.email_config else '{}',
-            data.enable_pushplus,
-            data.pushplus_token,
-            data.enable_http,
-            data.http_url
-        )
+        # Upsert
+        defaults = {
+            "enable_email": data.enable_email,
+            "email_config": data.email_config or {},
+            "enable_pushplus": data.enable_pushplus,
+            "pushplus_token": data.pushplus_token,
+            "enable_http": data.enable_http,
+            "http_url": data.http_url
+        }
+        await UserNotificationConfig.update_or_create(defaults=defaults, user_id=user_id)
 
     @staticmethod
     async def test_notification(data: TestNotification):

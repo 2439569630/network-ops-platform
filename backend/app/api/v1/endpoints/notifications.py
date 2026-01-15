@@ -210,6 +210,16 @@ async def sse_device_notifications(user: dict = Depends(PermissionChecker("sys:a
             except Exception:
                 pass
 
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 @router.get("/sse/site-messages")
 async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:access"))):
     user_id = int(user.get("id"))
