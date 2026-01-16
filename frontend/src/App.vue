@@ -12,10 +12,12 @@ import Cookies from 'js-cookie'
 import { jwtDecode } from 'jwt-decode'
 import { homeDataStore } from '@/components/home/home/data'
 import { messageCenterDataStore } from '@/components/MessageCenter/date'
+import { useDeviceStore } from '@/components/DeviceList/store'
 
 const router = useRouter()
 const store = homeDataStore()
 const msgStore = messageCenterDataStore()
+const deviceStore = useDeviceStore()
 
 let authGuardTimer = null
 let authRefreshListener = null
@@ -149,6 +151,7 @@ const startRealtime = async () => {
 const stopRealtime = () => {
   msgStore.stopSiteMessageRealtime()
   store.stopAlertsRealtime()
+  deviceStore.stopRealtime()
   notifyInitialized = false
 }
 

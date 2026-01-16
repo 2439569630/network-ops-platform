@@ -195,7 +195,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { dveiceDateStore } from '@/components/DeviceList/Date/index'
+import { useDeviceStore } from '@/components/DeviceList/store'
 import { ElMessage, ElNotification } from 'element-plus'
 import { 
     Refresh, FullScreen, Monitor, CircleCheckFilled, CircleCloseFilled, WarningFilled,
@@ -213,7 +213,7 @@ import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from
 use([CanvasRenderer, PieChart, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const router = useRouter()
-const store = dveiceDateStore()
+const store = useDeviceStore()
 
 // State
 const loading = ref(false)
@@ -236,7 +236,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
     stopAutoRefresh()
-    store.stopPolling() // Ensure store polling is also managed if needed
+    // store.stopPolling() // App.vue manages global connection
 })
 
 const startAutoRefresh = () => {
@@ -261,7 +261,7 @@ const handleAutoRefreshChange = (val) => {
 const refreshData = async (silent = false) => {
     if (!silent) refreshing.value = true
     try {
-        await store.getServerDveiceData(0)
+        store.refreshData()
         lastUpdateTime.value = new Date().toLocaleTimeString()
         if (!silent) ElMessage.success('数据已刷新')
     } catch (e) {
@@ -282,7 +282,7 @@ const toggleFullScreen = () => {
 }
 
 // Computed Stats
-const deviceData = computed(() => store.getData())
+const deviceData = computed(() => store.data)
 const totalCount = computed(() => deviceData.value.length)
 const onlineCount = computed(() => deviceData.value.filter(d => d.status === '在线').length)
 const offlineCount = computed(() => deviceData.value.filter(d => d.status !== '在线').length)

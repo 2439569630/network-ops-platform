@@ -45,10 +45,10 @@ import { useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { dveiceDateStore } from './Date/index'
+import { useDeviceStore } from './store'
 
 const router = useRouter()
-const deviceStore = dveiceDateStore()
+const deviceStore = useDeviceStore()
 
 const loading = ref(false)
 const acting = ref(false)

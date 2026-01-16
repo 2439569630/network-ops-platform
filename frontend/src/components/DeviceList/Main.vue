@@ -28,7 +28,7 @@
                     <template #header>
                         <div :class="$style.cardHeader">
                             <span :class="$style.deviceName" :title="item.device_name">{{ item.device_name }}</span>
-                            <el-tag :type="item.status === '在线' ? 'success' : (item.status === '待加载' ? 'info' : 'danger')" size="small" effect="dark">
+                            <el-tag :type="getStatusTagType(item.status)" size="small" effect="dark">
                                 {{ item.status }}
                             </el-tag>
                         </div>
@@ -80,7 +80,7 @@
 
                         <div :class="$style.actions">
                             <el-button type="primary" size="small" :icon="View" @click="showDeviceDetail(item)">详情</el-button>
-                            <el-button v-if="canSsh" type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="item.status !== '在线'">SSH</el-button>
+                            <el-button v-if="canSsh" type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="!isDeviceOnlineForSsh(item.status)">SSH</el-button>
                             <el-button v-if="canDelete" type="danger" size="small" :icon="Delete" @click="handleDelete(item)">删除</el-button>
                         </div>
                     </div>
@@ -95,7 +95,7 @@
                     <el-table-column prop="mac" label="MAC地址" min-width="160" />
                     <el-table-column prop="status" label="状态" width="100" sortable>
                         <template #default="{ row }">
-                            <el-tag :type="row.status === '在线' ? 'success' : (row.status === '待加载' ? 'info' : 'danger')">{{ row.status }}</el-tag>
+                            <el-tag :type="getStatusTagType(row.status)">{{ row.status }}</el-tag>
                         </template>
                     </el-table-column>
                     <el-table-column prop="type" label="类型" width="120" sortable />
@@ -105,7 +105,7 @@
                     <el-table-column label="操作" width="200" fixed="right">
                         <template #default="{ row }">
                             <el-button link type="primary" size="small" @click="showDeviceDetail(row)">详情</el-button>
-                            <el-button v-if="canSsh" link type="success" size="small" @click="connectSSH(row)" :disabled="row.status !== '在线'">SSH</el-button>
+                            <el-button v-if="canSsh" link type="success" size="small" @click="connectSSH(row)" :disabled="!isDeviceOnlineForSsh(row.status)">SSH</el-button>
                             <el-button v-if="canDelete" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
                         </template>
                     </el-table-column>
@@ -119,11 +119,11 @@
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Grid, List, View, Connection, Delete } from '@element-plus/icons-vue';
-import { dveiceDateStore } from './Date/index';
+import { useDeviceStore } from './store';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
 
-const store = dveiceDateStore();
+const store = useDeviceStore();
 const router = useRouter();
 const authStore = homeDataStore()
 const activeTab = ref('0');
@@ -177,6 +177,29 @@ const getProgressColor = (percentage) => {
     return '#f56c6c';
 };
 
+const getStatusTagType = (status) => {
+    const s = String(status || '').trim()
+    if (s === '在线') return 'success'
+    if (s === '离线') return 'danger'
+    if (s === '异常') return 'danger'
+    if (s === '恢复中') return 'warning'
+    if (s === '检测中') return 'warning'
+    if (s === '采集中') return 'warning'
+    if (s === '采集成功') return 'success'
+    if (s === '采集失败') return 'danger'
+    if (s === '初始化中') return 'info'
+    if (s === '待加载') return 'info'
+    if (s === '未知') return 'info'
+    return 'info'
+}
+
+const isDeviceOnlineForSsh = (status) => {
+    const s = String(status || '').trim()
+    if (!s) return false
+    if (s === '离线' || s === '待加载' || s === '初始化中' || s === '采集失败' || s === '未知') return false
+    return true
+}
+
 const handleDelete = (item) => {
     ElMessageBox.confirm(
         '确定要删除该设备吗？删除后将移入回收站',
@@ -214,7 +237,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-    store.stopPolling();
+    store.stopRealtime();
 });
 </script>
 

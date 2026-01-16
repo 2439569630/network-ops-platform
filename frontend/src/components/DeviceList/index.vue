@@ -20,19 +20,21 @@
 import Header from './Header.vue'
 import Main from './Main.vue'
 import Footer from './Footer.vue';
-import { dveiceDateStore } from './Date/index'
+import { useDeviceStore } from './store'
 import { onMounted } from 'vue'
 import axios from 'axios';
 import { ElMessage } from 'element-plus'
 
-const deviceStore = dveiceDateStore()
+const deviceStore = useDeviceStore()
 
 // 页面加载时获取数据
 onMounted(async () => {
     // 切换页面数据展示类型 
     console.log(deviceStore.getdataCardType)
-    deviceStore.clearData()
-    deviceStore.getServerDveiceData()
+    // deviceStore.clearData() // 不需要清空，因为是全局连接
+    // deviceStore.getServerDveiceData() // 不需要手动连接，App.vue 已处理
+    // 可以在这里刷新一下以确保数据最新，或者设置正确的 Filter Type
+    deviceStore.refreshData()
 })
 
 

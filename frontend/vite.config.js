@@ -37,5 +37,18 @@ export default defineConfig({
         ws: true,
       },
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          'echarts': ['echarts', 'vue-echarts'],
+          'utils': ['axios', 'js-cookie', 'jwt-decode', '@fortawesome/fontawesome-svg-core', '@fortawesome/free-solid-svg-icons', '@fortawesome/vue-fontawesome']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
   }
 })

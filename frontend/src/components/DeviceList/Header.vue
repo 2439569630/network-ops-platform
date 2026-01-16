@@ -200,10 +200,10 @@ import { computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
-import { dveiceDateStore } from './Date/index' // 引入 Store
+import { useDeviceStore } from './store' // 引入 Store
 import { homeDataStore } from '@/components/home/home/data'
 
-const store = dveiceDateStore() // 使用 Store
+const store = useDeviceStore() // 使用 Store
 const authStore = homeDataStore()
 const router = useRouter()
 
@@ -279,6 +279,8 @@ const deviceFormRef = ref()
 const handleSearch = () => {
     // 调用 Store 的搜索方法
     store.setSearchQuery(searchInput.value)
+    // store.refreshData() // store 内部如果需要自动刷新会在 setSearchQuery 处理，或者这里显式调用
+    store.refreshData()
 }
 
 // 打开添加设备弹窗

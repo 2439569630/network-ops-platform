@@ -1,38 +1,24 @@
-import home from '@/components/home/home/home.vue'
-import index from '@/components/home/index.vue'
-import DeviceList from '@/components/DeviceList/index.vue'
-import Dashboard from '@/components/Dashboard/index.vue'
-import Organization from '@/components/Organization/index.vue'
-import Location from '@/components/Location/index.vue'
-import MessageCenter from '@/components/MessageCenter/MessageCenter.vue'
-import SiteMessageDetail from '@/components/MessageCenter/SiteMessageDetail.vue'
-import RoleManagement from '@/components/Role/RoleManagement.vue'
-import GlobalConfig from '@/components/System/GlobalConfig.vue'
-import RepairApply from '@/components/Repair/Apply.vue'
-import RepairList from '@/components/Repair/List.vue'
-import RepairDetail from '@/components/Repair/Detail.vue'
-
 const homeRoutes = [
     {
         path: '/user',
-        component: index,
+        component: () => import('@/components/home/index.vue'),
         children: [
             {
                 path: 'dashboard',
                 name: 'dashboard',
-                component: Dashboard,
+                component: () => import('@/components/Dashboard/index.vue'),
                 meta: { title: '系统概览', perms: ['sys:dashboard:view'] }
             },
             {
                 path: 'home',
                 name: 'home',
-                component: home,
+                component: () => import('@/components/home/home/home.vue'),
                 meta: { title: '首页' }
             },
             {
                 path: 'device',
                 name: 'device',
-                component: DeviceList,
+                component: () => import('@/components/DeviceList/index.vue'),
                 meta: { title: '设备列表', perms: ['sys:device:list'] } // 仅管理员和运维可见
             },
             {
@@ -59,13 +45,13 @@ const homeRoutes = [
             {
                 path: 'message',
                 name: 'message',
-                component: MessageCenter,
+                component: () => import('@/components/MessageCenter/MessageCenter.vue'),
                 meta: { title: '消息中心' }
             },
             {
                 path: 'message/site/:id',
                 name: 'site-message-detail',
-                component: SiteMessageDetail,
+                component: () => import('@/components/MessageCenter/SiteMessageDetail.vue'),
                 meta: { title: '站内消息' }
             },
             {
@@ -77,7 +63,7 @@ const homeRoutes = [
             {
                 path: 'role',
                 name: 'role',
-                component: RoleManagement,
+                component: () => import('@/components/Role/RoleManagement.vue'),
                 meta: { title: '角色与权限管理', roleCodes: ['admin', 'superadmin', 'super_admin'] } // 仅管理员可见
             },
             {
@@ -95,32 +81,38 @@ const homeRoutes = [
             {
                 path: 'location',
                 name: 'location',
-                component: Location,
+                component: () => import('@/components/Location/index.vue'),
                 meta: { title: '位置管理', perms: ['sys:location:manage'] } // 仅管理员和有权限者可见
             },
             {
-                path: 'config',
-                name: 'config',
-                component: GlobalConfig,
-                meta: { title: '全局配置', perms: ['sys:config:view'] } // 仅管理员可见
+                path: 'organization',
+                name: 'organization',
+                component: () => import('@/components/Organization/index.vue'),
+                meta: { title: '组织架构', perms: ['sys:org:view'] }
+            },
+            {
+                path: 'system/config',
+                name: 'global-config',
+                component: () => import('@/components/System/GlobalConfig.vue'),
+                meta: { title: '系统设置', roleCodes: ['admin', 'superadmin'] }
             },
             {
                 path: 'repair/apply',
                 name: 'repair-apply',
-                component: RepairApply,
-                meta: { title: '故障报修', perms: ['sys:repair:create', 'sys:repair:manage'] }
+                component: () => import('@/components/Repair/Apply.vue'),
+                meta: { title: '提交工单' }
             },
             {
                 path: 'repair/list',
                 name: 'repair-list',
-                component: RepairList,
-                meta: { title: '工单列表', perms: ['sys:repair:view', 'sys:repair:handle', 'sys:repair:manage'] }
+                component: () => import('@/components/Repair/List.vue'),
+                meta: { title: '工单列表' }
             },
             {
                 path: 'repair/detail/:id',
                 name: 'repair-detail',
-                component: RepairDetail,
-                meta: { title: '工单详情', perms: ['sys:repair:view', 'sys:repair:handle', 'sys:repair:manage'] }
+                component: () => import('@/components/Repair/Detail.vue'),
+                meta: { title: '工单详情' }
             }
         ]
     }
