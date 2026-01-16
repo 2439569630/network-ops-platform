@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, Response, HTTPException, WebSocket, WebS
 from typing import List, Optional
 from pydantic import BaseModel
 from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission
-from app.core.redis import redis_manager
 from app.core.database import db
-from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceTest, DeviceDelete
+from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceTest, DeviceDelete, DeviceConfigUpdate
 from app.services.device_service import device_service
+from app.workers.monitor.manager import MonitorManager
+from app.core.redis import redis_manager
 from netmiko import ConnectHandler
 
 router = APIRouter()
@@ -128,11 +129,9 @@ async def get_device_status(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    redis_client = redis_manager.get_client()
-    status_data = await redis_client.hgetall(f"device_status:{device_id}")
-    if status_data:
-        return format_ws_data(status_data)
-    return format_ws_data({})
+    monitor = MonitorManager()
+    snap = await monitor.get_runtime_snapshot_async(int(device_id))
+    return format_ws_data(_snapshot_to_status_data(snap))
 
 @router.get("/detail/{device_id}")
 async def get_device_detail(
@@ -147,7 +146,8 @@ async def get_device_detail(
             nd.ipv6,
             nd.mac,
             nd.device_type,
-            nd.location,
+            COALESCE(ln.name, '') AS location,
+            lnd.node_id AS location_node_id,
             nd.ssh_port,
             nd.vendor,
             nd.model,
@@ -157,6 +157,8 @@ async def get_device_detail(
             nd.created_at,
             u.username AS created_by_name
         FROM network_devices nd
+        LEFT JOIN location_node_devices lnd ON lnd.device_id = nd.id
+        LEFT JOIN location_nodes ln ON ln.id = lnd.node_id
         LEFT JOIN users u ON u.id::text = nd.created_by
         WHERE nd.id = $1
           AND COALESCE(nd.is_active, true) = true
@@ -176,15 +178,43 @@ async def get_device_detail(
     data["mac"] = str(data.get("mac") or "")
     data["ssh_port"] = int(data.get("ssh_port") or 22)
     data["location"] = str(data.get("location") or "")
+    if "location_node_id" in data and data.get("location_node_id") is not None:
+        try:
+            data["location_node_id"] = int(data.get("location_node_id"))
+        except Exception:
+            data["location_node_id"] = None
     data["vendor"] = str(data.get("vendor") or "")
     data["model"] = str(data.get("model") or "")
     data["serial_number"] = str(data.get("serial_number") or "")
     data["type"] = str(data.get("device_type") or "")
 
-    redis_client = redis_manager.get_client()
-    status_data = await redis_client.hgetall(f"device_status:{device_id}")
-    data.update(format_ws_data(status_data or {}))
+    monitor = MonitorManager()
+    snap = await monitor.get_runtime_snapshot_async(int(device_id))
+    data.update(format_ws_data(_snapshot_to_status_data(snap)))
     return data
+
+
+@router.get("/config/{device_id}")
+async def get_device_config(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    data = await device_service.get_device_config(int(device_id))
+    return {"code": 200, "data": data}
+
+
+@router.post("/config/update")
+async def update_device_config(
+    payload: DeviceConfigUpdate,
+    user: dict = Depends(PermissionChecker(["sys:device:edit"])),
+):
+    updated = await device_service.update_device_config(int(payload.device_id), payload.model_dump(exclude_unset=True))
+    monitor = MonitorManager()
+    try:
+        await monitor.refresh_device_config(int(payload.device_id))
+    except Exception:
+        pass
+    return {"code": 200, "data": updated}
 
 
 @router.get("/audit/logs/{device_id}")
@@ -212,20 +242,13 @@ async def boost_device_monitor(
     data: MonitorBoostRequest,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    redis_client = redis_manager.get_client()
-    device_id = int(data.device_id)
-    ttl = int(data.ttl_seconds or 60)
-    if ttl < 5:
-        ttl = 5
-    if ttl > 600:
-        ttl = 600
-    payload = {
-        "interval": float(data.interval if data.interval is not None else 1),
-        "monitor_interval": float(data.monitor_interval if data.monitor_interval is not None else 1),
-        "ts": float(time.time()),
-    }
-    await redis_client.set(f"device:boost:{device_id}", json.dumps(payload, ensure_ascii=False), ex=ttl)
-    await redis_client.sadd("device:boost:set", device_id)
+    monitor = MonitorManager()
+    await monitor.boost_device(
+        device_id=int(data.device_id),
+        ttl_seconds=int(data.ttl_seconds or 60),
+        interval=data.interval,
+        monitor_interval=data.monitor_interval,
+    )
     return {"code": 200}
 
 @router.post("/monitor/restore")
@@ -233,13 +256,19 @@ async def restore_device_monitor(
     data: MonitorRestoreRequest,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    redis_client = redis_manager.get_client()
-    device_id = int(data.device_id)
-    await redis_client.delete(f"device:boost:{device_id}")
-    await redis_client.srem("device:boost:set", device_id)
+    monitor = MonitorManager()
+    await monitor.restore_boost(int(data.device_id))
     return {"code": 200}
 
-# WebSocket 详情 (重构：使用 app.core.redis)
+@router.post("/monitor/sync/{device_id}")
+async def sync_device_monitor(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    monitor = MonitorManager()
+    snap = await monitor.sync_device_snapshot(int(device_id))
+    return {"code": 200, "data": snap}
+
 @router.websocket("/ws/detail/{device_id}")
 async def websocket_device_detail(websocket: WebSocket, device_id: int):
     await websocket.accept()
@@ -255,28 +284,52 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
             await websocket.close(code=4003, reason="权限不足")
             return
 
-    redis_client = redis_manager.get_client()
-    pubsub = redis_client.pubsub()
-    
-    try:
-        channel = f"device_update:{device_id}"
-        await pubsub.subscribe(channel)
-        
-        # 初始数据
-        current_data = await redis_client.hgetall(f"device_status:{device_id}")
-        if current_data:
-             response = format_ws_data(current_data)
-             await websocket.send_json(response)
+    monitor = MonitorManager()
+    q = monitor.subscribe_detail(int(device_id))
 
+    async def redis_listener():
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return
+        pubsub = redis_client.pubsub()
+        channel = f"ws:devices:detail:{int(device_id)}"
+        try:
+            await pubsub.subscribe(channel)
+            while True:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if msg and msg.get("type") == "message":
+                    raw = msg.get("data")
+                    if isinstance(raw, (bytes, bytearray)):
+                        raw = raw.decode("utf-8", errors="ignore")
+                    if isinstance(raw, str):
+                        try:
+                            payload = json.loads(raw)
+                        except Exception:
+                            payload = None
+                    else:
+                        payload = raw
+                    if isinstance(payload, dict):
+                        await websocket.send_json(format_ws_data(_snapshot_to_status_data(payload)))
+                await asyncio.sleep(0.01)
+        finally:
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+
+    redis_task = asyncio.create_task(redis_listener()) if not monitor.running else None
+
+    try:
+        snap = await monitor.sync_device_snapshot(int(device_id))
+        await websocket.send_json(format_ws_data(_snapshot_to_status_data(snap)))
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if message:
-                current_data = await redis_client.hgetall(f"device_status:{device_id}")
-                if current_data:
-                    response = format_ws_data(current_data)
-                    await websocket.send_json(response)
-            await asyncio.sleep(0.1) 
-            
+            payload = await q.get()
+            await websocket.send_json(format_ws_data(_snapshot_to_status_data(payload)))
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for device {device_id}")
     except Exception as e:
@@ -286,8 +339,9 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
         except:
             pass
     finally:
-        await pubsub.unsubscribe(channel)
-        await pubsub.close()
+        monitor.unsubscribe_detail(int(device_id), q)
+        if redis_task:
+            redis_task.cancel()
 
 @router.websocket("/ws/list")
 async def websocket_device_list(websocket: WebSocket):
@@ -308,15 +362,6 @@ async def websocket_device_list(websocket: WebSocket):
             await websocket.close(code=4003, reason="权限不足")
             return
     logger.info(f"WebSocket authenticated for user: {user.get('id')}")
-
-    try:
-        redis_client = redis_manager.get_client()
-        pubsub = redis_client.pubsub()
-        logger.info("Redis client obtained")
-    except Exception as e:
-        logger.error(f"Failed to get Redis client: {e}", exc_info=True)
-        await websocket.close()
-        return
     
     # WebSocket 发送锁
     ws_lock = asyncio.Lock()
@@ -325,48 +370,57 @@ async def websocket_device_list(websocket: WebSocket):
         async with ws_lock:
             await websocket.send_json(data)
 
-    # Redis 推送任务
+    monitor = MonitorManager()
+    q = monitor.subscribe_list()
+
+    async def monitor_listener():
+        try:
+            while True:
+                payload = await q.get()
+                await send_safe_json({"type": "update", "data": payload})
+        except WebSocketDisconnect:
+            raise
+        except Exception:
+            pass
+
+    listener_task = asyncio.create_task(monitor_listener())
+
     async def redis_listener():
         try:
-            logger.info("Starting Redis listener")
-            await pubsub.psubscribe("device_update:*")
-            logger.info("Subscribed to device_update:*")
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return
+        pubsub = redis_client.pubsub()
+        channel = "ws:devices:list"
+        try:
+            await pubsub.subscribe(channel)
             while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                
-                if message and message['type'] == 'pmessage':
-                    try:
-                        channel = message['channel']
-                        if isinstance(channel, bytes):
-                            channel = channel.decode('utf-8')
-                            
-                        device_id = int(channel.split(':')[-1])
-                        
-                        redis_key = f"device_status:{device_id}"
-                        status_data = await redis_client.hgetall(redis_key)
-                        
-                        if status_data:
-                            status = '离线'
-                            if status_data.get('status') == 'online':
-                                status = '在线'
-                            
-                            update_data = {
-                                'id': device_id,
-                                'status': status,
-                                'cpu_usage': f"{float(status_data.get('cpu_usage', 0))}%",
-                                'memory_usage': f"{float(status_data.get('memory_usage', 0))}%",
-                                'disk_usage': f"{float(status_data.get('disk_usage', 0))}%"
-                            }
-                            await send_safe_json({"type": "update", "data": update_data})
-                    except Exception as e:
-                        logger.error(f"Redis Update Error: {e}", exc_info=True)
-                
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            logger.error(f"Redis Listener Error: {e}", exc_info=True)
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if msg and msg.get("type") == "message":
+                    raw = msg.get("data")
+                    if isinstance(raw, (bytes, bytearray)):
+                        raw = raw.decode("utf-8", errors="ignore")
+                    if isinstance(raw, str):
+                        try:
+                            payload = json.loads(raw)
+                        except Exception:
+                            payload = None
+                    else:
+                        payload = raw
+                    if isinstance(payload, dict):
+                        await send_safe_json(payload)
+                await asyncio.sleep(0.01)
+        finally:
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
 
-    # 启动 Redis 监听
-    listener_task = asyncio.create_task(redis_listener())
+    redis_task = asyncio.create_task(redis_listener()) if not monitor.running else None
     
     try:
         logger.info("Entering WS main loop")
@@ -400,7 +454,9 @@ async def websocket_device_list(websocket: WebSocket):
     finally:
         logger.info("Cleaning up WS resources")
         listener_task.cancel()
-        await pubsub.close()
+        if redis_task:
+            redis_task.cancel()
+        monitor.unsubscribe_list(q)
 
 def _pick_netmiko_device_type(value) -> str:
     s = str(value or "").strip().lower()
@@ -609,18 +665,56 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         except Exception:
             pass
 
+def _parse_usage(value) -> float:
+    try:
+        s = str(value or "").strip()
+        if not s:
+            return 0.0
+        if s.endswith("%"):
+            s = s[:-1].strip()
+        return float(s)
+    except Exception:
+        return 0.0
+
+def _snapshot_to_status_data(snapshot: dict) -> dict:
+    fsm_state = str(snapshot.get("fsm_state") or "").strip()
+    return {
+        "status": fsm_state,
+        "online_status": fsm_state in {"online", "recovering", "degraded", "checking", "collecting"},
+        "fsm_state": fsm_state,
+        "fsm_reason": str(snapshot.get("fsm_reason") or ""),
+        "fsm_updated": str(snapshot.get("fsm_updated") or ""),
+        "state_phase": str(snapshot.get("state_phase") or ""),
+        "state_reason": str(snapshot.get("state_reason") or ""),
+        "state_updated": str(snapshot.get("state_updated") or ""),
+        "cpu_usage": snapshot.get("cpu_usage", 0),
+        "memory_usage": snapshot.get("memory_usage", 0),
+        "disk_usage": snapshot.get("disk_usage", 0),
+        "uptime": str(snapshot.get("uptime") or ""),
+        "last_updated": str(snapshot.get("last_updated") or ""),
+    }
+
 def format_ws_data(status_data: dict) -> dict:
+    raw_status = status_data.get('status')
     status = 'offline'
-    if status_data.get('status') == 'online':
+    if raw_status in {'online', 'recovering', 'degraded', 'checking', 'collecting'}:
         status = 'online'
     elif status_data.get('online_status'):
         status = 'online'
         
     return {
         'status': status,
-        'cpuUsage': float(status_data.get('cpu_usage', 0)),
-        'memoryUsage': float(status_data.get('memory_usage', 0)),
-        'diskUsage': float(status_data.get('disk_usage', 0)),
+        'rawStatus': raw_status or '',
+        'fsmState': status_data.get('fsm_state', ''),
+        'fsmReason': status_data.get('fsm_reason', status_data.get('offline_reason', '')),
+        'fsmUpdated': status_data.get('fsm_updated', ''),
+        'statePhase': status_data.get('state_phase', ''),
+        'stateReason': status_data.get('state_reason', ''),
+        'stateUpdated': status_data.get('state_updated', ''),
+        'phase': status_data.get('phase', ''),
+        'cpuUsage': _parse_usage(status_data.get('cpu_usage', 0)),
+        'memoryUsage': _parse_usage(status_data.get('memory_usage', 0)),
+        'diskUsage': _parse_usage(status_data.get('disk_usage', 0)),
         'uptime': status_data.get('uptime', '未知'),
         'lastConnect': status_data.get('last_updated', ''),
         'osVersion': status_data.get('os_version', status_data.get('kernel', 'Unknown')),

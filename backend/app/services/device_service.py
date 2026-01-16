@@ -6,7 +6,6 @@ import time
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 from app.core.database import db
-from app.core.redis import redis_manager
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse
 from app.workers.monitor.manager import MonitorManager
 from netmiko import ConnectHandler
@@ -19,21 +18,11 @@ from tortoise.expressions import Q
 from tortoise.functions import Count
 
 from app.models.orm.location import LocationNode, LocationNodeDevice
+from app.models.orm.device import DeviceConfigEntry
 
 from app.services.location_service import LocationService
 
 logger = logging.getLogger(__name__)
-
-def _parse_percent(value) -> float:
-    try:
-        s = str(value or "").strip()
-        if not s:
-            return 0.0
-        if s.endswith("%"):
-            s = s[:-1].strip()
-        return float(s)
-    except Exception:
-        return 0.0
 
 class DeviceService:
 
@@ -59,13 +48,6 @@ class DeviceService:
     async def get_device_list(self, type_code: int = 0, search_query: str = None, location_filter: str = None, location_node_id: int = None) -> List[dict]:
         logger.info(f"Start get_device_list (ORM): type={type_code}, search={search_query}, location={location_filter}, node_id={location_node_id}")
         normalized_search = str(search_query or "").strip()
-
-        # Redis Cache Logic
-        redis_client = None
-        try:
-            redis_client = redis_manager.get_client()
-        except Exception as e:
-            logger.error(f"Redis Connection Error: {e}", exc_info=True)
 
         # Build Query using Tortoise ORM
         query = NetworkDevice.filter(is_active=True, deleted_at__isnull=True)
@@ -169,71 +151,38 @@ class DeviceService:
             logger.error(f"ORM Fetch Error: {e}", exc_info=True)
             return []
 
-        # Redis status filling
-        data = []
-        if result:
-            redis_rows = None
-            if redis_client:
-                try:
-                    pipe = redis_client.pipeline()
-                    for row in result:
-                        device_id = row["id"]
-                        redis_key = f"device_status:{device_id}"
-                        pipe.hmget(redis_key, "cpu_usage", "memory_usage", "disk_usage", "status")
-                    redis_rows = await pipe.execute()
-                except Exception as e:
-                    logger.error(f"Redis batch get error: {e}", exc_info=True)
-                    redis_rows = None
-
-            if not redis_rows or len(redis_rows) != len(result):
-                redis_rows = [None] * len(result)
-
-            for row, rvals in zip(result, redis_rows):
-                try:
-                    cpu_usage = "0%"
-                    memory_usage = "0%"
-                    disk_usage = "0%"
-                    status = "待加载"
-
-                    if isinstance(rvals, (list, tuple)) and len(rvals) >= 4:
-                        cpu_v, mem_v, disk_v, st_v = rvals[0], rvals[1], rvals[2], rvals[3]
-                        if cpu_v is not None:
-                            cpu_usage = f"{_parse_percent(cpu_v)}%"
-                        if mem_v is not None:
-                            memory_usage = f"{_parse_percent(mem_v)}%"
-                        if disk_v is not None:
-                            disk_usage = f"{_parse_percent(disk_v)}%"
-                        if st_v == "online":
-                            status = "在线"
-                        elif st_v == "offline":
-                            status = "离线"
-
-                    if status == "待加载" and row.get("online_status"):
-                        status = "在线"
-
-                    data.append(
-                        {
-                            "id": row["id"],
-                            "device_name": row["device_name"],
-                            "user_name": str(row.get("user_name") or ""),
-                            "ipv4": row["ipv4"],
-                            "ipv6": row["ipv6"],
-                            "mac": row["mac"],
-                            "status": status,
-                            "type": row["device_type"],
-                            "location": row["location"],
-                            "ssh_port": row["ssh_port"],
-                            "cpu_usage": cpu_usage,
-                            "memory_usage": memory_usage,
-                            "disk_usage": disk_usage,
-                            "created_by": str(row.get("created_by") or ""),
-                            "created_by_name": str(row.get("created_by_name") or ""),
-                            "ops_admin_name": str(row.get("created_by_name") or ""),
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Row processing error: {e}", exc_info=True)
-                    continue
+        monitor = MonitorManager()
+        data: list[dict] = []
+        for row in result:
+            try:
+                device_id = int(row["id"])
+                snap = await monitor.get_runtime_snapshot_async(device_id)
+                data.append(
+                    {
+                        "id": device_id,
+                        "device_name": row["device_name"],
+                        "user_name": str(row.get("user_name") or ""),
+                        "ipv4": row["ipv4"],
+                        "ipv6": row["ipv6"],
+                        "mac": row["mac"],
+                        "status": str(snap.get("status") or "待加载"),
+                        "type": row["device_type"],
+                        "location": row["location"],
+                        "ssh_port": row["ssh_port"],
+                        "cpu_usage": str(snap.get("cpu_usage") or "0%"),
+                        "memory_usage": str(snap.get("memory_usage") or "0%"),
+                        "disk_usage": str(snap.get("disk_usage") or "0%"),
+                        "state_phase": str(snap.get("state_phase") or ""),
+                        "state_reason": str(snap.get("state_reason") or ""),
+                        "state_updated": str(snap.get("state_updated") or ""),
+                        "created_by": str(row.get("created_by") or ""),
+                        "created_by_name": str(row.get("created_by_name") or ""),
+                        "ops_admin_name": str(row.get("created_by_name") or ""),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Row processing error: {e}", exc_info=True)
+                continue
         
         logger.info(f"Returning {len(data)} devices")
         return data
@@ -292,6 +241,56 @@ class DeviceService:
             await monitor.load_devices()
         except Exception as e:
             logger.error(f"触发监控加载失败: {e}")
+
+    async def get_device_config(self, device_id: int) -> dict:
+        did = int(device_id)
+        entry = await DeviceConfigEntry.get_or_none(device_id=did)
+        if not entry:
+            return {"device_id": did}
+        return {
+            "device_id": did,
+            "interval": entry.interval,
+            "monitor_interval": entry.monitor_interval,
+            "offline_fail_threshold": entry.offline_fail_threshold,
+            "recovery_success_threshold": entry.recovery_success_threshold,
+            "connect_timeout": entry.connect_timeout,
+            "auth_timeout": entry.auth_timeout,
+            "banner_timeout": entry.banner_timeout,
+            "global_delay_factor": entry.global_delay_factor,
+            "connect_max_retries": entry.connect_max_retries,
+            "connect_retry_delay_seconds": entry.connect_retry_delay_seconds,
+            "offline_retry_delay_seconds": entry.offline_retry_delay_seconds,
+            "created_at": entry.created_at,
+            "updated_at": entry.updated_at,
+        }
+
+    async def update_device_config(self, device_id: int, patch: dict) -> dict:
+        did = int(device_id)
+        clean: dict = {}
+        allowed = {
+            "interval",
+            "monitor_interval",
+            "offline_fail_threshold",
+            "recovery_success_threshold",
+            "connect_timeout",
+            "auth_timeout",
+            "banner_timeout",
+            "global_delay_factor",
+            "connect_max_retries",
+            "connect_retry_delay_seconds",
+            "offline_retry_delay_seconds",
+        }
+        for k in allowed:
+            if k in patch:
+                clean[k] = patch.get(k)
+        entry = await DeviceConfigEntry.get_or_none(device_id=did)
+        if not entry:
+            entry = await DeviceConfigEntry.create(device_id=did, **clean)
+        else:
+            for k, v in clean.items():
+                setattr(entry, k, v)
+            await entry.save()
+        return await self.get_device_config(did)
 
     async def delete_device(self, device_id: Optional[int] = None, ip: Optional[str] = None, deleted_by: Optional[str] = None):
         device = None

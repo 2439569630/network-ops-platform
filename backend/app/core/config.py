@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     
     # Monitor
     # 监控轮询间隔（秒）
-    MONITOR_INTERVAL: int = 1
+    MONITOR_INTERVAL: int = 60
     # 在线状态检查间隔（秒）
-    ONLINE_CHECK_INTERVAL: int = 1
+    ONLINE_CHECK_INTERVAL: int = 10
     
     @property
     def DATABASE_URL(self) -> str:

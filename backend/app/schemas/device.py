@@ -47,3 +47,18 @@ class DeviceTest(BaseModel):
 class DeviceDelete(BaseModel):
     id: Optional[int] = None
     ip: Optional[str] = None
+
+
+class DeviceConfigUpdate(BaseModel):
+    device_id: int
+    interval: Optional[float] = None
+    monitor_interval: Optional[float] = None
+    offline_fail_threshold: Optional[int] = None
+    recovery_success_threshold: Optional[int] = None
+    connect_timeout: Optional[float] = None
+    auth_timeout: Optional[float] = None
+    banner_timeout: Optional[float] = None
+    global_delay_factor: Optional[float] = None
+    connect_max_retries: Optional[int] = None
+    connect_retry_delay_seconds: Optional[float] = None
+    offline_retry_delay_seconds: Optional[float] = None

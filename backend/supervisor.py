@@ -76,11 +76,21 @@ def main() -> int:
     fastapi_host = os.getenv("FASTAPI_HOST", "0.0.0.0")
     fastapi_port = os.getenv("FASTAPI_PORT", "8000")
     fastapi_reload = str(os.getenv("FASTAPI_RELOAD", "")).strip() in {"1", "true", "TRUE", "yes", "YES"}
+    fastapi_workers = os.getenv("FASTAPI_WORKERS", "").strip()
     try:
         fastapi_port_int = int(str(fastapi_port))
     except Exception:
         logger.error(f"Invalid FASTAPI_PORT: {fastapi_port}")
         return 1
+    try:
+        fastapi_workers_int = int(fastapi_workers) if fastapi_workers else 1
+        if fastapi_workers_int <= 0:
+            fastapi_workers_int = 1
+    except Exception:
+        fastapi_workers_int = 1
+    if fastapi_reload and fastapi_workers_int > 1:
+        logger.warning("FASTAPI_RELOAD is enabled; forcing FASTAPI_WORKERS=1")
+        fastapi_workers_int = 1
 
     if not _check_port_available(fastapi_host, fastapi_port_int):
         logger.error(f"FastAPI port is already in use: {fastapi_host}:{fastapi_port_int}")
@@ -99,6 +109,8 @@ def main() -> int:
     ]
     if fastapi_reload:
         fastapi_cmd.append("--reload")
+    if fastapi_workers_int > 1:
+        fastapi_cmd.extend(["--workers", str(fastapi_workers_int)])
 
     monitor_cmd = [python_exe, os.path.join(project_root, "processes", "monitor_daemon.py")]
 

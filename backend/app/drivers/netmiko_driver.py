@@ -12,10 +12,6 @@ class HuaweiDevice(BaseDevice):
         # Netmiko 的 device_type
         # 华为 VRP 通常使用 'huawei'
         self.device_type = 'huawei'
-        # 华为设备全量采集间隔 60 秒
-        self.interval = 60
-        # 在线监测间隔 5 秒 (加快检测速度)
-        self.monitor_interval = 5
 
     async def collect_once(self) -> Dict[str, Any]:
         """执行一次性采集"""

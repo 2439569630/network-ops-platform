@@ -189,11 +189,20 @@ def _normalize_permissions(value) -> list[str]:
     return []
 
 async def _get_or_init_user_perm_version(user_id: int) -> int:
-    redis_client = redis_manager.get_client()
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return 1
     key = f"authz:ver:user:{int(user_id)}"
-    raw = await redis_client.get(key)
+    try:
+        raw = await redis_client.get(key)
+    except Exception:
+        return 1
     if raw is None:
-        await redis_client.set(key, "1")
+        try:
+            await redis_client.set(key, "1")
+        except Exception:
+            return 1
         return 1
     try:
         v = int(raw)
@@ -201,15 +210,27 @@ async def _get_or_init_user_perm_version(user_id: int) -> int:
             return v
     except Exception:
         pass
-    await redis_client.set(key, "1")
+    try:
+        await redis_client.set(key, "1")
+    except Exception:
+        return 1
     return 1
 
 async def get_or_init_user_auth_version(user_id: int) -> int:
-    redis_client = redis_manager.get_client()
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return 1
     key = f"{USER_AUTH_VERSION_REDIS_KEY_PREFIX}{int(user_id)}"
-    raw = await redis_client.get(key)
+    try:
+        raw = await redis_client.get(key)
+    except Exception:
+        return 1
     if raw is None:
-        await redis_client.set(key, "1")
+        try:
+            await redis_client.set(key, "1")
+        except Exception:
+            return 1
         return 1
     try:
         v = int(raw)
@@ -217,11 +238,17 @@ async def get_or_init_user_auth_version(user_id: int) -> int:
             return v
     except Exception:
         pass
-    await redis_client.set(key, "1")
+    try:
+        await redis_client.set(key, "1")
+    except Exception:
+        return 1
     return 1
 
 async def bump_user_auth_version(user_id: int) -> int:
-    redis_client = redis_manager.get_client()
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return 1
     key = f"{USER_AUTH_VERSION_REDIS_KEY_PREFIX}{int(user_id)}"
     try:
         v = await redis_client.incr(key)
@@ -233,7 +260,10 @@ async def bump_user_auth_version(user_id: int) -> int:
     return 1
 
 async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optional[str] = None, user_agent: Optional[str] = None, device: Optional[str] = None) -> None:
-    redis_client = redis_manager.get_client()
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return
     key = f"{USER_AUTH_SESSION_REDIS_KEY_PREFIX}{int(user_id)}"
     payload = {
         "auth_ver": int(auth_ver),
@@ -248,7 +278,10 @@ async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optiona
         pass
 
 async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
-    redis_client = redis_manager.get_client()
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return None
     key = f"{USER_AUTH_SESSION_REDIS_KEY_PREFIX}{int(user_id)}"
     try:
         raw = await redis_client.get(key)
@@ -276,17 +309,26 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
     except Exception:
         ver = await _get_or_init_user_perm_version(uid)
 
-    redis_client = redis_manager.get_client()
+    redis_client = None
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        redis_client = None
+
     cache_key = f"authz:perms:user:{uid}:v{int(ver)}"
-    cached = await redis_client.get(cache_key)
-    if cached:
+    if redis_client is not None:
         try:
-            parsed = json.loads(cached)
-            if isinstance(parsed, list):
-                perms = [str(x) for x in parsed if x is not None]
-                return await apply_disabled_permissions(perms)
+            cached = await redis_client.get(cache_key)
         except Exception:
             cached = None
+        if cached:
+            try:
+                parsed = json.loads(cached)
+                if isinstance(parsed, list):
+                    perms = [str(x) for x in parsed if x is not None]
+                    return await apply_disabled_permissions(perms)
+            except Exception:
+                cached = None
 
     user_row = await db.fetch_one("SELECT permissions FROM users WHERE id = $1", uid)
     direct_perms = _normalize_permissions(user_row.get("permissions") if user_row else None)
@@ -294,10 +336,11 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
     merged = sorted(list({str(p) for p in (direct_perms + role_perms) if str(p).strip()}))
     merged = RbacService.expand_permission_codes(merged)
 
-    try:
-        await redis_client.set(cache_key, json.dumps(merged), ex=3600)
-    except Exception:
-        pass
+    if redis_client is not None:
+        try:
+            await redis_client.set(cache_key, json.dumps(merged), ex=3600)
+        except Exception:
+            pass
     return await apply_disabled_permissions(merged)
 
 async def user_has_permission(user: dict, perm: str) -> bool:

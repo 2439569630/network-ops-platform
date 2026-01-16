@@ -49,6 +49,7 @@ async def _run() -> int:
                 "app.models.orm.config"
             ]},
         )
+        await Tortoise.generate_schemas()
         logger.info("Tortoise ORM initialized")
     except Exception as e:
         logger.error(f"Tortoise ORM init failed: {e}")

@@ -1,7 +1,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from app.core.database import db
 from app.core.redis import redis_manager
@@ -175,7 +175,8 @@ class NotificationService:
             title=t,
             content=c,
             is_global=global_flag,
-            target_user_id=tg
+            target_user_id=tg,
+            created_at=datetime.now(timezone.utc),
         )
         
         # Result dict
@@ -207,11 +208,10 @@ class NotificationService:
         # Check if already read
         exists = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).exists()
         if not exists:
-            await SiteMessageRead.create(user_id=user_id, message_id=message_id)
+            await SiteMessageRead.create(user_id=user_id, message_id=message_id, read_at=datetime.now(timezone.utc))
         else:
             # Update read_at?
-            import datetime
-            await SiteMessageRead.filter(user_id=user_id, message_id=message_id).update(read_at=datetime.datetime.now())
+            await SiteMessageRead.filter(user_id=user_id, message_id=message_id).update(read_at=datetime.now(timezone.utc))
 
         try:
             await NotificationService.publish_site_message_read_state_changed(
@@ -322,7 +322,7 @@ class NotificationService:
         extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
-            "time": time_iso or datetime.now().isoformat(),
+            "time": time_iso or datetime.now(timezone.utc).isoformat(),
             "level": level,
             "source": source,
             "type": type,
@@ -343,7 +343,8 @@ class NotificationService:
                 await DeviceNotification.create(
                     device_id=device_id,
                     level=level,
-                    message=description
+                    message=description,
+                    created_at=datetime.now(timezone.utc),
                 )
             except Exception as e:
                 logger.error(f"写入通知历史失败: {e}")

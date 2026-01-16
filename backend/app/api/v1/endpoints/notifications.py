@@ -27,6 +27,16 @@ async def list_site_messages(
     except Exception as e:
         return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
 
+@router.get("/site-messages/unread-count", response_model=dict)
+async def get_site_message_unread_count(
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    try:
+        cnt = await NotificationService.get_site_message_unread_count(user_id=int(user.get("id")))
+        return {"code": 200, "data": {"count": int(cnt)}}
+    except Exception as e:
+        return {"code": 500, "message": f"获取未读数失败: {str(e)}"}
+
 @router.get("/site-messages/{message_id}", response_model=dict)
 async def get_site_message_detail(
     message_id: int,
@@ -92,16 +102,6 @@ async def mark_site_message_unread(
         return {"code": 200, "message": "未读"}
     except Exception as e:
         return {"code": 500, "message": f"操作失败: {str(e)}"}
-
-@router.get("/site-messages/unread-count", response_model=dict)
-async def get_site_message_unread_count(
-    user: dict = Depends(PermissionChecker("sys:message:access")),
-):
-    try:
-        cnt = await NotificationService.get_site_message_unread_count(user_id=int(user.get("id")))
-        return {"code": 200, "data": {"count": int(cnt)}}
-    except Exception as e:
-        return {"code": 500, "message": f"获取未读数失败: {str(e)}"}
 
 @router.get("/history", response_model=dict)
 async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history"))):

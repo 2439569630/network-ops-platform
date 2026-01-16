@@ -14,14 +14,10 @@ class NetworkDevice(models.Model):
     online_status = fields.BooleanField(default=False)
     is_active = fields.BooleanField(default=True)
     
-    # New fields to match DB
     vendor = fields.CharField(max_length=255, null=True)
     model = fields.CharField(max_length=255, null=True)
     serial_number = fields.CharField(max_length=255, null=True)
-    description = fields.TextField(null=True)
-    telnet_port = fields.IntField(null=True)
     last_seen = fields.DatetimeField(null=True)
-    last_backup = fields.DatetimeField(null=True)
     
     created_by = fields.CharField(max_length=50, null=True)
     updated_by = fields.CharField(max_length=50, null=True)
@@ -31,3 +27,28 @@ class NetworkDevice(models.Model):
 
     class Meta:
         table = "network_devices"
+
+
+class DeviceConfigEntry(models.Model):
+    device_id = fields.IntField(pk=True)
+
+    interval = fields.FloatField(null=True)
+    monitor_interval = fields.FloatField(null=True)
+
+    offline_fail_threshold = fields.IntField(null=True)
+    recovery_success_threshold = fields.IntField(null=True)
+
+    connect_timeout = fields.FloatField(null=True)
+    auth_timeout = fields.FloatField(null=True)
+    banner_timeout = fields.FloatField(null=True)
+    global_delay_factor = fields.FloatField(null=True)
+
+    connect_max_retries = fields.IntField(null=True)
+    connect_retry_delay_seconds = fields.FloatField(null=True)
+    offline_retry_delay_seconds = fields.FloatField(null=True)
+
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "device_configs"

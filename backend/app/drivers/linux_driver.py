@@ -10,10 +10,6 @@ class LinuxServer(BaseDevice):
     def __init__(self, device_info: Dict):
         super().__init__(device_info)
         self.device_type = 'linux'
-        # Linux 服务器全量采集间隔 60 秒
-        self.interval = 60
-        # 在线监测间隔 5 秒 (加快检测速度)
-        self.monitor_interval = 5
 
     async def collect_once(self) -> Dict[str, Any]:
         """执行一次性采集"""

@@ -3,7 +3,8 @@ import logging
 import time
 import threading
 from netmiko import ConnectHandler
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Callable
+from app.drivers.models.status import DeviceStatus, DeviceConfig
 
 # 使用新的 logger 名称
 logger = logging.getLogger("app.drivers.base")    
@@ -12,15 +13,16 @@ class BaseDevice:
     def __init__(self, device_info: Dict):
         self.device_id = device_info['id']
         self.ip = str(device_info['ipv4'])
-        self.username = device_info.get('user_name', 'root')
-        self.password = device_info.get('password', 'password')
-        self.port = device_info.get('port', 22)
+        self.config = DeviceConfig.from_device_info(device_info)
+        self.username = self.config.username
+        self.password = self.config.password
+        self.port = self.config.port
         # 默认设备类型，子类可以覆盖
         self.device_type = 'linux' 
         # 默认采集间隔 (秒)，子类可以覆盖
-        self.interval = 60
+        self.interval = float(self.config.interval or 60)
         # 在线监测间隔 (秒)，用于快速检测设备状态
-        self.monitor_interval = 10
+        self.monitor_interval = float(self.config.monitor_interval or 10)
         
         self.connection = None
         self.connected = False
@@ -32,17 +34,18 @@ class BaseDevice:
         self.static_info = {}
         # 上次采集时间
         self.last_collect_time = 0
-        self.fsm_state = "init"
-        self.fsm_reason = ""
-        self._success_streak = 0
-        self._failure_streak = 0
-        self.fsm_state = "init"
-        self.fsm_reason = ""
-        self.fsm_updated = time.time()
-        self.offline_fail_threshold = 3
-        self.recovery_success_threshold = 2
-        self.consecutive_failures = 0
-        self.consecutive_successes = 0
+        self.status = DeviceStatus()
+        self.offline_fail_threshold = int(self.config.offline_fail_threshold)
+        self.recovery_success_threshold = int(self.config.recovery_success_threshold)
+
+        self.last_metrics = {
+            "cpu_usage": 0.0,
+            "memory_usage": 0.0,
+            "disk_usage": 0.0,
+            "uptime": "",
+        }
+        self.last_metrics_updated = 0.0
+        self.last_heartbeat = 0.0
 
     @staticmethod
     def _compact_exception_message(e: Exception) -> str:
@@ -54,36 +57,117 @@ class BaseDevice:
         first = s.split("\n", 1)[0].strip()
         return first
 
-    def _set_fsm_state(self, new_state: str, reason: Optional[str] = None) -> bool:
-        reason_str = str(reason) if reason else ""
-        if new_state == self.fsm_state and reason_str == self.fsm_reason:
-            return False
-        self.fsm_state = str(new_state)
-        self.fsm_reason = reason_str
-        self.fsm_updated = time.time()
-        return True
+    @property
+    def fsm_state(self) -> str:
+        return str(self.status.fsm_state or "")
+
+    @fsm_state.setter
+    def fsm_state(self, value: str) -> None:
+        self.status.set_fsm(str(value or "").strip() or "init", self.status.fsm_reason)
+
+    @property
+    def fsm_reason(self) -> str:
+        return str(self.status.fsm_reason or "")
+
+    @fsm_reason.setter
+    def fsm_reason(self, value: str) -> None:
+        self.status.set_fsm(self.status.fsm_state, str(value or ""))
+
+    @property
+    def fsm_updated(self) -> float:
+        return float(self.status.fsm_updated or 0.0)
+
+    @fsm_updated.setter
+    def fsm_updated(self, value: float) -> None:
+        self.status.fsm_updated = float(value or 0.0)
+
+    @property
+    def offline_fail_threshold(self) -> int:
+        return int(self.status.offline_fail_threshold)
+
+    @offline_fail_threshold.setter
+    def offline_fail_threshold(self, value: int) -> None:
+        self.status.offline_fail_threshold = int(value or 0)
+
+    @property
+    def recovery_success_threshold(self) -> int:
+        return int(self.status.recovery_success_threshold)
+
+    @recovery_success_threshold.setter
+    def recovery_success_threshold(self, value: int) -> None:
+        self.status.recovery_success_threshold = int(value or 0)
+
+    @property
+    def consecutive_failures(self) -> int:
+        return int(self.status.consecutive_failures)
+
+    @consecutive_failures.setter
+    def consecutive_failures(self, value: int) -> None:
+        self.status.consecutive_failures = int(value or 0)
+
+    @property
+    def consecutive_successes(self) -> int:
+        return int(self.status.consecutive_successes)
+
+    @consecutive_successes.setter
+    def consecutive_successes(self, value: int) -> None:
+        self.status.consecutive_successes = int(value or 0)
+
+    @property
+    def state_phase(self) -> str:
+        return str(self.status.phase or "")
+
+    @state_phase.setter
+    def state_phase(self, value: str) -> None:
+        self.status.set_phase(str(value or "").strip() or "unknown", self.status.phase_reason)
+
+    @property
+    def state_reason(self) -> str:
+        return str(self.status.phase_reason or "")
+
+    @state_reason.setter
+    def state_reason(self, value: str) -> None:
+        self.status.set_phase(self.status.phase, str(value or ""))
+
+    @property
+    def state_updated(self) -> float:
+        return float(self.status.phase_updated or 0.0)
+
+    @state_updated.setter
+    def state_updated(self, value: float) -> None:
+        self.status.phase_updated = float(value or 0.0)
+
+    def set_state_phase(self, phase: str, reason: Optional[str] = None) -> bool:
+        return self.status.set_phase(phase, reason)
 
     def record_success(self) -> bool:
-        self.consecutive_successes += 1
-        self.consecutive_failures = 0
-
-        if self.fsm_state == "offline" and self.consecutive_successes < int(self.recovery_success_threshold):
-            return self._set_fsm_state("recovering", "")
-        return self._set_fsm_state("online", "")
+        return bool(self.status.record_success())
 
     def record_failure(self, reason: Optional[str] = None) -> tuple[bool, bool]:
-        self.consecutive_failures += 1
-        self.consecutive_successes = 0
+        return self.status.record_failure(reason)
 
-        should_offline = self.consecutive_failures >= int(self.offline_fail_threshold)
-        if should_offline:
-            changed = self._set_fsm_state("offline", reason)
-        else:
-            changed = self._set_fsm_state("degraded", reason)
-        return changed, should_offline
+    def apply_config(self, config: DeviceConfig) -> None:
+        self.config = config
+        self.username = self.config.username
+        self.password = self.config.password
+        self.port = self.config.port
+        self.interval = float(self.config.interval or self.interval or 60)
+        self.monitor_interval = float(self.config.monitor_interval or self.monitor_interval or 10)
+        self.offline_fail_threshold = int(self.config.offline_fail_threshold)
+        self.recovery_success_threshold = int(self.config.recovery_success_threshold)
 
-    async def connect(self) -> bool:
+    async def connect(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
         """建立 SSH 连接"""
+        async def _emit_progress(phase: str, reason: str) -> None:
+            if not progress_cb:
+                return
+            try:
+                ret = progress_cb(phase, reason)
+                if asyncio.iscoroutine(ret):
+                    await ret
+            except Exception:
+                return
+
         if self._shutdown:
             self.connected = False
             return False
@@ -97,21 +181,47 @@ class BaseDevice:
             self._connect_abort.clear()
             try:
                 loop = asyncio.get_event_loop()
-                conn = await loop.run_in_executor(None, self._connect_sync)
-                if not conn:
-                    self.connected = False
-                    return False
-                if self._shutdown:
+                max_retries = int(getattr(self.config, "connect_max_retries", 3) or 3)
+                if max_retries <= 0:
+                    max_retries = 1
+                retry_delay = float(getattr(self.config, "connect_retry_delay_seconds", 2.0) or 2.0)
+                if retry_delay < 0:
+                    retry_delay = 0
+                for attempt in range(max_retries):
+                    if self._shutdown or self._connect_abort.is_set():
+                        self.connected = False
+                        return False
                     try:
-                        conn.disconnect()
-                    except Exception:
-                        pass
-                    self.connected = False
-                    return False
-                self.connection = conn
-                self.connected = True
-                logger.info(f"已连接到设备 {self.ip}")
-                return True
+                        conn = await loop.run_in_executor(None, self._connect_once_sync)
+                        if not conn:
+                            self.connected = False
+                            return False
+                        if self._shutdown or self._connect_abort.is_set():
+                            try:
+                                conn.disconnect()
+                            except Exception:
+                                pass
+                            self.connected = False
+                            return False
+                        self.connection = conn
+                        self.connected = True
+                        logger.info(f"已连接到设备 {self.ip}")
+                        return True
+                    except Exception as e:
+                        msg = self._compact_exception_message(e)
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试..."
+                            )
+                            await _emit_progress("loading", f"连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...")
+                            steps = int(retry_delay / 0.1) if retry_delay else 0
+                            for _ in range(max(1, steps) if retry_delay else 1):
+                                if self._shutdown or self._connect_abort.is_set():
+                                    self.connected = False
+                                    return False
+                                await asyncio.sleep(0.1)
+                            continue
+                        raise
             except asyncio.CancelledError:
                 self._connect_abort.set()
                 raise
@@ -119,6 +229,7 @@ class BaseDevice:
                 # 简化错误日志，只保留关键信息
                 error_msg = str(e).split('\n')[0] # 只取第一行错误信息
                 logger.error(f"连接设备 {self.ip} 失败: {error_msg}")
+                await _emit_progress("failure", f"连接失败: {error_msg}")
                 self.connected = False
                 return False
                 
@@ -126,7 +237,7 @@ class BaseDevice:
         self._shutdown = True
         self._connect_abort.set()
 
-    def _connect_sync(self):
+    def _connect_once_sync(self):
         if self._shutdown or self._connect_abort.is_set():
             return None
         # 增加 keepalive 配置
@@ -136,40 +247,23 @@ class BaseDevice:
             'username': self.username,
             'password': self.password,
             'port': self.port,
-            'timeout': 30, # 增加基础超时
-            'auth_timeout': 30, # 增加认证超时
-            'global_delay_factor': 2, # 增加全局延时因子，应对慢速设备
+            'timeout': float(getattr(self.config, "connect_timeout", 30.0) or 30.0),
+            'auth_timeout': float(getattr(self.config, "auth_timeout", 30.0) or 30.0),
+            'global_delay_factor': float(getattr(self.config, "global_delay_factor", 2.0) or 2.0),
             # Netmiko keepalive settings (应用层 Keepalive，我们禁用它，改用 Transport 层)
             # 'keepalive': 10, 
             # 增加 banner_timeout 以解决 SSH banner 读取超时问题
-            'banner_timeout': 100, 
+            'banner_timeout': float(getattr(self.config, "banner_timeout", 100.0) or 100.0),
         }
         
-        # 尝试连接，带简单的重试机制
-        max_retries = 3
-        for attempt in range(max_retries):
-            if self._shutdown or self._connect_abort.is_set():
-                return None
+        conn = ConnectHandler(**device_params)
+        if self._shutdown or self._connect_abort.is_set():
             try:
-                conn = ConnectHandler(**device_params)
-                if self._shutdown or self._connect_abort.is_set():
-                    try:
-                        conn.disconnect()
-                    except Exception:
-                        pass
-                    return None
-                return conn
-            except Exception as e:
-                if self._shutdown or self._connect_abort.is_set():
-                    return None
-                if attempt == max_retries - 1:
-                    raise e
-                logger.warning(
-                    f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {self._compact_exception_message(e)}，正在重试..."
-                )
-                if self._connect_abort.wait(2):
-                    return None
-        return None
+                conn.disconnect()
+            except Exception:
+                pass
+            return None
+        return conn
         
         # 配置 Paramiko Transport 层 Keepalive
         # 注意：在某些设备（如 eNSP 模拟器）上，Transport Keepalive 可能会导致连接不稳定（误判断开）
@@ -195,10 +289,10 @@ class BaseDevice:
         self.connected = False
         return False
 
-    async def check_online(self) -> bool:
+    async def check_online(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
         """快速检测在线状态（不采集数据）"""
         if not self.connected:
-            return await self.connect()
+            return await self.connect(progress_cb=progress_cb)
         
         # 简单的 write_channel 操作非常快，通常不需要 run_in_executor，
         # 但为了保险起见，避免任何潜在的阻塞，保持异步调用
@@ -266,25 +360,3 @@ class BaseDevice:
     async def collect_once(self) -> Dict[str, Any]:
         """连接后执行一次的采集任务（需子类实现）"""
         return {}
-
-    def record_success(self) -> bool:
-        prev_state = self.fsm_state
-        self._failure_streak = 0
-        self._success_streak += 1
-        self.fsm_reason = ""
-        if prev_state != "online":
-            self.fsm_state = "online"
-        return self.fsm_state != prev_state
-
-    def record_failure(self, reason: str) -> tuple[bool, bool]:
-        prev_state = self.fsm_state
-        prev_reason = self.fsm_reason
-        self._success_streak = 0
-        self._failure_streak += 1
-        self.fsm_reason = str(reason or "")
-        should_offline = False
-        if self._failure_streak >= 2 and prev_state != "offline":
-            self.fsm_state = "offline"
-            should_offline = True
-        changed = (self.fsm_state != prev_state) or (self.fsm_reason != prev_reason)
-        return changed, should_offline

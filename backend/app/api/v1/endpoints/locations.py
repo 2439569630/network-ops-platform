@@ -116,7 +116,10 @@ async def search_bind_users(
 
         where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
-        total = await db.fetch_val(f"SELECT COUNT(1) FROM users {where_sql}", *params)
+        if role_id and not q_norm:
+            total = await db.fetch_val("SELECT COUNT(1) FROM user_roles ur WHERE ur.role_id = $1", int(role_id))
+        else:
+            total = await db.fetch_val(f"SELECT COUNT(1) FROM users {where_sql}", *params)
         rows = await db.fetch_all(
             f"""
             SELECT id, username, nickname, email
