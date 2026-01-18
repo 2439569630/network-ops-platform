@@ -14,14 +14,13 @@ export const homeDataStore = defineStore('homeData', () => {
   const profileSaving = ref(false);
   const emailSaving = ref(false);
   const pwdLoading = ref(false);
+  const securityLoading = ref(false);
+  const isEmailNotify = ref(false);
 
   const now = ref(new Date());
   let clockTimer = null;
   let emailCooldownTimer = null;
   let pollingTimer = null;
-  let alertsEventSource = null;
-  let alertsSseReconnectTimer = null;
-  let alertsSseReconnectAttempt = 0;
 
   const form = reactive({
     id: null,
@@ -41,8 +40,6 @@ export const homeDataStore = defineStore('homeData', () => {
 
   const recentOrders = ref([]);
   const notificationHistory = ref([]);
-  const alertLastSeq = ref(0);
-  const alertLastReceived = ref(null);
   const alertsWsStatus = ref('disconnected');
 
   const profileForm = reactive({
@@ -406,103 +403,10 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const stopAlertsRealtime = () => {
-    if (alertsSseReconnectTimer) {
-      clearTimeout(alertsSseReconnectTimer);
-      alertsSseReconnectTimer = null;
-    }
-    if (alertsEventSource) {
-      try {
-        alertsEventSource.__manualClose = true;
-        alertsEventSource.close();
-      } catch {}
-      alertsEventSource = null;
-    }
     alertsWsStatus.value = 'disconnected';
   };
 
   const startAlertsRealtime = async () => {
-    if (alertsEventSource || alertsSseReconnectTimer) return;
-    const token = Cookies.get('token');
-    if (!token) return;
-
-    const hasPerm = isSuper.value || (Array.isArray(permissions.value) ? permissions.value : []).includes('sys:alert:subscribe');
-    if (!hasPerm) {
-      alertsWsStatus.value = 'forbidden';
-      return;
-    }
-
-    const url = '/api/v1/notifications/sse/device-notifications';
-
-    const scheduleReconnect = () => {
-      if (alertsSseReconnectTimer) return;
-      if (!Cookies.get('token')) return;
-      if (alertsWsStatus.value === 'forbidden') return;
-
-      alertsSseReconnectAttempt += 1;
-      const delay = Math.min(30000, 1000 + alertsSseReconnectAttempt * 2000);
-      alertsSseReconnectTimer = setTimeout(async () => {
-        alertsSseReconnectTimer = null;
-        if (alertsEventSource) {
-          try {
-            alertsEventSource.__manualClose = true;
-            alertsEventSource.close();
-          } catch {}
-          alertsEventSource = null;
-        }
-        try {
-          const res = await axios.post('/api/v1/auth/refresh');
-          const nextToken = res?.data?.token;
-          if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' });
-        } catch {}
-        await startAlertsRealtime();
-      }, delay);
-    };
-
-    try {
-      alertsWsStatus.value = 'connecting';
-      if (typeof EventSource === 'undefined') {
-        alertsWsStatus.value = 'disconnected';
-        return;
-      }
-      try {
-        alertsEventSource = new EventSource(url, { withCredentials: true });
-      } catch {
-        alertsEventSource = new EventSource(url);
-      }
-
-      alertsEventSource.__manualClose = false;
-
-      alertsEventSource.onopen = () => {
-        alertsSseReconnectAttempt = 0;
-        alertsWsStatus.value = 'connected';
-      };
-
-      alertsEventSource.addEventListener('notification', (evt) => {
-        try {
-          const data = JSON.parse(String(evt?.data || '{}'));
-          if (!data || typeof data !== 'object') return;
-          alertLastReceived.value = data;
-          alertLastSeq.value += 1;
-        } catch {}
-      });
-
-      alertsEventSource.addEventListener('init', () => {});
-
-      alertsEventSource.onerror = () => {
-        const manual = Boolean(alertsEventSource?.__manualClose);
-        if (manual) return;
-        alertsWsStatus.value = 'disconnected';
-        try {
-          alertsEventSource?.close();
-        } catch {}
-        alertsEventSource = null;
-        scheduleReconnect();
-      };
-    } catch {
-      alertsWsStatus.value = 'disconnected';
-      alertsEventSource = null;
-      scheduleReconnect();
-    }
   };
 
   const refreshAll = async (options = {}) => {
@@ -607,6 +511,42 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
+  const fetchSecuritySettings = async () => {
+    securityLoading.value = true;
+    try {
+      const res = await axios.get('/api/v1/auth/users/me/security');
+      if (res.data.code === 200) {
+        isEmailNotify.value = !!res.data.data.is_email_notify;
+      }
+    } catch (e) {
+      console.error('Failed to fetch security settings:', e);
+    } finally {
+      securityLoading.value = false;
+    }
+  };
+
+  const updateSecuritySettings = async (enabled) => {
+    securityLoading.value = true;
+    try {
+      const res = await axios.put('/api/v1/auth/users/me/security', { is_email_notify: enabled });
+      if (res.data.code === 200) {
+        isEmailNotify.value = enabled;
+        ElMessage.success('设置已更新');
+        return true;
+      }
+      ElMessage.error(res.data.message || '更新失败');
+      // Revert change if failed
+      await fetchSecuritySettings();
+      return false;
+    } catch (e) {
+      ElMessage.error('更新失败');
+      await fetchSecuritySettings();
+      return false;
+    } finally {
+      securityLoading.value = false;
+    }
+  };
+
   return {
     profileLoading,
     summaryLoading,
@@ -615,13 +555,13 @@ export const homeDataStore = defineStore('homeData', () => {
     profileSaving,
     emailSaving,
     pwdLoading,
+    securityLoading,
+    isEmailNotify,
     now,
     form,
     summary,
     recentOrders,
     notificationHistory,
-    alertLastSeq,
-    alertLastReceived,
     alertsWsStatus,
     profileForm,
     emailForm,
@@ -662,6 +602,8 @@ export const homeDataStore = defineStore('homeData', () => {
     saveProfile,
     unlockEmailVerify,
     requestEmailVerify,
-    changePassword
+    changePassword,
+    fetchSecuritySettings,
+    updateSecuritySettings
   };
 });

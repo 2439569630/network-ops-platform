@@ -6,6 +6,24 @@
       </div>
     </template>
 
+    <div class="section-title">登录通知</div>
+    <div class="section-content">
+      <div class="notify-item">
+        <div class="notify-text">
+          <div class="notify-label">登录邮件提醒</div>
+          <div class="notify-desc">开启后，每次登录系统都会向绑定邮箱发送提醒邮件</div>
+        </div>
+        <el-switch
+          v-model="store.isEmailNotify"
+          :loading="store.securityLoading"
+          @change="handleNotifyChange"
+        />
+      </div>
+    </div>
+
+    <el-divider />
+
+    <div class="section-title">修改密码</div>
     <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="90px" class="form">
       <el-form-item label="旧密码" prop="oldPassword">
         <el-input v-model="pwdForm.oldPassword" type="password" show-password />
@@ -28,12 +46,20 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { homeDataStore } from './data';
 
 const router = useRouter();
 const store = homeDataStore();
+
+onMounted(() => {
+  store.fetchSecuritySettings();
+});
+
+const handleNotifyChange = (val) => {
+  store.updateSecuritySettings(val);
+};
 
 const pwdFormRef = ref(null);
 const pwdStrength = ref(0);
@@ -107,8 +133,38 @@ const handleChangePassword = async () => {
   color: #111827;
 }
 
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 16px;
+}
+
+.section-content {
+  padding: 0 12px;
+}
+
+.notify-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notify-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.notify-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
 .form {
   max-width: 720px;
+  margin-top: 24px;
 }
 
 .pwd-meter {

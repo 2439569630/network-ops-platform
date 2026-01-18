@@ -34,6 +34,7 @@
       <el-menu-item index="profile">资料设置</el-menu-item>
       <el-menu-item index="email">邮箱设置</el-menu-item>
       <el-menu-item index="security">安全设置</el-menu-item>
+      <el-menu-item index="login-logs">登录记录</el-menu-item>
     </el-menu>
   </el-card>
 </template>

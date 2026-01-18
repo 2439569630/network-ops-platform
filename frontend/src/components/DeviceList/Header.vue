@@ -45,13 +45,7 @@
                 >
                     回收站
                 </el-button>
-                <el-button 
-                    type="success" 
-                    :icon="Upload"
-                    class="action-btn"
-                >
-                    导出设备
-                </el-button>
+                
             </div>
         </div>
 

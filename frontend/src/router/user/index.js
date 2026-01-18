@@ -67,6 +67,12 @@ const homeRoutes = [
                 meta: { title: '角色与权限管理', roleCodes: ['admin', 'superadmin', 'super_admin'] } // 仅管理员可见
             },
             {
+                path: 'role-distribution',
+                name: 'role-distribution',
+                component: () => import('@/components/Role/RoleUserDistribution.vue'),
+                meta: { title: '角色人员分布', perms: ['sys:role:distribution'] }
+            },
+            {
                 path: 'user-import',
                 name: 'user-import',
                 component: () => import('@/components/System/UserImport.vue'),
@@ -91,7 +97,7 @@ const homeRoutes = [
                 meta: { title: '组织架构', perms: ['sys:org:view'] }
             },
             {
-                path: 'system/config',
+                path: 'config',
                 name: 'global-config',
                 component: () => import('@/components/System/GlobalConfig.vue'),
                 meta: { title: '系统设置', roleCodes: ['admin', 'superadmin'] }

@@ -27,118 +27,10 @@
         </div>
 
         <div class="topbar-right" v-if="activeTab === 'alerts'">
-          <div class="status-pill" :class="`status-pill--${wsStatus}`">
-            <span class="status-emoji">{{ wsStatusEmoji }}</span>
-            <span class="status-text">{{ wsStatusText }}</span>
-          </div>
         </div>
       </div>
 
       <div class="mc-body">
-        <div v-show="activeTab === 'alerts'" class="tab-body">
-          <el-row :gutter="12" class="stats-row">
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value">{{ alertStats.total }}</div>
-                <div class="stat-label">通知总数（本页缓存）</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value stat-value--danger">{{ alertStats.error }}</div>
-                <div class="stat-label">错误</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-value stat-value--warning">{{ alertStats.warning }}</div>
-                <div class="stat-label">警告</div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <el-alert
-            v-if="wsStatus === 'forbidden'"
-            type="warning"
-            show-icon
-            title="无权限订阅设备通知"
-            class="mb-12"
-          />
-
-          <div class="toolbar">
-            <el-space wrap alignment="center">
-              <el-select v-model="alertsLevel" size="small" style="width: 140px">
-                <el-option label="全部级别" value="all" />
-                <el-option label="error" value="error" />
-                <el-option label="warning" value="warning" />
-                <el-option label="success" value="success" />
-                <el-option label="info" value="info" />
-              </el-select>
-              <el-input v-model="alertsKeyword" size="small" clearable placeholder="搜索来源/类型/描述" style="width: 260px" />
-              <el-radio-group v-model="alertsViewMode" size="small">
-                <el-radio-button label="timeline">时间轴</el-radio-button>
-                <el-radio-button label="table">表格</el-radio-button>
-              </el-radio-group>
-              <el-switch v-model="alertsPaused" inline-prompt active-text="暂停" inactive-text="实时" />
-              <el-button size="small" @click="clearAlerts">清空</el-button>
-            </el-space>
-          </div>
-
-          <div class="tab-main">
-            <div v-if="alertsViewMode === 'timeline'" class="timeline-wrap">
-              <el-card shadow="never" class="list-card list-card--fill">
-                <el-timeline>
-                  <el-timeline-item
-                    v-for="a in timelineAlerts"
-                    :key="a.__rowKey"
-                    :timestamp="formatDateTime(a.time)"
-                    :type="getAlertLevelType(a.level)"
-                  >
-                    <div class="timeline-item">
-                      <el-tag :type="getAlertLevelType(a.level)" effect="light" size="small">
-                        {{ String(a.level || '').toLowerCase() }}
-                      </el-tag>
-                      <div class="timeline-content">
-                        <div class="timeline-title">
-                          <span class="muted">{{ a.source }}</span>
-                          <span class="dot">·</span>
-                          <span class="muted">{{ a.type }}</span>
-                        </div>
-                        <div class="timeline-desc">{{ a.description }}</div>
-                      </div>
-                    </div>
-                  </el-timeline-item>
-                </el-timeline>
-                <el-empty v-if="timelineAlerts.length === 0" description="暂无通知" />
-              </el-card>
-            </div>
-
-            <el-table
-              v-else
-              :data="filteredAlerts"
-              row-key="__rowKey"
-              stripe
-              height="100%"
-              class="table table--fill"
-              :empty-text="wsStatus === 'connected' ? '暂无设备通知' : '未连接或无数据'"
-            >
-              <el-table-column prop="time" label="时间" width="180">
-                <template #default="scope">
-                  {{ formatDateTime(scope.row.time) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="level" label="级别" width="110">
-                <template #default="scope">
-                  <el-tag :type="getAlertLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="source" label="来源" width="160" />
-              <el-table-column prop="type" label="类型" width="160" />
-              <el-table-column prop="description" label="描述" min-width="240" show-overflow-tooltip />
-            </el-table>
-          </div>
-        </div>
-
         <div v-show="activeTab === 'site'" class="tab-body">
           <div class="toolbar">
             <div class="toolbar__row">
@@ -357,7 +249,6 @@ import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus
 
 const activeTab = ref('site');
 const notifications = ref([]);
-const alerts = ref([]);
 const loading = ref(false);
 const configLoading = ref(false);
 const store = homeDataStore();
@@ -724,27 +615,19 @@ onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     const tab = String(route.query?.tab || '').trim();
-    if (['site', 'alerts', 'notifications', 'settings'].includes(tab)) {
+    if (['site', 'notifications', 'settings'].includes(tab)) {
         activeTab.value = tab;
     }
     if (canViewHistory.value) fetchNotifications();
     if (!Array.isArray(msgStore.siteMessages) || msgStore.siteMessages.length === 0) loadSiteMessages();
     if (canViewConfig.value) fetchConfig();
-    await store.startAlertsRealtime();
-    if (isDev) {
-        setTimeout(() => {
-            if (!Array.isArray(alerts.value) || alerts.value.length === 0) {
-                alerts.value = buildTestAlerts();
-            }
-        }, 250);
-    }
 });
 
 watch(
     () => route.query?.tab,
     (tab) => {
         const t = String(tab || '').trim();
-        if (['site', 'alerts', 'notifications', 'settings'].includes(t)) {
+        if (['site', 'notifications', 'settings'].includes(t)) {
             activeTab.value = t;
         }
     }
@@ -773,7 +656,6 @@ let tabResizeObserver;
 
 const visibleTabs = computed(() => {
     const tabs = [{ name: 'site', label: '站内消息', icon: Bell }];
-    if (canSubscribeAlerts.value) tabs.push({ name: 'alerts', label: '设备通知（实时）', icon: WarningFilled });
     if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知（历史）', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
     return tabs;

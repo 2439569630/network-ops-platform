@@ -75,6 +75,31 @@
             </el-descriptions>
           </el-card>
 
+          <!-- 动态系统信息 -->
+          <el-card 
+            v-if="detail.vendor || detail.model || detail.version_raw" 
+            :class="$style.section" 
+            shadow="never"
+          >
+            <template #header>
+              <div :class="$style.sectionHeader">系统信息</div>
+            </template>
+
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item v-if="detail.vendor" label="厂商">{{ detail.vendor }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.model" label="型号">{{ detail.model }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.product" label="产品系列">{{ detail.product }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.version || detail.vrp_version" label="版本号">
+                {{ detail.vrp_version || detail.version }}
+              </el-descriptions-item>
+            </el-descriptions>
+            
+            <div v-if="detail.version_raw" :class="$style.rawVersionBox">
+              <div :class="$style.rawVersionTitle">原始版本信息</div>
+              <pre :class="$style.rawVersionContent">{{ detail.version_raw }}</pre>
+            </div>
+          </el-card>
+
           <el-card :class="$style.section" shadow="never">
             <template #header>
               <div :class="$style.sectionHeader">归属信息</div>
@@ -85,6 +110,22 @@
               <el-descriptions-item label="运维管理员">{{ detail.ops_admin_name || '未知' }}</el-descriptions-item>
             </el-descriptions>
           </el-card>
+        </el-tab-pane>
+
+        <el-tab-pane label="接口列表" name="interfaces">
+          <DeviceInterfaces :device-id="deviceId" />
+        </el-tab-pane>
+
+        <el-tab-pane label="路由表" name="routes">
+          <DeviceRoutes :device-id="deviceId" />
+        </el-tab-pane>
+
+        <el-tab-pane label="VLAN" name="vlans">
+          <DeviceVlans :device-id="deviceId" />
+        </el-tab-pane>
+
+        <el-tab-pane label="预警" name="alerts">
+          <DeviceAlerts :device-id="deviceId" />
         </el-tab-pane>
 
         <el-tab-pane v-if="canAudit" label="审计" name="audit">
@@ -206,6 +247,11 @@ import Cookies from 'js-cookie'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { homeDataStore } from '@/components/home/home/data'
 
+import DeviceAlerts from './DeviceAlerts.vue'
+import DeviceRoutes from './DeviceRoutes.vue'
+import DeviceVlans from './DeviceVlans.vue'
+import DeviceInterfaces from './DeviceInterfaces.vue'
+
 const route = useRoute()
 const router = useRouter()
 const authStore = homeDataStore()
@@ -229,11 +275,20 @@ const detail = reactive({
   created_by_name: '',
   ops_admin_name: '',
   status: 'offline',
+  fsmState: '',
+  statePhase: '',
+  stateReason: '',
   cpuUsage: 0,
   memoryUsage: 0,
   diskUsage: 0,
   uptime: '未知',
   osVersion: 'Unknown',
+  vendor: '',
+  model: '',
+  product: '',
+  version: '',
+  vrp_version: '',
+  version_raw: '',
 })
 
 let ws = null
@@ -246,12 +301,16 @@ const activeTab = computed({
   get() {
     const tab = String(route.query.tab || '')
     if (tab === 'audit' && canAudit.value) return 'audit'
+    if (tab === 'alerts') return 'alerts'
+    if (['routes', 'vlans', 'interfaces'].includes(tab)) return tab
     return 'overview'
   },
   set(val) {
     const next = String(val || 'overview')
     const nextQuery = { ...route.query }
     if (next === 'audit') nextQuery.tab = 'audit'
+    else if (next === 'alerts') nextQuery.tab = 'alerts'
+    else if (['routes', 'vlans', 'interfaces'].includes(next)) nextQuery.tab = next
     else delete nextQuery.tab
     router.replace({ query: nextQuery })
   },
@@ -266,8 +325,34 @@ const editForm = reactive({
   ssh_port: 22,
 })
 
-const statusText = computed(() => (detail.status === 'online' ? '在线' : '离线'))
-const statusTagType = computed(() => (detail.status === 'online' ? 'success' : 'danger'))
+const statusText = computed(() => {
+  const fsm = (detail.fsmState || detail.status || '').toLowerCase()
+  const phase = (detail.statePhase || '').toLowerCase()
+  const reason = detail.stateReason || ''
+  
+  if (fsm === 'online') {
+    if (phase === 'collecting') return '采集中'
+    return '在线'
+  }
+  if (fsm === 'checking') return '检测中'
+  if (fsm === 'recovering') return '恢复中'
+  if (fsm === 'degraded') return '降级'
+  
+  // 离线状态显示具体原因
+  if (reason.includes('timeout')) return '连接超时'
+  if (reason.includes('auth')) return '认证失败'
+  if (reason.includes('unreachable')) return '不可达'
+  
+  return '离线'
+})
+
+const statusTagType = computed(() => {
+  const s = statusText.value
+  if (s === '在线' || s === '采集中') return 'success'
+  if (s === '检测中' || s === '恢复中') return 'warning'
+  if (s === '降级') return 'warning'
+  return 'danger'
+})
 
 const clampPercent = (val) => {
   const n = Number(val)
@@ -282,11 +367,23 @@ const formatPercent = (val) => `${clampPercent(val).toFixed(0)}%`
 const applyStatusPayload = (payload) => {
   if (!payload || typeof payload !== 'object') return
   if (payload.status) detail.status = payload.status
+  if (payload.fsmState) detail.fsmState = payload.fsmState
+  if (payload.statePhase) detail.statePhase = payload.statePhase
+  if (payload.stateReason) detail.stateReason = payload.stateReason
+  
   if (payload.cpuUsage !== undefined) detail.cpuUsage = Number(payload.cpuUsage) || 0
   if (payload.memoryUsage !== undefined) detail.memoryUsage = Number(payload.memoryUsage) || 0
   if (payload.diskUsage !== undefined) detail.diskUsage = Number(payload.diskUsage) || 0
   if (payload.uptime) detail.uptime = payload.uptime
   if (payload.osVersion) detail.osVersion = payload.osVersion
+  
+  // 动态字段映射
+  if (payload.vendor) detail.vendor = payload.vendor
+  if (payload.model) detail.model = payload.model
+  if (payload.product) detail.product = payload.product
+  if (payload.version) detail.version = payload.version
+  if (payload.vrp_version) detail.vrp_version = payload.vrp_version
+  if (payload.version_raw) detail.version_raw = payload.version_raw
 }
 
 const openWs = () => {
@@ -704,5 +801,32 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rawVersionBox {
+  margin-top: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid rgba(220, 223, 230, 0.5);
+  padding: 12px;
+}
+
+.rawVersionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.rawVersionContent {
+  margin: 0;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
 }
 </style>

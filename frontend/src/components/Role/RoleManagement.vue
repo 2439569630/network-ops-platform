@@ -27,14 +27,6 @@
         >
           <el-icon><Lock /></el-icon> 权限管理
         </div>
-        <div 
-          class="tab-item" 
-          ref="tabDistributionRef"
-          :class="{ active: activeTab === 'distribution' }"
-          @click="activeTab = 'distribution'"
-        >
-          <el-icon><User /></el-icon> 人员分布
-        </div>
         <div class="tab-indicator" :style="indicatorStyle"></div>
       </div>
     </div>
@@ -752,7 +744,7 @@ watch(activeTab, (val) => {
   router.replace({ query: { ...route.query, tab: val } });
   updateIndicator();
   if (val === 'distribution' && roleUsersData.value.length === 0) {
-    fetchRoleUsers();
+    // Deprecated
   }
 });
 

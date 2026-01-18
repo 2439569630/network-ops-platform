@@ -45,10 +45,8 @@ import { useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useDeviceStore } from './store'
 
 const router = useRouter()
-const deviceStore = useDeviceStore()
 
 const loading = ref(false)
 const acting = ref(false)
@@ -93,7 +91,6 @@ const restoreDevice = async (row) => {
     await axios.post('/api/v1/user/device/recycle/restore', { device_id: id })
     ElMessage.success('恢复成功')
     await fetchRecycleBin()
-    deviceStore.refreshData()
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || e?.message || '恢复失败')
   } finally {
@@ -118,7 +115,6 @@ const purgeDevice = async (row) => {
     await axios.post('/api/v1/user/device/recycle/purge', { device_id: id })
     ElMessage.success('已彻底删除')
     await fetchRecycleBin()
-    deviceStore.refreshData()
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || e?.message || '删除失败')
   } finally {

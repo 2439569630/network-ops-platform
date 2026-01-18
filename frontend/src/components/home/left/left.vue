@@ -67,9 +67,13 @@
                             <el-icon><Setting /></el-icon>
                             <span>系统管理</span>
                         </template>
-                        <el-menu-item index="role" @click="goto('/user/role')" v-if="isSuper">
+                        <el-menu-item index="role" @click="goto('/user/role')" v-if="isAdmin">
                             <el-icon><Avatar /></el-icon>
                             <span>角色与权限管理</span>
+                        </el-menu-item>
+                        <el-menu-item index="role-distribution" @click="goto('/user/role-distribution')" v-if="isAdmin || hasPerm('sys:role:distribution')">
+                            <el-icon><User /></el-icon>
+                            <span>角色人员分布</span>
                         </el-menu-item>
                         <el-menu-item index="user-import" @click="goto('/user/user-import')" v-if="hasPerm('sys:user:import')">
                             <el-icon><User /></el-icon>
@@ -110,6 +114,8 @@ const route = useRoute();
 const store = homeDataStore();
 const msgStore = messageCenterDataStore();
 const isSuper = computed(() => Boolean(store.isSuper));
+const roleCodes = computed(() => store.roleCodes || []);
+const isAdmin = computed(() => isSuper.value || roleCodes.value.includes('admin') || roleCodes.value.includes('superadmin'));
 const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));
 
 const activeMenu = computed(() => {
@@ -138,6 +144,7 @@ const activeMenu = computed(() => {
 
     // 系统管理
     if (path.includes('/user/organization')) return 'organization';
+    if (path.includes('/user/role-distribution')) return 'role-distribution';
     if (path.includes('/user/role')) return 'role';
     if (path.includes('/user/permission')) return 'role';
     if (path.includes('/user/user-import')) return 'user-import';

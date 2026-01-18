@@ -26,6 +26,7 @@ import PcNav from './PcNav.vue';
 import PcOverview from './PcOverview.vue';
 import PcProfile from './PcProfile.vue';
 import PcSecurity from './PcSecurity.vue';
+import PcLoginLogs from './PcLoginLogs.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -37,7 +38,7 @@ const isLoading = computed(() => {
 
 const activePage = computed(() => {
   const p = String(route.query.page || 'overview');
-  const allow = ['overview', 'profile', 'email', 'security'];
+  const allow = ['overview', 'profile', 'email', 'security', 'login-logs'];
   return allow.includes(p) ? p : 'overview';
 });
 
@@ -49,6 +50,7 @@ const pageComponent = computed(() => {
   if (activePage.value === 'profile') return PcProfile;
   if (activePage.value === 'email') return PcEmail;
   if (activePage.value === 'security') return PcSecurity;
+  if (activePage.value === 'login-logs') return PcLoginLogs;
   return PcOverview;
 });
 
