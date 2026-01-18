@@ -54,8 +54,33 @@ class NotificationService:
                 })
             return result
         else:
-            # TODO: Filter by user's devices
-            return []
+            # 1. 查找用户创建的设备
+            # 注意: created_by 是字符串类型
+            user_devices = await NetworkDevice.filter(created_by=str(user_id)).all()
+            if not user_devices:
+                return []
+            
+            user_device_ids = [d.id for d in user_devices]
+            
+            # 2. 查找这些设备的通知
+            notifications = await DeviceNotification.filter(
+                device_id__in=user_device_ids
+            ).order_by("-created_at").limit(100)
+            
+            # 3. 组装结果
+            device_map = {d.id: d.device_name for d in user_devices}
+            
+            result = []
+            for n in notifications:
+                result.append({
+                    "id": n.id,
+                    "device_id": n.device_id,
+                    "device_name": device_map.get(n.device_id, ""),
+                    "level": n.level,
+                    "message": n.message,
+                    "created_at": n.created_at
+                })
+            return result
 
     @staticmethod
     async def _ensure_site_message_tables():
@@ -125,6 +150,9 @@ class NotificationService:
 
     @staticmethod
     async def get_site_message_detail(*, user_id: int, message_id: int) -> Optional[dict]:
+        """
+        获取站内信详情
+        """
         m = await SiteMessage.filter(id=message_id).filter(Q(is_global=True) | Q(target_user_id=user_id)).first()
         if not m:
             return None
@@ -156,6 +184,9 @@ class NotificationService:
         target_user_id: Optional[int] = None,
         is_global: bool = True,
     ) -> dict:
+        """
+        创建站内信
+        """
         t = str(title or "").strip()
         c = str(content or "").strip()
         if not t:
@@ -205,6 +236,9 @@ class NotificationService:
 
     @staticmethod
     async def mark_site_message_read(*, user_id: int, message_id: int) -> bool:
+        """
+        标记站内信为已读
+        """
         # Check if already read
         exists = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).exists()
         if not exists:
@@ -225,6 +259,9 @@ class NotificationService:
 
     @staticmethod
     async def mark_site_message_unread(*, user_id: int, message_id: int) -> bool:
+        """
+        标记站内信为未读
+        """
         await SiteMessageRead.filter(user_id=user_id, message_id=message_id).delete()
         try:
             await NotificationService.publish_site_message_read_state_changed(
@@ -280,6 +317,9 @@ class NotificationService:
 
     @staticmethod
     async def get_site_message_unread_count(*, user_id: int) -> int:
+        """
+        获取未读站内信数量
+        """
         # Count messages for user (global or direct)
         total_msgs = await SiteMessage.filter(Q(is_global=True) | Q(target_user_id=user_id)).count()
         # Count read messages
@@ -399,6 +439,44 @@ class NotificationService:
         )
 
     @staticmethod
+    async def notify_device_alert(device_id: int, message: str, severity: str = "warning") -> Dict[str, Any]:
+        """
+        发送设备告警通知
+        """
+        device_name = None
+        ipv4 = None
+        try:
+            dev = await NetworkDevice.filter(id=device_id).first()
+            if dev:
+                device_name = dev.device_name
+                ipv4 = str(dev.ipv4) if dev.ipv4 else None
+        except Exception as e:
+            logger.error(f"获取设备信息失败: {e}")
+
+        display_name = device_name or f"Device {device_id}"
+        display_ip = ipv4 or "-"
+
+        level_map = {
+            "info": "info",
+            "warning": "warning",
+            "critical": "error"
+        }
+        level = level_map.get(severity, "warning")
+
+        return await NotificationService.notify(
+            level=level,
+            source=display_name,
+            type="device_alert",
+            description=message,
+            device_id=device_id,
+            device_name=display_name,
+            ipv4=display_ip,
+            save_history=True,
+            publish_realtime=True,
+            cache_realtime=True,
+        )
+
+    @staticmethod
     async def notify_repair_order_submitted(
         *,
         order_id: int,
@@ -408,6 +486,9 @@ class NotificationService:
         submitter_name: Optional[str] = None,
         device_id: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """
+        发送工单提交通知
+        """
         level = "info"
         p = str(priority or "").strip().lower()
         if p in {"high"}:

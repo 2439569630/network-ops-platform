@@ -1,4 +1,9 @@
 
+"""
+ASGI 入口文件
+定义 FastAPI 应用实例、生命周期管理 (数据库连接、Redis、ORM 初始化)、中间件和路由注册。
+"""
+
 import asyncio
 import logging
 import os
@@ -17,6 +22,7 @@ from app.core.logger import setup_logger
 from app.core.security import UnicornException, unicorn_exception_handler
 from app.services.notification_service import NotificationService
 from app.services.device_service import device_service
+from app.services.rbac_service import RbacService
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +62,25 @@ async def lifespan(app: FastAPI):
                 "app.models.orm.repair",
                 "app.models.orm.rbac",
                 "app.models.orm.location",
-                "app.models.orm.config"
+                "app.models.orm.config",
+                "app.models.orm.alert",
+                "app.models.orm.interface",
+                "app.models.orm.vlan",
             ]},
         )
         await Tortoise.generate_schemas()
         logger.info("Tortoise ORM 初始化成功")
+
+        # 同步系统权限
+        try:
+            sync_res = await RbacService.sync_system_permissions()
+            logger.info(f"系统权限同步完成: {sync_res}")
+            
+            # 自动给 admin 角色赋予新权限
+            await RbacService.grant_permission_to_role_code("admin", "sys:role:distribution")
+        except Exception as e:
+            logger.error(f"系统权限同步失败: {e}")
+
     except Exception as e:
         logger.error(f"Tortoise ORM 初始化失败: {e}")
 

@@ -6,6 +6,11 @@ import sys
 import colorlog
 
 def setup_logger(log_level: str = "INFO"):
+    """
+    配置系统日志
+    
+    包括控制台输出和文件输出，以及特定模块的日志级别设置
+    """
     # 1. 确保日志目录存在
     log_dir = 'logs'
     if not os.path.exists(log_dir):

@@ -7,6 +7,10 @@ from .base import BaseDevice
 logger = logging.getLogger("app.drivers.linux")
 
 class LinuxServer(BaseDevice):
+    """
+    Linux 服务器驱动
+    通过 SSH 执行 Linux 命令采集系统信息 (CPU, 内存, 磁盘等)。
+    """
     def __init__(self, device_info: Dict):
         super().__init__(device_info)
         self.device_type = 'linux'
@@ -43,7 +47,7 @@ class LinuxServer(BaseDevice):
             logger.info(f"Linux 服务器 {self.ip} 静态信息采集完毕: {self.static_info}")
             return self.static_info
         except Exception as e:
-            logger.error(f"Linux 服务器 {self.ip} 一次性采集失败: {e}")
+            logger.error(f"Linux 服务器 {self.ip} 一次性采集失败: {self._compact_exception_message(e)}")
         return {}
 
     async def collect_status(self) -> Dict[str, Any]:
@@ -59,7 +63,7 @@ class LinuxServer(BaseDevice):
             result['disk_usage'] = await self.get_disk_usage()
                     
         except Exception as e:
-            logger.error(f"采集 Linux 服务器 {self.ip} 状态失败: {e}")
+            logger.error(f"采集 Linux 服务器 {self.ip} 状态失败: {self._compact_exception_message(e)}")
             
         return result
 
@@ -77,7 +81,7 @@ class LinuxServer(BaseDevice):
             if match:
                 return round(100 - float(match.group(1)), 2)
         except Exception as e:
-            logger.warning(f"获取 CPU 使用率失败: {e}")
+            logger.warning(f"获取 CPU 使用率失败: {self._compact_exception_message(e)}")
         return 0.0
 
     async def get_memory_usage(self) -> float:
@@ -91,7 +95,7 @@ class LinuxServer(BaseDevice):
                 if total > 0:
                     return round((used / total) * 100, 2)
         except Exception as e:
-            logger.warning(f"获取内存使用率失败: {e}")
+            logger.warning(f"获取内存使用率失败: {self._compact_exception_message(e)}")
         return 0.0
 
     async def get_disk_usage(self) -> float:
@@ -104,5 +108,5 @@ class LinuxServer(BaseDevice):
                 if use_pct.isdigit():
                     return float(use_pct)
         except Exception as e:
-            logger.warning(f"获取磁盘使用率失败: {e}")
+            logger.warning(f"获取磁盘使用率失败: {self._compact_exception_message(e)}")
         return 0.0

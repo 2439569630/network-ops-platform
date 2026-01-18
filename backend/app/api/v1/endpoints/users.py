@@ -123,6 +123,42 @@ async def delete_user(
     except Exception as e:
         return {"code": 500, "message": f"删除用户失败: {str(e)}"}
 
+
+@router.post("/batch/delete", response_model=dict)
+async def delete_users_batch(
+    user_ids: List[int] = Body(..., embed=True),
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
+):
+    """批量删除用户 (仅管理员)"""
+    check_admin(current_user)
+    if current_user.get("id") in user_ids:
+        return {"code": 400, "message": "不能删除自己"}
+        
+    try:
+        await UserService.delete_users(user_ids)
+        return {"code": 200, "message": "批量删除成功"}
+    except Exception as e:
+        return {"code": 500, "message": f"批量删除失败: {str(e)}"}
+
+
+@router.put("/{user_id}/password", response_model=dict)
+async def reset_user_password(
+    user_id: int,
+    password: str = Body(..., embed=True),
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
+):
+    """管理员重置用户密码"""
+    check_admin(current_user)
+    try:
+        await UserService.reset_password(user_id, password)
+        return {"code": 200, "message": "密码重置成功"}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"密码重置失败: {str(e)}"}
+
 @router.post("/update_perms", response_model=dict)
 async def update_user_perms(
     user_id: int = Body(...),

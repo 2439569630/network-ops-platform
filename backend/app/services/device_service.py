@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import time
+import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 from app.core.database import db
@@ -25,9 +26,16 @@ from app.services.location_service import LocationService
 logger = logging.getLogger(__name__)
 
 class DeviceService:
+    """
+    设备服务类
+    处理设备管理相关的业务逻辑，包括设备的增删改查、配置管理、状态监控等。
+    """
 
     # Helper to convert ORM object to dict (simple version)
     def _model_to_dict(self, obj: Any) -> Dict[str, Any]:
+        """
+        将 ORM 对象转换为字典
+        """
         if not obj:
             return {}
         # Tortoise models can be converted to dict, but we need to handle serialization
@@ -35,17 +43,27 @@ class DeviceService:
         return dict(obj)
 
     async def has_deleted_at(self) -> bool:
+        """
+        检查模型是否包含 deleted_at 字段
+        """
         # With ORM, we assume the model schema is correct. 
         # If the column is missing, it should be added to the DB.
         return True
 
     async def ensure_ssh_command_audit_table(self) -> bool:
+        """
+        确保 SSH 命令审计表存在
+        """
         # Tortoise generate_schemas=True handles table creation usually.
         # But we keep this just in case we need explicit check, or remove it.
         # For now, we assume ORM handles it.
         return True
 
     async def get_device_list(self, type_code: int = 0, search_query: str = None, location_filter: str = None, location_node_id: int = None) -> List[dict]:
+        """
+        获取设备列表
+        支持按类型、关键字、位置过滤
+        """
         logger.info(f"Start get_device_list (ORM): type={type_code}, search={search_query}, location={location_filter}, node_id={location_node_id}")
         normalized_search = str(search_query or "").strip()
 
@@ -188,6 +206,9 @@ class DeviceService:
         return data
 
     async def add_device(self, device: DeviceCreate, user_id: int):
+        """
+        添加新设备
+        """
         # Check if IP exists
         if await NetworkDevice.filter(ipv4=device.ipv4).exists():
             raise ValueError("该IP地址已存在")
@@ -265,6 +286,9 @@ class DeviceService:
         }
 
     async def update_device_config(self, device_id: int, patch: dict) -> dict:
+        """
+        更新设备配置
+        """
         did = int(device_id)
         clean: dict = {}
         allowed = {
@@ -293,6 +317,9 @@ class DeviceService:
         return await self.get_device_config(did)
 
     async def delete_device(self, device_id: Optional[int] = None, ip: Optional[str] = None, deleted_by: Optional[str] = None):
+        """
+        删除设备 (软删除)
+        """
         device = None
         if device_id:
             device = await NetworkDevice.get_or_none(id=device_id)
@@ -333,10 +360,42 @@ class DeviceService:
         except Exception as e:
             logger.error(f"触发监控加载失败: {e}")
 
-    async def get_deleted_devices(self) -> List[dict]:
-        # ORM query for deleted devices
-        devices = await NetworkDevice.filter(deleted_at__isnull=False).order_by("-deleted_at", "-id").all()
+    async def get_deleted_devices(self, user_id: Optional[int] = None, is_super: bool = False) -> List[dict]:
+        """
+        获取已删除设备列表 (回收站)
         
+        Args:
+            user_id: 当前用户ID
+            is_super: 是否是超级管理员
+        """
+        # ORM query for deleted devices
+        query = NetworkDevice.filter(deleted_at__isnull=False)
+        
+        # 权限过滤：非超级管理员只能看到自己创建的设备
+        # 或者自己删除的设备？
+        # 通常回收站应该看到自己有权看到的设备。
+        # 简单起见，这里逻辑是：如果是非超管，只能看 created_by=自己 OR updated_by=自己 (即执行删除操作的人)
+        if not is_super and user_id is not None:
+            # 兼容 created_by 可能为空的情况
+            uid = str(user_id)
+            query = query.filter(Q(created_by=uid) | Q(updated_by=uid))
+            
+        devices = await query.order_by("-deleted_at", "-id").all()
+        
+        # 批量获取位置信息
+        device_ids = [d.id for d in devices]
+        loc_map = {}
+        if device_ids:
+            mappings = await LocationNodeDevice.filter(device_id__in=device_ids).all()
+            if mappings:
+                node_ids = {m.node_id for m in mappings}
+                nodes = await LocationNode.filter(id__in=list(node_ids)).all()
+                node_name_map = {n.id: n.name for n in nodes}
+                
+                for m in mappings:
+                    if m.node_id in node_name_map:
+                        loc_map[m.device_id] = node_name_map[m.node_id]
+
         result = []
         for d in devices:
             result.append({
@@ -344,7 +403,7 @@ class DeviceService:
                 "device_name": d.device_name,
                 "ipv4": str(d.ipv4),
                 "device_type": d.device_type,
-                "location": d.location,
+                "location": loc_map.get(d.id, ""),
                 "ssh_port": d.ssh_port,
                 "deleted_at": d.deleted_at,
                 "deleted_by": d.updated_by or "" 
@@ -379,6 +438,9 @@ class DeviceService:
             logger.error(f"触发监控加载失败: {e}")
 
     async def purge_device(self, device_id: int) -> None:
+        """
+        彻底删除设备
+        """
         device = await NetworkDevice.get_or_none(id=device_id)
         if not device:
             return
@@ -471,6 +533,9 @@ class DeviceService:
             logger.error(f"触发监控加载失败: {e}")
 
     async def test_connect(self, device: DeviceCreate):
+        """
+        测试设备连接 (SSH)
+        """
         # 映射设备类型
         netmiko_device_type = 'linux'
         if device.type in ['路由器', '交换机', '防火墙', 'huawei']:
@@ -497,6 +562,9 @@ class DeviceService:
         return True
 
     async def log_device_action(self, device_id: int, action: str, description: str, changed_by: str, payload: Optional[dict] = None) -> None:
+        """
+        记录设备操作日志
+        """
         await self._log_device_change(
             device_id=int(device_id),
             change_type=str(action),
@@ -554,6 +622,9 @@ class DeviceService:
         return {"items": items, "total": total, "page": p, "page_size": ps}
 
     async def get_device_change_logs(self, device_id: int, page: int = 1, page_size: int = 50) -> dict:
+        """
+        获取设备变更日志
+        """
         p = max(1, int(page or 1))
         ps = max(1, min(200, int(page_size or 50)))
         offset = (p - 1) * ps

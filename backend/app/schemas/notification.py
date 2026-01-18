@@ -3,6 +3,7 @@ from typing import Optional, Dict, List
 from datetime import datetime
 
 class NotificationConfig(BaseModel):
+    """通知配置模型"""
     enable_email: bool
     email_config: Optional[Dict] = None
     enable_pushplus: bool
@@ -11,11 +12,13 @@ class NotificationConfig(BaseModel):
     http_url: Optional[str] = None
 
 class TestNotification(BaseModel):
+    """通知测试模型"""
     channel: str # email, pushplus, http
     config: Optional[Dict] = None # 如果不传则尝试使用已保存配置
     target: Optional[str] = None # 测试目标（如接收邮箱）
 
 class NotificationHistory(BaseModel):
+    """通知历史模型"""
     id: int
     device_id: Optional[int]
     device_name: Optional[str]
@@ -24,6 +27,7 @@ class NotificationHistory(BaseModel):
     created_at: datetime
 
 class SiteMessageCreate(BaseModel):
+    """站内信创建模型"""
     title: str
     content: str
     target_user_id: Optional[int] = None
@@ -31,6 +35,7 @@ class SiteMessageCreate(BaseModel):
     source: Optional[str] = "管理员"
 
 class SiteMessageRow(BaseModel):
+    """站内信响应模型"""
     id: int
     sender_id: Optional[int]
     sender_name: Optional[str]

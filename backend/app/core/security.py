@@ -22,6 +22,7 @@ USER_AUTH_SESSION_REDIS_KEY_PREFIX = "auth:session:user:"
 
 
 def _normalize_permission_codes(value) -> list[str]:
+    """标准化权限代码列表"""
     if value is None:
         return []
     if isinstance(value, list):
@@ -48,6 +49,7 @@ def _normalize_permission_codes(value) -> list[str]:
 
 
 async def get_disabled_permission_codes_cached() -> list[str]:
+    """获取缓存的禁用权限代码列表"""
     redis_client = redis_manager.get_client()
     cached = None
     try:
@@ -76,6 +78,7 @@ async def get_disabled_permission_codes_cached() -> list[str]:
 
 
 async def apply_disabled_permissions(perms: list[str]) -> list[str]:
+    """过滤被禁用的权限"""
     disabled = await get_disabled_permission_codes_cached()
     if not disabled:
         return perms
@@ -83,6 +86,7 @@ async def apply_disabled_permissions(perms: list[str]) -> list[str]:
     return [str(p) for p in (perms or []) if str(p) not in disabled_set]
 
 class UnicornException(Exception):
+    """统一异常类"""
     def __init__(self, code: int, message: str, error_code: Optional[str] = None, data: Optional[dict] = None):
         self.code = code
         self.message = message
@@ -91,6 +95,7 @@ class UnicornException(Exception):
         self.status = "error"
 
 def unicorn_exception_handler(request: Request, exc: UnicornException):
+    """统一异常处理函数"""
     return JSONResponse(
         status_code=exc.code,
         content={
@@ -103,12 +108,15 @@ def unicorn_exception_handler(request: Request, exc: UnicornException):
     )
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """验证密码"""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
+    """获取密码哈希"""
     return pwd_context.hash(password)
 
 def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    """创建访问令牌 (JWT)"""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -128,6 +136,7 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     return encoded_jwt
 
 def _normalize_role_codes(value) -> list[str]:
+    """标准化角色代码列表"""
     if value is None:
         return []
     if isinstance(value, list):
@@ -149,6 +158,7 @@ def _normalize_role_codes(value) -> list[str]:
     return []
 
 def user_has_role(user: dict, role_code: str) -> bool:
+    """检查用户是否拥有指定角色"""
     target = str(role_code or "").strip().lower()
     if not target:
         return False
@@ -156,6 +166,7 @@ def user_has_role(user: dict, role_code: str) -> bool:
     return target in roles
 
 def user_is_super(user: dict) -> bool:
+    """检查用户是否为超级管理员"""
     if user.get("is_super") is True:
         return True
     roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
@@ -164,6 +175,7 @@ def user_is_super(user: dict) -> bool:
     return False
 
 def decode_token(token: str) -> dict:
+    """解码并验证 JWT 令牌"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
@@ -189,6 +201,7 @@ def _normalize_permissions(value) -> list[str]:
     return []
 
 async def _get_or_init_user_perm_version(user_id: int) -> int:
+    """获取或初始化用户权限版本号"""
     try:
         redis_client = redis_manager.get_client()
     except Exception:
@@ -217,6 +230,7 @@ async def _get_or_init_user_perm_version(user_id: int) -> int:
     return 1
 
 async def get_or_init_user_auth_version(user_id: int) -> int:
+    """获取或初始化用户认证版本号"""
     try:
         redis_client = redis_manager.get_client()
     except Exception:
@@ -245,6 +259,7 @@ async def get_or_init_user_auth_version(user_id: int) -> int:
     return 1
 
 async def bump_user_auth_version(user_id: int) -> int:
+    """增加用户认证版本号（强制下线旧会话）"""
     try:
         redis_client = redis_manager.get_client()
     except Exception:
@@ -260,6 +275,7 @@ async def bump_user_auth_version(user_id: int) -> int:
     return 1
 
 async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optional[str] = None, user_agent: Optional[str] = None, device: Optional[str] = None) -> None:
+    """记录用户认证会话信息"""
     try:
         redis_client = redis_manager.get_client()
     except Exception:
@@ -278,6 +294,7 @@ async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optiona
         pass
 
 async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
+    """获取用户认证会话信息"""
     try:
         redis_client = redis_manager.get_client()
     except Exception:
@@ -298,6 +315,7 @@ async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
     return data
 
 async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> list[str]:
+    """获取用户权限列表（带缓存）"""
     uid = int(user_id)
     ver = perm_ver
     if ver is None:
@@ -344,6 +362,7 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
     return await apply_disabled_permissions(merged)
 
 async def user_has_permission(user: dict, perm: str) -> bool:
+    """检查用户是否拥有指定权限"""
     if user_is_super(user):
         return True
     user_id = user.get("id")
@@ -353,6 +372,7 @@ async def user_has_permission(user: dict, perm: str) -> bool:
     return str(perm) in {str(p) for p in (perms or [])}
 
 async def verify_token(token: Optional[str] = Cookie(None)):
+    """验证访问令牌依赖"""
     if token is None:
         raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
 
@@ -458,6 +478,7 @@ async def verify_token_ws(
         return None
 
 class RoleChecker:
+    """角色检查依赖"""
     def __init__(self, allowed_roles: list):
         self.allowed_roles = {str(r).strip().lower() for r in (allowed_roles or []) if str(r).strip()}
 
@@ -470,6 +491,7 @@ class RoleChecker:
         raise UnicornException(403, "权限不足")
 
 class PermissionChecker:
+    """权限检查依赖"""
     def __init__(self, required_permissions: Union[str, list], require_all: bool = False):
         if isinstance(required_permissions, str):
             self.required_permissions = [required_permissions]

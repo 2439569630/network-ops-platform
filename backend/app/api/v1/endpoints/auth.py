@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 import hashlib
 import hmac
 import re
@@ -20,6 +20,7 @@ from app.core.security import create_access_token, verify_password, get_password
 from app.core.config import settings
 from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
+from app.services.notification_service import NotificationService
 from app.utils.notification_sender import send_email
 import json
 
@@ -28,38 +29,51 @@ logger = logging.getLogger(__name__)
 
 #登录表单
 class LoginForm(BaseModel):
+    """登录表单数据"""
     username: str
     password: str
 
 class RegisterForm(BaseModel):
+    """注册表单数据"""
     username: str
     password: str
     nickname: Optional[str] = None
     email: Optional[str] = None
 
 class PasswordResetRequestForm(BaseModel):
+    """密码重置请求表单"""
     email: str
     captcha_id: str
     captcha_answer: str
 
 class PasswordResetConfirmForm(BaseModel):
+    """密码重置确认表单"""
     token: str
     new_password: str
 
+class UpdateSecurityForm(BaseModel):
+    is_email_notify: Optional[bool] = None
+
+
 def _is_valid_email(email: str) -> bool:
+    """验证邮箱格式"""
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", str(email or "")))
 
 def _get_request_ip(request: Request) -> Optional[str]:
+    """获取请求 IP"""
     xff = request.headers.get("x-forwarded-for")
     return (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
 
 def _captcha_key(captcha_id: str) -> str:
+    """获取验证码 Redis Key"""
     return f"captcha:{str(captcha_id or '').strip()}"
 
 def _hash_text(value: str) -> str:
+    """计算文本哈希"""
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
 
 def _infer_device_label(user_agent: Optional[str]) -> str:
+    """根据 User-Agent 推断设备类型"""
     ua = str(user_agent or "").strip()
     if not ua:
         return "未知设备"
@@ -89,8 +103,49 @@ def _infer_device_label(user_agent: Optional[str]) -> str:
 
     return f"{os_name} · {browser}"
 
+async def _send_login_notification_task(email: str, username: str, ip: str, device: str):
+    try:
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username_smtp = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
+        
+        if not all([host, port, username_smtp, password]):
+            logger.info("Email config not found in memory, reloading from DB...")
+            await SystemConfig.load()
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username_smtp = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
+            
+        if not all([host, port, username_smtp, password]):
+            logger.error("Missing email configuration, cannot send notification.")
+            return
+
+        subject = "登录提醒"
+        content = (
+            f"你好，{username}：\n\n"
+            f"你的账号刚刚登录了系统。\n"
+            f"登录 IP：{ip}\n"
+            f"设备信息：{device}\n"
+            f"登录时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            "如果这不是你的操作，请立即修改密码。"
+        )
+        logger.info(f"Sending email to {email} via {host}:{port}...")
+        ok, msg = await send_email(host, port, username_smtp, password, email, subject, content, nickname=nickname)
+        if ok:
+            logger.info(f"Email sent successfully to {email}")
+        else:
+            logger.error(f"Failed to send email to {email}: {msg}")
+            
+    except Exception as e:
+        logger.error(f"Failed to send login notification task: {e}")
+
 @router.get("/captcha")
 async def get_captcha():
+    """获取图形验证码"""
     redis_client = redis_manager.get_client()
     ttl_seconds = SystemConfig.get_int("auth:captcha:ttl_seconds", 300)
     a = secrets.randbelow(9) + 1
@@ -171,8 +226,13 @@ async def _get_or_init_auth_ver(user_id: int) -> int:
 
 @router.post("/login")
 async def login(data: LoginForm, response: Response, request: Request):
+    """
+    用户登录
+    
+    验证用户名和密码，返回访问令牌
+    """
     # 1. 查询用户
-    sql = "SELECT id, username, password, is_approved, permissions FROM users WHERE username = $1"
+    sql = "SELECT id, username, password, is_approved, permissions, email, is_email_notify FROM users WHERE username = $1"
     user = await db.fetch_one(sql, data.username)
 
     if not user:
@@ -239,6 +299,42 @@ async def login(data: LoginForm, response: Response, request: Request):
         await set_user_auth_session_info(int(user["id"]), auth_ver=int(auth_ver), ip=ip, user_agent=ua, device=device)
     except Exception:
         pass
+    
+    # 记录登录日志
+    try:
+        await db.execute(
+            "INSERT INTO login_logs (user_id, ip, user_agent, device) VALUES ($1, $2, $3, $4)",
+            int(user["id"]), ip, ua, device
+        )
+    except Exception as e:
+        logger.error(f"Failed to record login log: {e}")
+
+    # 发送登录提醒邮件
+    if user.get("is_email_notify") and user.get("email"):
+        # 调试日志
+        logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
+        asyncio.create_task(_send_login_notification_task(
+            str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
+        ))
+    else:
+        logger.info(f"Skip login notification: is_email_notify={user.get('is_email_notify')}, email={user.get('email')}")
+
+    # 发送站内信通知 (始终发送，不依赖邮件开关)
+    try:
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        site_msg_content = f"你的账号于 {current_time} 在 {ip or '未知IP'} ({device}) 登录。如非本人操作，请立即修改密码。"
+        await NotificationService.create_site_message(
+            sender_id=None,  # 系统发送
+            sender_name="安全中心",
+            title="登录提醒",
+            content=site_msg_content,
+            source="安全中心",
+            target_user_id=int(user["id"]),
+            is_global=False
+        )
+    except Exception as e:
+        logger.error(f"发送站内信失败: {e}")
+
     token_data = {
         "id": user['id'],
         "username": user['username'],
@@ -271,6 +367,11 @@ async def login(data: LoginForm, response: Response, request: Request):
 
 @router.post("/password/reset/request")
 async def password_reset_request(data: PasswordResetRequestForm, request: Request):
+    """
+    请求重置密码
+    
+    验证邮箱和验证码，发送重置邮件
+    """
     email = str(data.email or "").strip()
     if not _is_valid_email(email):
         return JSONResponse(status_code=400, content={"code": 400, "message": "邮箱格式不正确"})
@@ -372,6 +473,11 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
 
 @router.post("/password/reset/confirm")
 async def password_reset_confirm(data: PasswordResetConfirmForm):
+    """
+    确认重置密码
+    
+    使用邮件中的令牌重置密码
+    """
     token = str(data.token or "").strip()
     new_password = str(data.new_password or "")
 
@@ -414,6 +520,7 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
 
 @router.post("/refresh")
 async def refresh_token(response: Response, token: Optional[str] = Cookie(None)):
+    """刷新访问令牌"""
     if token is None:
         return JSONResponse(
             status_code=401,
@@ -528,6 +635,7 @@ async def refresh_token(response: Response, token: Optional[str] = Cookie(None))
 
 @router.post("/register")
 async def register(data: RegisterForm):
+    """用户注册"""
     try:
         disabled = await get_disabled_permission_codes_cached()
         if "sys:auth:register" in {str(c) for c in (disabled or [])}:
@@ -601,6 +709,7 @@ async def register(data: RegisterForm):
 
 @router.get("/permissions")
 async def get_my_permissions(token_payload: dict = Depends(verify_token)):
+    """获取当前用户的权限列表"""
     user_id = token_payload.get("id")
     if user_id is None:
         return JSONResponse(
@@ -612,6 +721,7 @@ async def get_my_permissions(token_payload: dict = Depends(verify_token)):
 
 @router.post("/users/me")
 async def read_current_user(response: Response, token = Depends(verify_token)):
+    """获取当前用户信息（测试用）"""
     print(token.get('code'))
     if token.get('code') != 200:
         response.status_code = token.get('code')
@@ -622,3 +732,79 @@ async def read_current_user(response: Response, token = Depends(verify_token)):
         "code": 200,
         "status": "success",
     }
+
+@router.get("/users/me/security")
+async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
+    user_id = token_payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+    
+    row = await db.fetch_one("SELECT is_email_notify FROM users WHERE id = $1", int(user_id))
+    if not row:
+         raise HTTPException(status_code=404, detail="User not found")
+         
+    return {
+        "code": 200,
+        "status": "success",
+        "data": {
+            "is_email_notify": bool(row.get("is_email_notify") or False)
+        }
+    }
+
+@router.put("/users/me/security")
+async def update_my_security_settings(data: UpdateSecurityForm, token_payload: dict = Depends(verify_token)):
+    user_id = token_payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+    
+    if data.is_email_notify is not None:
+        await db.execute(
+            "UPDATE users SET is_email_notify = $1 WHERE id = $2",
+            data.is_email_notify, int(user_id)
+        )
+    
+    return {"code": 200, "status": "success", "message": "设置已更新"}
+
+@router.get("/users/me/login-logs")
+async def get_my_login_logs(
+    page: int = 1, 
+    page_size: int = 10, 
+    token_payload: dict = Depends(verify_token)
+):
+    user_id = token_payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+    
+    offset = (page - 1) * page_size
+    limit = page_size
+    
+    total = await db.fetch_val(
+        "SELECT COUNT(*) FROM login_logs WHERE user_id = $1", 
+        int(user_id)
+    )
+    
+    rows = await db.fetch_all(
+        "SELECT id, ip, device, created_at FROM login_logs WHERE user_id = $1 ORDER BY id DESC OFFSET $2 LIMIT $3",
+        int(user_id), offset, limit
+    )
+    
+    items = []
+    for r in rows:
+        items.append({
+            "id": r["id"],
+            "ip": r["ip"],
+            "device": r["device"],
+            "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else None
+        })
+        
+    return {
+        "code": 200, 
+        "status": "success", 
+        "data": {
+            "total": total,
+            "items": items,
+            "page": page,
+            "page_size": page_size
+        }
+    }
+

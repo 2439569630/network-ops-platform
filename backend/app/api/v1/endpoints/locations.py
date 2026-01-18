@@ -14,11 +14,13 @@ router = APIRouter()
 
 
 class DeviceBindRequest(BaseModel):
+    """设备绑定请求参数"""
     device_ids: List[int]
 
 
 @router.get("/tree", response_model=dict)
 async def get_location_tree(user: dict = Depends(PermissionChecker(["sys:location:view"]))):
+    """获取位置树结构"""
     try:
         data = await LocationService.get_tree()
         return {"code": 200, "data": data}
@@ -30,6 +32,7 @@ async def get_location_tree(user: dict = Depends(PermissionChecker(["sys:locatio
 async def create_location_node(
     payload: LocationNodeCreate, user: dict = Depends(PermissionChecker(["sys:location:add"]))
 ):
+    """创建位置节点"""
     try:
         node = await LocationService.create_node(payload.model_dump())
         return {"code": 200, "message": "创建成功", "data": node}
@@ -41,6 +44,7 @@ async def create_location_node(
 async def update_location_node(
     node_id: int, payload: LocationNodeUpdate, user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
+    """更新位置节点"""
     try:
         updated = await LocationService.update_node(int(node_id), payload.model_dump(exclude_unset=True))
         if not updated:
@@ -54,6 +58,7 @@ async def update_location_node(
 async def delete_location_node(
     node_id: int, user: dict = Depends(PermissionChecker(["sys:location:del"]))
 ):
+    """删除位置节点"""
     try:
         ok = await LocationService.delete_node(int(node_id))
         if not ok:
@@ -67,6 +72,7 @@ async def delete_location_node(
 async def move_location_node(
     node_id: int, payload: LocationNodeMove, user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
+    """移动位置节点"""
     try:
         moved = await LocationService.move_node(int(node_id), payload.parent_id)
         if not moved:
@@ -78,6 +84,7 @@ async def move_location_node(
 
 @router.get("/bind/roles", response_model=dict)
 async def list_bind_roles(user: dict = Depends(PermissionChecker(["sys:location:manage"]))):
+    """获取可绑定角色列表"""
     try:
         rows = await db.fetch_all("SELECT id, name, code FROM roles ORDER BY id")
         data = [{"id": int(r["id"]), "name": r.get("name"), "code": r.get("code")} for r in (rows or [])]
@@ -94,6 +101,15 @@ async def search_bind_users(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(PermissionChecker(["sys:location:manage"])),
 ):
+    """
+    搜索可绑定用户
+    
+    Args:
+        q: 搜索关键字
+        role_id: 角色ID过滤
+        page: 页码
+        page_size: 每页数量
+    """
     try:
         q_norm = str(q or "").strip()
         page_norm = max(1, int(page or 1))
@@ -148,6 +164,7 @@ async def add_devices_to_location(
     payload: DeviceBindRequest,
     user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
+    """将设备添加到位置节点"""
     try:
         # Get location node info (need name for the device location field)
         node = await LocationNode.filter(id=node_id).first()
@@ -186,6 +203,7 @@ async def remove_devices_from_location(
     payload: DeviceBindRequest = Body(...),
     user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
+    """从位置节点移除设备"""
     try:
         # Get location node info
         node = await LocationNode.filter(id=node_id).first()
@@ -209,6 +227,7 @@ async def list_bind_users_by_ids(
     ids: list[int] = Query(default=[]),
     user: dict = Depends(PermissionChecker(["sys:location:manage"])),
 ):
+    """根据ID获取用户列表"""
     try:
         norm = [int(x) for x in (ids or []) if x is not None]
         if not norm:

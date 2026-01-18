@@ -14,8 +14,20 @@ from app.models.orm.rbac import Role, UserRole
 from tortoise.expressions import Q
 
 class RepairOrderService:
+    """
+    工单服务类
+    处理报修工单的创建、指派、流转、评论等业务逻辑。
+    """
     @staticmethod
     async def pick_auto_assignee_id() -> Optional[int]:
+        """
+        自动分配工单给运维人员
+        算法：
+        1. 获取 'yunwei' 角色
+        2. 获取该角色的所有活跃用户
+        3. 统计每个用户当前 'processing' 状态的工单数
+        4. 选择负载最小的用户
+        """
         # 1. Find role 'yunwei'
         role = await Role.filter(code='yunwei').first()
         if not role:
@@ -48,6 +60,9 @@ class RepairOrderService:
 
     @staticmethod
     async def list_assignees() -> List[dict]:
+        """
+        获取可选的工单处理人 (运维人员列表)
+        """
         role = await Role.filter(code='yunwei').first()
         if not role:
             return []
@@ -61,6 +76,9 @@ class RepairOrderService:
 
     @staticmethod
     async def create_order(data: RepairOrderCreate, submitter_id: int) -> int:
+        """
+        创建工单
+        """
         order = await RepairOrder.create(
             title=data.title,
             description=data.description,
@@ -87,6 +105,10 @@ class RepairOrderService:
         can_view_assigned: bool = False,
         role_level: int = 2,  # Deprecated
     ) -> Dict:
+        """
+        获取工单列表
+        支持分页、状态过滤、权限控制 (个人/所有/指派)
+        """
         offset = (page - 1) * page_size
         
         query = RepairOrder.all()
@@ -186,6 +208,10 @@ class RepairOrderService:
 
     @staticmethod
     async def get_order_detail(order_id: int) -> Optional[dict]:
+        """
+        获取工单详情
+        包含基本信息、操作日志、评论、工作日志等
+        """
         o = await RepairOrder.filter(id=order_id).first()
         if not o:
             return None
@@ -256,6 +282,9 @@ class RepairOrderService:
 
     @staticmethod
     async def update_order(order_id: int, data: RepairOrderUpdate, operator_id: int, skip_log: bool = False) -> bool:
+        """
+        更新工单信息 (状态、指派人、优先级等)
+        """
         # Check current status
         # We need the current status for logging
         current = await RepairOrder.filter(id=order_id).first()
@@ -293,6 +322,9 @@ class RepairOrderService:
 
     @staticmethod
     async def log_action(order_id: int, operator_id: int, action: str, from_status: str, to_status: str, remark: str = ""):
+        """
+        记录工单操作日志
+        """
         await OrderLog.create(
             order_id=order_id,
             operator_id=operator_id,
@@ -323,6 +355,9 @@ class RepairOrderService:
 
     @staticmethod
     async def get_work_logs(order_id: int) -> List[dict]:
+        """
+        获取工单工作日志列表
+        """
         logs = await WorkLog.filter(order_id=order_id).order_by("created_at").all()
         if not logs:
             return []

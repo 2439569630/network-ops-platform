@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 class DeviceBase(BaseModel):
+    """设备基础模型"""
     device_name: str
     user_name: str
     type: str
@@ -13,9 +14,11 @@ class DeviceBase(BaseModel):
     ssh_port: int = 22
 
 class DeviceCreate(DeviceBase):
+    """设备创建模型"""
     password: str
 
 class DeviceUpdate(BaseModel):
+    """设备更新模型"""
     device_name: Optional[str] = None
     type: Optional[str] = None
     location: Optional[str] = None
@@ -23,6 +26,7 @@ class DeviceUpdate(BaseModel):
     # ...其他可更新字段
 
 class DeviceResponse(DeviceBase):
+    """设备响应模型"""
     id: int
     status: str = '待加载'
     cpu_usage: str = '0%'
@@ -38,6 +42,7 @@ class DeviceResponse(DeviceBase):
         from_attributes = True
 
 class DeviceTest(BaseModel):
+    """设备连接测试模型"""
     ipv4: str
     ssh_port: int = 22
     user_name: str
@@ -45,11 +50,13 @@ class DeviceTest(BaseModel):
     type: str
 
 class DeviceDelete(BaseModel):
+    """设备删除模型"""
     id: Optional[int] = None
     ip: Optional[str] = None
 
 
 class DeviceConfigUpdate(BaseModel):
+    """设备配置更新模型"""
     device_id: int
     interval: Optional[float] = None
     monitor_interval: Optional[float] = None
@@ -62,3 +69,4 @@ class DeviceConfigUpdate(BaseModel):
     connect_max_retries: Optional[int] = None
     connect_retry_delay_seconds: Optional[float] = None
     offline_retry_delay_seconds: Optional[float] = None
+    resource_sync_interval: Optional[float] = None

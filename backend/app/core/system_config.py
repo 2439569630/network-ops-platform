@@ -6,6 +6,7 @@ from app.models.orm.config import SystemSetting
 logger = logging.getLogger(__name__)
 
 class SystemConfig:
+    """动态系统配置管理类"""
     _instance = None
     _config: Dict[str, str] = {}
 

@@ -1,3 +1,8 @@
+"""
+初始化 RBAC 数据库脚本
+创建角色、权限表，并预置系统默认的角色和权限数据。
+"""
+
 import asyncio
 import sys
 import os
@@ -62,6 +67,7 @@ async def init_rbac_db():
         print("表 user_roles 创建成功")
 
         roles_seed = [
+            {"name": "超级管理员", "code": "superadmin", "description": "系统内置超级管理员，拥有所有权限，不可修改或删除"},
             {"name": "管理员", "code": "admin", "description": "管理员"},
             {"name": "运维", "code": "yunwei", "description": "运维"},
             {"name": "师生", "code": "shisheng", "description": "师生"},
@@ -136,6 +142,7 @@ async def init_rbac_db():
             perm_ids[row["code"]] = row["id"]
 
         role_perm_map = {
+            "superadmin": [p["code"] for p in permissions_seed],
             "admin": [p["code"] for p in permissions_seed],
             "yunwei": [
                 "sys:auth:login",

@@ -7,6 +7,10 @@ from tortoise.transactions import in_transaction
 from app.models.orm.location import LocationNode, LocationNodeRole, LocationNodeUser, LocationNodeDevice
 
 class LocationService:
+    """
+    位置服务类
+    处理位置节点的树形结构管理、编码生成、设备/用户/角色绑定等业务逻辑。
+    """
     _auto_code_re = re.compile(r"^[0-9A-Fa-f]+(\.[0-9A-Fa-f]+)*$")
 
     @staticmethod
@@ -138,6 +142,9 @@ class LocationService:
 
     @staticmethod
     async def get_descendant_ids(root_id: int) -> List[int]:
+        """
+        获取所有后代节点的 ID 列表
+        """
         return await LocationService._get_descendant_ids(root_id)
 
     @staticmethod
@@ -233,6 +240,9 @@ class LocationService:
 
     @staticmethod
     async def get_tree() -> List[dict]:
+        """
+        获取完整的位置树结构
+        """
         nodes = await LocationNode.all().order_by("parent_id", "sort_order", "id")
         
         items = [LocationService._model_to_dict(n) for n in nodes]
@@ -265,6 +275,10 @@ class LocationService:
 
     @staticmethod
     async def create_node(data: Dict[str, Any]) -> dict:
+        """
+        创建新的位置节点
+        自动生成编码，处理绑定关系
+        """
         parent_id = data.get("parent_id")
         parent_id_val = int(parent_id) if parent_id is not None else None
 
@@ -417,6 +431,10 @@ class LocationService:
 
     @staticmethod
     async def move_node(node_id: int, parent_id: Optional[int]) -> Optional[dict]:
+        """
+        移动节点到新的父节点下
+        自动重新生成编码
+        """
         parent_id_val = int(parent_id) if parent_id is not None else None
         
         conn = Tortoise.get_connection("default")

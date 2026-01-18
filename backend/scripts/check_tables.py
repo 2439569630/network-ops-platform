@@ -1,3 +1,8 @@
+"""
+数据库表检查脚本
+检查关键业务表是否存在。
+"""
+
 import asyncio
 import asyncpg
 import sys

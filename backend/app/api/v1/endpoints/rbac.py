@@ -8,6 +8,7 @@ from app.schemas.rbac import (
     PermissionUpdate,
     RolePermissionsSet,
     DisabledPermissionsSet,
+    UserRolesSet,
 )
 from app.services.rbac_service import RbacService
 from app.core.security import (
@@ -15,6 +16,7 @@ from app.core.security import (
     get_disabled_permission_codes_cached,
     DISABLED_PERMISSIONS_CONFIG_KEY,
     DISABLED_PERMISSIONS_REDIS_KEY,
+    user_has_permission,
 )
 from app.core.redis import redis_manager
 from app.core.system_config import SystemConfig
@@ -29,6 +31,7 @@ def check_super_admin(user: dict):
 
 @router.get("/roles/with_users", response_model=dict)
 async def get_roles_with_users(current_user: dict = Depends(deps.get_current_user)):
+    """获取所有角色及其关联用户"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -39,6 +42,7 @@ async def get_roles_with_users(current_user: dict = Depends(deps.get_current_use
 
 @router.get("/roles", response_model=dict)
 async def list_roles(current_user: dict = Depends(deps.get_current_user)):
+    """获取角色列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -50,6 +54,7 @@ async def list_roles(current_user: dict = Depends(deps.get_current_user)):
 
 @router.post("/roles", response_model=dict)
 async def create_role(role_in: RoleCreate, current_user: dict = Depends(deps.get_current_user)):
+    """创建新角色"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -61,6 +66,7 @@ async def create_role(role_in: RoleCreate, current_user: dict = Depends(deps.get
 
 @router.put("/roles/{role_id}", response_model=dict)
 async def update_role(role_id: int, role_in: RoleUpdate, current_user: dict = Depends(deps.get_current_user)):
+    """更新角色信息"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -72,6 +78,7 @@ async def update_role(role_id: int, role_in: RoleUpdate, current_user: dict = De
 
 @router.delete("/roles/{role_id}", response_model=dict)
 async def delete_role(role_id: int, current_user: dict = Depends(deps.get_current_user)):
+    """删除角色"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -83,6 +90,7 @@ async def delete_role(role_id: int, current_user: dict = Depends(deps.get_curren
 
 @router.get("/permissions", response_model=dict)
 async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
+    """获取所有权限列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -93,6 +101,7 @@ async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
 
 @router.get("/permissions/directory", response_model=dict)
 async def list_permission_directory(current_user: dict = Depends(deps.get_current_user)):
+    """获取权限目录结构"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -104,6 +113,7 @@ async def list_permission_directory(current_user: dict = Depends(deps.get_curren
 
 @router.get("/permissions/disabled", response_model=dict)
 async def get_disabled_permissions(current_user: dict = Depends(deps.get_current_user)):
+    """获取已禁用的权限列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -118,6 +128,7 @@ async def set_disabled_permissions(
     data: DisabledPermissionsSet,
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """设置禁用权限列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -139,6 +150,7 @@ async def set_disabled_permissions(
 
 @router.post("/permissions/sync", response_model=dict)
 async def sync_system_permissions(current_user: dict = Depends(deps.get_current_user)):
+    """同步系统权限"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -153,6 +165,7 @@ async def sync_system_permissions(current_user: dict = Depends(deps.get_current_
 async def create_permission(
     perm_in: PermissionCreate, current_user: dict = Depends(deps.get_current_user)
 ):
+    """创建自定义权限"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -168,6 +181,7 @@ async def create_permission(
 async def update_permission(
     permission_id: int, perm_in: PermissionUpdate, current_user: dict = Depends(deps.get_current_user)
 ):
+    """更新权限信息"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -190,6 +204,7 @@ async def update_permission(
 
 @router.delete("/permissions/{permission_id}", response_model=dict)
 async def delete_permission(permission_id: int, current_user: dict = Depends(deps.get_current_user)):
+    """删除自定义权限"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -204,8 +219,29 @@ async def delete_permission(permission_id: int, current_user: dict = Depends(dep
         return {"code": 500, "message": f"删除失败: {str(e)}"}
 
 
+@router.get("/roles/users_distribution", response_model=dict)
+async def get_users_distribution(
+    q: str = Query("", max_length=200),
+    role_id: int = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    current_user: dict = Depends(deps.get_current_user),
+):
+    """获取用户角色分布列表"""
+    # 允许 superadmin 或拥有 sys:role:distribution 权限的用户
+    has_perm = await user_has_permission(current_user, "sys:role:distribution")
+    if not has_perm:
+        return {"code": 403, "message": "权限不足"}
+    try:
+        result = await RbacService.get_users_with_roles_paginated(q=q, role_id=role_id, page=page, page_size=page_size)
+        return {"code": 200, "data": result.get("items") or [], "meta": {"total": result.get("total") or 0, "page": result.get("page") or page, "page_size": result.get("page_size") or page_size}}
+    except Exception as e:
+        return {"code": 500, "message": f"获取失败: {str(e)}"}
+
+
 @router.get("/roles/{role_id}/permissions", response_model=dict)
 async def get_role_permissions(role_id: int, current_user: dict = Depends(deps.get_current_user)):
+    """获取角色拥有的权限"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -221,6 +257,7 @@ async def set_role_permissions(
     data: RolePermissionsSet,
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """设置角色的权限"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -232,6 +269,7 @@ async def set_role_permissions(
 
 @router.post("/roles/{role_id}/default", response_model=dict)
 async def set_default_role(role_id: int, current_user: dict = Depends(deps.get_current_user)):
+    """设置默认角色"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -248,6 +286,7 @@ async def get_role_users(
     page_size: int = Query(20, ge=1, le=200),
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """获取角色下的用户列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -265,6 +304,7 @@ async def get_available_users(
     page_size: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """获取可添加到角色的用户列表"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -280,6 +320,7 @@ async def add_users_to_role(
     user_ids: list[int] = Body(..., embed=True),
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """批量添加用户到角色"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -293,6 +334,7 @@ async def add_users_to_role(
 async def remove_user_from_role(
     role_id: int, user_id: int, current_user: dict = Depends(deps.get_current_user)
 ):
+    """从角色移除用户"""
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -300,3 +342,22 @@ async def remove_user_from_role(
         return {"code": 200, "message": "移除成功"}
     except Exception as e:
         return {"code": 500, "message": f"移除失败: {str(e)}"}
+
+
+@router.put("/users/{user_id}/roles", response_model=dict)
+async def set_user_roles(
+    user_id: int,
+    data: UserRolesSet,
+    current_user: dict = Depends(deps.get_current_user),
+):
+    """设置用户的角色"""
+    # 允许 superadmin 或拥有 sys:role:distribution 权限的用户 (认为管理分布包含分配角色)
+    # 或者我们应该定义一个 sys:role:assign? 暂时复用 distribution
+    has_perm = await user_has_permission(current_user, "sys:role:distribution")
+    if not has_perm:
+        return {"code": 403, "message": "权限不足"}
+    try:
+        await RbacService.set_user_roles(user_id, data.role_ids)
+        return {"code": 200, "message": "设置成功"}
+    except Exception as e:
+        return {"code": 500, "message": f"设置失败: {str(e)}"}

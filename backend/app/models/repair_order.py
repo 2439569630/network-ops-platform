@@ -4,6 +4,7 @@ from datetime import datetime
 
 @dataclass
 class RepairOrder:
+    """报修工单数据类"""
     id: int
     title: str
     description: str
@@ -19,6 +20,7 @@ class RepairOrder:
 
 @dataclass
 class OrderLog:
+    """工单日志数据类"""
     id: int
     order_id: int
     operator_id: int
@@ -30,6 +32,7 @@ class OrderLog:
 
 @dataclass
 class OrderReview:
+    """工单评价数据类"""
     id: int
     order_id: int
     rating: int
@@ -40,6 +43,7 @@ class OrderReview:
 
 @dataclass
 class WorkLog:
+    """工作记录数据类"""
     id: int
     order_id: int
     operator_id: int

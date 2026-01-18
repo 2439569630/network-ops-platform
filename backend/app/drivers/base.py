@@ -10,7 +10,12 @@ from app.drivers.models.status import DeviceStatus, DeviceConfig
 logger = logging.getLogger("app.drivers.base")    
 
 class BaseDevice:
+    """
+    设备驱动基类
+    定义了所有设备驱动通用的接口和状态管理逻辑。
+    """
     def __init__(self, device_info: Dict):
+        # 设备唯一标识与基础连接信息
         self.device_id = device_info['id']
         self.ip = str(device_info['ipv4'])
         self.config = DeviceConfig.from_device_info(device_info)
@@ -26,12 +31,21 @@ class BaseDevice:
         
         self.connection = None
         self.connected = False
+        # 用于串行化连接建立/重连，避免并发 connect 导致状态错乱
         self._lock = asyncio.Lock()
+        # 关闭标记：用于在监控退出/进程退出时终止连接与重试
         self._shutdown = False
+        # 连接中止信号：用于取消连接/断开时快速打断重试流程
         self._connect_abort = threading.Event()
         
         # 静态信息（一次性采集的数据）
-        self.static_info = {}
+        device_type = str(device_info.get("device_type") or "").strip()
+        if device_type in {"路由器", "交换机", "huawei"}:
+            from app.drivers.models.huawei_runtime import HuaweiDisplayVersionRuntime
+
+            self.static_info = HuaweiDisplayVersionRuntime(raw="")
+        else:
+            self.static_info = {}
         # 上次采集时间
         self.last_collect_time = 0
         self.status = DeviceStatus()
@@ -49,6 +63,7 @@ class BaseDevice:
 
     @staticmethod
     def _compact_exception_message(e: Exception) -> str:
+        # 将异常信息压缩为单行，便于日志与前端展示（避免超长堆栈污染）
         try:
             s = str(e) if e is not None else ""
         except Exception:
@@ -159,6 +174,7 @@ class BaseDevice:
     async def connect(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
         """建立 SSH 连接"""
         async def _emit_progress(phase: str, reason: str) -> None:
+            # 连接过程中的阶段回调：用于外部实时更新 UI/状态机
             if not progress_cb:
                 return
             try:
@@ -175,6 +191,7 @@ class BaseDevice:
             return True
             
         async with self._lock:
+            # connect 入口用锁保护：同一时间只允许一个协程做真实的 connect/retry
             if self._shutdown:
                 self.connected = False
                 return False
@@ -192,6 +209,7 @@ class BaseDevice:
                         self.connected = False
                         return False
                     try:
+                        # ConnectHandler 是阻塞调用，放到线程池避免卡住事件循环
                         conn = await loop.run_in_executor(None, self._connect_once_sync)
                         if not conn:
                             self.connected = False
@@ -223,6 +241,7 @@ class BaseDevice:
                             continue
                         raise
             except asyncio.CancelledError:
+                # connect 任务被取消时，通知重试流程尽快终止
                 self._connect_abort.set()
                 raise
             except Exception as e:
@@ -240,7 +259,7 @@ class BaseDevice:
     def _connect_once_sync(self):
         if self._shutdown or self._connect_abort.is_set():
             return None
-        # 增加 keepalive 配置
+        # 真正的“单次连接”逻辑（同步/阻塞），由 connect() 放入线程池执行
         device_params = {
             'device_type': self.device_type,
             'host': self.ip,
@@ -276,9 +295,9 @@ class BaseDevice:
         """检查连接状态"""
         if self.connection:
             try:
-                # 回退到最稳定的方案：向通道写入一个回车符
-                # 只要 TCP 连接正常，写入操作会立即成功（写入缓冲区）
-                # 如果 TCP 连接已断开（收到 RST 或 FIN），写入会抛出异常
+                # 这里用“写入回车”来探活：
+                # - TCP 正常：写入缓冲立即成功
+                # - TCP 已断：写入会抛异常（RST/FIN/通道关闭）
                 self.connection.write_channel('\n')
                 return True
             except Exception as e:
@@ -294,8 +313,7 @@ class BaseDevice:
         if not self.connected:
             return await self.connect(progress_cb=progress_cb)
         
-        # 简单的 write_channel 操作非常快，通常不需要 run_in_executor，
-        # 但为了保险起见，避免任何潜在的阻塞，保持异步调用
+        # check_connection 理论上很快，但为避免底层实现偶发阻塞，这里仍放线程池
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.check_connection)
 
@@ -305,8 +323,9 @@ class BaseDevice:
         if self.connection:
             try:
                 loop = asyncio.get_event_loop()
+                # disconnect 可能阻塞，同样放线程池执行
                 await loop.run_in_executor(None, self.connection.disconnect)
-            except:
+            except Exception:
                 pass
             self.connection = None
         self.connected = False
@@ -322,6 +341,7 @@ class BaseDevice:
             raise ConnectionError(f"无法连接到 {self.ip}")
             
         loop = asyncio.get_event_loop()
+        # send_command 是阻塞调用，放线程池避免阻塞事件循环
         return await loop.run_in_executor(None, self._send_command_sync, cmd)
 
     def _send_command_sync(self, cmd: str) -> str:
@@ -345,10 +365,10 @@ class BaseDevice:
                 logger.warning(f"设备 {self.ip} 连接因命令执行错误而断开")
             
             self.connected = False
-            # 尝试清理连接对象
+            # 命令执行异常时，尝试清理连接对象，让下次 send_command 触发重连
             try:
                 self.connection.disconnect()
-            except:
+            except Exception:
                 pass
             self.connection = None
             return ""
@@ -357,6 +377,6 @@ class BaseDevice:
         """采集设备状态（需子类实现）"""
         raise NotImplementedError
 
-    async def collect_once(self) -> Dict[str, Any]:
+    async def collect_once(self) -> Any:
         """连接后执行一次的采集任务（需子类实现）"""
         return {}

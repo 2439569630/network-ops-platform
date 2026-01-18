@@ -21,10 +21,17 @@ from tortoise.functions import Count
 from tortoise.expressions import Q
 
 class UserService:
+    """
+    用户服务类
+    处理用户账户管理、注册、认证、个人资料更新等业务逻辑。
+    """
     _email_verify_table_ready: bool = False
 
     @staticmethod
     async def get_user_list() -> List[dict]:
+        """
+        获取用户列表
+        """
         users = await User.all().order_by("id")
         result = []
         for u in users:
@@ -65,6 +72,10 @@ class UserService:
 
     @staticmethod
     async def create_user(data: UserCreate) -> int:
+        """
+        创建新用户 (注册)
+        自动分配默认角色
+        """
         # Check exists
         if await UserService.get_user_by_username(data.username):
             raise ValueError("用户名已存在")
@@ -96,6 +107,10 @@ class UserService:
 
     @staticmethod
     async def update_user_role(user_id: int, data: RoleUpdate):
+        """
+        更新用户角色/权限
+        并触发权限版本更新
+        """
         if data.permissions is not None:
              await User.filter(id=user_id).update(permissions=data.permissions)
              try:
@@ -109,11 +124,38 @@ class UserService:
         await User.filter(id=user_id).delete()
 
     @staticmethod
+    async def reset_password(user_id: int, new_password: str):
+        """
+        管理员重置用户密码
+        """
+        if not new_password:
+            raise ValueError("新密码不能为空")
+        
+        new_hash = get_password_hash(new_password)
+        await User.filter(id=user_id).update(password=new_hash)
+        try:
+            await bump_user_auth_version(int(user_id))
+        except Exception:
+            pass
+
+    @staticmethod
+    async def delete_users(user_ids: List[int]):
+        """
+        批量删除用户
+        """
+        if not user_ids:
+            return
+        await User.filter(id__in=user_ids).delete()
+
+    @staticmethod
     async def update_status(user_id: int, is_approved: bool):
         await User.filter(id=user_id).update(is_approved=is_approved)
 
     @staticmethod
     async def update_profile(user_id: int, data: UserUpdate):
+        """
+        更新个人资料 (密码、昵称等)
+        """
         # Password update handled separately usually, but here included
         if data.new_password:
              if not data.old_password:
@@ -318,6 +360,9 @@ class UserService:
 
     @staticmethod
     async def confirm_email_verification(token: str) -> dict:
+        """
+        确认邮箱验证
+        """
         await UserService._ensure_email_verify_table()
 
         token = str(token or "").strip()

@@ -2,6 +2,7 @@
 from tortoise import fields, models
 
 class RepairOrder(models.Model):
+    """报修工单模型"""
     id = fields.IntField(pk=True)
     title = fields.CharField(max_length=255)
     description = fields.TextField(null=True)
@@ -19,6 +20,7 @@ class RepairOrder(models.Model):
         table = "repair_orders"
 
 class OrderLog(models.Model):
+    """工单操作日志模型"""
     id = fields.BigIntField(pk=True)
     order_id = fields.IntField()
     operator_id = fields.IntField()
@@ -32,6 +34,7 @@ class OrderLog(models.Model):
         table = "order_logs"
 
 class OrderReview(models.Model):
+    """工单评价模型"""
     id = fields.BigIntField(pk=True)
     order_id = fields.IntField()
     rating = fields.IntField()
@@ -44,9 +47,10 @@ class OrderReview(models.Model):
         table = "order_reviews"
 
 class WorkLog(models.Model):
+    """工单工作记录模型"""
     id = fields.BigIntField(pk=True)
     order_id = fields.IntField()
-    operator_id = fields.IntField()
+    operator_id = fields.IntField(null=True)
     content = fields.TextField()
     images = fields.JSONField(default=[]) # List of image URLs
     created_at = fields.DatetimeField(auto_now_add=True)

@@ -6,10 +6,12 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 class RedisManager:
+    """Redis 连接管理类"""
     _pool: ConnectionPool = None
 
     @classmethod
     async def init(cls):
+        """初始化 Redis 连接池"""
         if cls._pool:
             return
 
@@ -32,6 +34,7 @@ class RedisManager:
 
     @classmethod
     async def close(cls):
+        """关闭 Redis 连接池"""
         if cls._pool:
             await cls._pool.disconnect()
             cls._pool = None
@@ -39,6 +42,7 @@ class RedisManager:
 
     @classmethod
     def get_client(cls) -> Redis:
+        """获取 Redis 客户端实例"""
         if not cls._pool:
             raise RuntimeError("Redis not initialized")
         return Redis(connection_pool=cls._pool)

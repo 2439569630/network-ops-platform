@@ -40,7 +40,15 @@ async def list_orders(
     scope: Optional[str] = None,
     current_user: dict = Depends(PermissionChecker(["sys:repair:view"]))
 ):
-    """获取工单列表"""
+    """
+    获取工单列表
+    
+    Args:
+        page: 页码
+        page_size: 每页数量
+        status: 状态过滤
+        scope: 范围过滤
+    """
     try:
         # Determine view permissions
         can_view_all = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:list_all")
@@ -62,6 +70,7 @@ async def list_orders(
 
 @router.get("/assignees", response_model=dict)
 async def list_assignees(current_user: dict = Depends(PermissionChecker(["sys:repair:manage"]))):
+    """获取可用维修人员列表"""
     try:
         users = await RepairOrderService.list_assignees()
         return {"code": 200, "data": users}
@@ -112,7 +121,11 @@ async def assign_order(
     assignee_id: Optional[int] = Body(None, embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:manage"]))
 ):
-    """派发工单 (管理员)，assignee_id 为空则自动派单"""
+    """
+    派发工单 (管理员)
+    
+    如果 assignee_id 为空，则尝试自动派单
+    """
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:
@@ -158,7 +171,11 @@ async def accept_order(
     id: int,
     current_user: dict = Depends(PermissionChecker(["sys:repair:accept"]))
 ):
-    """接单 (维修人员)"""
+    """
+    接单 (维修人员)
+    
+    维修人员确认接收工单，状态变为处理中
+    """
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:
@@ -182,7 +199,11 @@ async def add_work_log(
     images: List[str] = Body([], embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:accept"]))
 ):
-    """添加工作记录 (维修人员)"""
+    """
+    添加工作记录 (维修人员)
+    
+    记录维修过程、上传图片等
+    """
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:
@@ -209,7 +230,11 @@ async def complete_order(
     remark: str = Body(None, embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:handle", "sys:repair:manage"]))
 ):
-    """完成工单"""
+    """
+    完成工单
+    
+    维修结束，标记工单为已完成
+    """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
         return {"code": 404, "message": "工单不存在"}
@@ -247,7 +272,11 @@ async def cancel_order(
     reason: str = Body(..., embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:create", "sys:repair:manage"]))
 ):
-    """取消工单"""
+    """
+    取消工单
+    
+    仅创建者或管理员可取消
+    """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
         return {"code": 404, "message": "工单不存在"}
@@ -280,7 +309,11 @@ async def review_order(
     review: OrderReviewCreate,
     current_user: dict = Depends(PermissionChecker(["sys:repair:create", "sys:repair:manage"]))
 ):
-    """评价工单"""
+    """
+    评价工单
+    
+    工单完成后，创建者可进行评价，评价后工单关闭
+    """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
         return {"code": 404, "message": "工单不存在"}
@@ -314,7 +347,11 @@ async def force_update_status(
     remark: str = Body(None, embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:manage"]))
 ):
-    """强制修改工单状态 (管理员)"""
+    """
+    强制修改工单状态 (管理员)
+    
+    特殊情况下管理员手动干预工单状态
+    """
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:

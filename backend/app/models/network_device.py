@@ -4,6 +4,7 @@ from datetime import datetime
 
 @dataclass
 class NetworkDevice:
+    """网络设备数据类"""
     id: int
     device_name: str
     ipv4: str

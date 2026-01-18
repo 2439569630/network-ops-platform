@@ -16,6 +16,12 @@ async def list_site_messages(
     unread_only: bool = Query(False),
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """
+    获取站内信列表
+    
+    Args:
+        unread_only: 是否仅显示未读消息
+    """
     try:
         rows = await NotificationService.list_site_messages(
             user_id=int(user.get("id")),
@@ -31,6 +37,7 @@ async def list_site_messages(
 async def get_site_message_unread_count(
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """获取未读站内信数量"""
     try:
         cnt = await NotificationService.get_site_message_unread_count(user_id=int(user.get("id")))
         return {"code": 200, "data": {"count": int(cnt)}}
@@ -42,6 +49,7 @@ async def get_site_message_detail(
     message_id: int,
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """获取站内信详情"""
     try:
         row = await NotificationService.get_site_message_detail(
             user_id=int(user.get("id")),
@@ -58,6 +66,11 @@ async def create_site_message(
     data: SiteMessageCreate,
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """
+    发送站内信
+    
+    仅限管理员使用
+    """
     try:
         if not user_is_super(user):
             return {"code": 403, "message": "权限不足"}
@@ -86,6 +99,7 @@ async def mark_site_message_read(
     message_id: int,
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """标记站内信为已读"""
     try:
         await NotificationService.mark_site_message_read(user_id=int(user.get("id")), message_id=int(message_id))
         return {"code": 200, "message": "已读"}
@@ -97,6 +111,7 @@ async def mark_site_message_unread(
     message_id: int,
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
+    """标记站内信为未读"""
     try:
         await NotificationService.mark_site_message_unread(user_id=int(user.get("id")), message_id=int(message_id))
         return {"code": 200, "message": "未读"}
@@ -154,74 +169,13 @@ async def test_notification(
         logger.error(f"Test notification error: {e}")
         return {"code": 500, "message": str(e)}
 
-@router.get("/sse/device-notifications")
-async def sse_device_notifications(user: dict = Depends(PermissionChecker("sys:alert:subscribe"))):
-    async def event_stream():
-        redis_client = redis_manager.get_client()
-        pubsub = redis_client.pubsub()
-        channels = [NotificationService.SYSTEM_ALERTS_CHANNEL]
-
-        try:
-            await pubsub.subscribe(*channels)
-
-            yield "retry: 3000\n\n"
-
-            try:
-                raw_items = await redis_client.lrange(NotificationService.SYSTEM_ALERTS_RECENT_KEY, 0, 49)
-                items = []
-                for raw in raw_items or []:
-                    if isinstance(raw, bytes):
-                        raw = raw.decode("utf-8")
-                    try:
-                        parsed = json.loads(raw) if raw else None
-                    except Exception:
-                        parsed = None
-                    if isinstance(parsed, dict):
-                        items.append(parsed)
-                yield f"event: init\ndata: {json.dumps({'items': items}, ensure_ascii=False)}\n\n"
-            except Exception:
-                pass
-
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
-                if message and message.get("type") == "message":
-                    payload = None
-                    try:
-                        raw = message.get("data")
-                        if isinstance(raw, bytes):
-                            raw = raw.decode("utf-8")
-                        payload = json.loads(raw) if raw else None
-                    except Exception:
-                        payload = None
-
-                    if isinstance(payload, dict):
-                        yield f"event: notification\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                else:
-                    yield ": ping\n\n"
-        except asyncio.CancelledError:
-            raise
-        finally:
-            try:
-                await pubsub.unsubscribe(*channels)
-            except Exception:
-                pass
-            try:
-                await pubsub.close()
-            except Exception:
-                pass
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
 @router.get("/sse/site-messages")
 async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:access"))):
+    """
+    SSE 站内信实时推送
+    
+    使用 Server-Sent Events 推送站内消息
+    """
     user_id = int(user.get("id"))
 
     async def event_stream():

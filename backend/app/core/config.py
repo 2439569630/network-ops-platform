@@ -5,6 +5,7 @@ from pydantic import PostgresDsn, RedisDsn, Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    """系统配置类"""
     PROJECT_NAME: str = "Network Device Manager"
     API_V1_STR: str = "/api/v1"
     

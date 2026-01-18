@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class LocationNodeBase(BaseModel):
+    """位置节点基础模型"""
     label: str
     type: str
     code: Optional[str] = None
@@ -21,11 +22,13 @@ class LocationNodeBase(BaseModel):
 
 
 class LocationNodeCreate(LocationNodeBase):
+    """位置节点创建模型"""
     parent_id: Optional[int] = None
     inherit_users: Optional[bool] = False
 
 
 class LocationNodeUpdate(BaseModel):
+    """位置节点更新模型"""
     label: Optional[str] = None
     type: Optional[str] = None
     code: Optional[str] = None
@@ -43,10 +46,12 @@ class LocationNodeUpdate(BaseModel):
 
 
 class LocationNodeMove(BaseModel):
+    """位置节点移动模型"""
     parent_id: Optional[int] = None
 
 
 class LocationNodeResponse(LocationNodeBase):
+    """位置节点响应模型"""
     id: int
     parent_id: Optional[int] = None
     sortOrder: int = 0

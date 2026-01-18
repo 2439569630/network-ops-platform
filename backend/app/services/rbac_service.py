@@ -183,10 +183,17 @@ class RbacService:
         if not role:
             return
         
+        # 内置超级管理员角色保护
+        if role.code == 'superadmin':
+            raise ValueError("内置超级管理员角色不可修改")
+        
         if "name" in data:
             role.name = data["name"]
         if "code" in data:
-            role.code = data["code"]
+            new_code = str(data["code"]).strip()
+            if new_code == 'superadmin':
+                raise ValueError("不可将其他角色修改为 superadmin")
+            role.code = new_code
         if "description" in data:
             role.description = data["description"]
             
@@ -194,6 +201,10 @@ class RbacService:
 
     @staticmethod
     async def delete_role(role_id: int) -> None:
+        role = await Role.filter(id=role_id).first()
+        if role and role.code == 'superadmin':
+             raise ValueError("内置超级管理员角色不可删除")
+
         # Get affected users first
         users_in_role = await UserRole.filter(role_id=role_id).all()
         user_ids = [u.user_id for u in users_in_role]
@@ -213,46 +224,109 @@ class RbacService:
 
     @staticmethod
     async def get_all_roles_with_users() -> List[dict]:
-        # 1. Get all roles
+        # Deprecated or Modified to return counts only for performance?
+        # The prompt asks to optimize.
+        # Let's return counts instead of full user list.
+        
         roles = await Role.all().order_by("id")
         
-        # 2. Get all role-user maps with user info
-        # We need to join UserRole and User
-        # Tortoise doesn't support easy multi-table joins returning custom dicts without relationships
-        # So we fetch UserRoles then Users or use raw SQL?
-        # Let's try to stick to ORM by fetching lists.
-        # Efficient way: Fetch all UserRoles, Fetch all Users involved.
+        # Fetch all UserRoles to count
+        # This is much lighter than fetching User objects
+        user_roles = await UserRole.all().values("role_id")
         
-        user_roles = await UserRole.all()
-        user_ids = {ur.user_id for ur in user_roles}
-        users = await User.filter(id__in=list(user_ids)).all()
-        user_map = {u.id: u for u in users}
+        from collections import Counter
+        counts = Counter([ur["role_id"] for ur in user_roles])
         
-        # Build map
-        role_map = {r.id: {
-            "id": r.id, 
-            "name": r.name, 
-            "code": r.code, 
-            "description": r.description,
-            "created_at": r.created_at,
-            "is_default": r.is_default,
-            "users": []
-        } for r in roles}
+        result = []
+        for r in roles:
+            result.append({
+                "id": r.id, 
+                "name": r.name, 
+                "code": r.code, 
+                "description": r.description,
+                "created_at": r.created_at,
+                "is_default": r.is_default,
+                "user_count": counts.get(r.id, 0),
+                "users": [] # Keep empty list for backward compatibility if needed, or remove.
+            })
+            
+        return result
+
+    @staticmethod
+    async def get_users_with_roles_paginated(
+        q: Optional[str] = None,
+        role_id: Optional[int] = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> dict:
+        page_norm = max(1, int(page or 1))
+        page_size_norm = max(1, min(200, int(page_size or 20)))
+        offset = (page_norm - 1) * page_size_norm
+
+        # Base query
+        query = User.all()
+
+        # Apply filters
+        if role_id:
+            # Subquery for users in role
+            user_ids_in_role = await UserRole.filter(role_id=role_id).values_list('user_id', flat=True)
+            query = query.filter(id__in=user_ids_in_role)
+
+        q_norm = str(q or "").strip()
+        if q_norm:
+            query = query.filter(
+                Q(username__icontains=q_norm) | 
+                Q(nickname__icontains=q_norm) | 
+                Q(email__icontains=q_norm)
+            )
+
+        # Count
+        total = await query.count()
         
+        # Fetch Users
+        users = await query.order_by("username").offset(offset).limit(page_size_norm).all()
+        
+        # Fetch Roles for these users
+        # To avoid N+1, fetch all UserRoles for these user_ids
+        fetched_user_ids = [u.id for u in users]
+        user_roles = await UserRole.filter(user_id__in=fetched_user_ids).all()
+        
+        # Fetch Role details
+        role_ids = list({ur.role_id for ur in user_roles})
+        roles = await Role.filter(id__in=role_ids).all()
+        role_map = {r.id: r for r in roles}
+        
+        # Build user -> roles map
+        user_roles_map = {}
         for ur in user_roles:
-            if ur.role_id in role_map and ur.user_id in user_map:
-                u = user_map[ur.user_id]
-                role_map[ur.role_id]["users"].append({
-                    "id": u.id,
-                    "username": u.username,
-                    "nickname": u.nickname
+            if ur.user_id not in user_roles_map:
+                user_roles_map[ur.user_id] = []
+            if ur.role_id in role_map:
+                r = role_map[ur.role_id]
+                user_roles_map[ur.user_id].append({
+                    "id": r.id,
+                    "name": r.name,
+                    "code": r.code
                 })
         
-        # Sort users by username
-        for r in role_map.values():
-            r["users"].sort(key=lambda x: x["username"])
+        items = []
+        for u in users:
+            items.append({
+                "id": u.id,
+                "username": u.username,
+                "nickname": u.nickname,
+                "email": u.email,
+                "is_approved": u.is_approved,
+                "created_at": u.created_at,
+                "roles": user_roles_map.get(u.id, [])
+            })
             
-        return list(role_map.values())
+        return {
+            "items": items,
+            "total": total,
+            "page": page_norm,
+            "page_size": page_size_norm
+        }
 
     @staticmethod
     async def set_default_role(role_id: int) -> None:
@@ -338,6 +412,14 @@ class RbacService:
         await RbacService.bump_user_perm_version(user_id)
 
     @staticmethod
+    async def set_user_roles(user_id: int, role_ids: List[int]) -> None:
+        await UserRole.filter(user_id=user_id).delete()
+        ids = list(set([int(rid) for rid in (role_ids or [])]))
+        for rid in ids:
+            await UserRole.create(user_id=user_id, role_id=rid)
+        await RbacService.bump_user_perm_version(user_id)
+
+    @staticmethod
     async def get_users_not_in_role(
         role_id: int,
         q: Optional[str] = None,
@@ -412,6 +494,13 @@ class RbacService:
 
     @staticmethod
     async def set_role_permissions(role_id: int, permission_ids: List[int]) -> None:
+        role = await Role.filter(id=role_id).first()
+        if role and role.code == 'superadmin':
+             # 超级管理员无需配置权限（代码逻辑内置全开），但也禁止修改其关联
+             # 或者我们可以允许修改，但实际上无效。
+             # 为了避免误解，禁止修改。
+             raise ValueError("内置超级管理员角色拥有所有权限，无需配置")
+
         ids = [int(pid) for pid in (permission_ids or []) if pid is not None]
         if ids:
             # Check exist and expand dependencies
@@ -497,3 +586,13 @@ class RbacService:
         urs = await UserRole.filter(role_id=role_id).all()
         user_ids = [ur.user_id for ur in urs]
         await RbacService.bump_users_perm_version(user_ids)
+
+    @staticmethod
+    async def grant_permission_to_role_code(role_code: str, permission_code: str) -> None:
+        role = await Role.filter(code=role_code).first()
+        if not role:
+            return
+        perm = await Permission.filter(code=permission_code).first()
+        if not perm:
+            return
+        await RolePermission.get_or_create(role_id=role.id, permission_id=perm.id)

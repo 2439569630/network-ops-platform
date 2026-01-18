@@ -4,6 +4,7 @@ from datetime import datetime
 
 @dataclass
 class User:
+    """用户数据类"""
     id: int
     username: str
     password: str

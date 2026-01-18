@@ -1,148 +1,237 @@
 import re
 import logging
-from typing import Dict, Any
+import time
+import asyncio
+from dataclasses import replace
+from typing import Dict, Any, Optional, List
 from .base import BaseDevice
+from .models.huawei_runtime import (
+    HuaweiDisplayVersionRuntime,
+    HuaweiInterfaceRuntime,
+    HuaweiRouteRuntime,
+    HuaweiVlanRuntime,
+)
 
 # 使用新的 logger 名称
 logger = logging.getLogger("app.drivers.netmiko")
 
+
+def parse_huawei_display_version(output: str) -> Dict[str, Any]:
+    # 解析 display version：统一通过运行时数据结构提取关键信息
+    # 兼容返回 dict，便于与现有业务逻辑对接（静态信息入库/展示）
+    runtime = HuaweiDisplayVersionRuntime.from_output(str(output or ""))
+    return runtime.to_dict()
+
+
+def parse_huawei_display_esn(output: str) -> Dict[str, Any]:
+    # 解析 display esn：提取序列号（设备标识）
+    text = str(output or "")
+    if not text.strip():
+        return {}
+    sn_match = re.search(r"ESN of slot \d+:\s+(\w+)", text)
+    if not sn_match:
+        return {}
+    return {"serial_number": sn_match.group(1)}
+
+
+def parse_huawei_uptime_from_display_version(output: str) -> Optional[str]:
+    # 从 display version 输出中提取运行时间
+    # 优先匹配 Router uptime，避免命中 MPU uptime 等子模块信息
+    text = str(output or "")
+    if not text.strip():
+        return None
+    match = re.search(r"Router uptime is\s+(.+)", text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    match_2 = re.search(r"uptime is\s+(.+)", text, flags=re.IGNORECASE)
+    if match_2:
+        return match_2.group(1).strip()
+    return None
+
+
+def parse_huawei_display_health(output: str) -> Dict[str, Any]:
+    # 解析 display health：提取 CPU/内存/磁盘/温度等运行指标
+    text = str(output or "")
+    if not text.strip():
+        return {}
+
+    data: Dict[str, Any] = {}
+
+    cpu_match = re.search(r"System CPU Usage Information[\s\S]*?0\s+(\d+)\s*%", text)
+    if cpu_match:
+        data["cpu_usage"] = float(cpu_match.group(1))
+
+    mem_match = re.search(
+        r"System Memory Usage Information[\s\S]*?0\s+\d+\s+\d+\s+(\d+)%",
+        text,
+    )
+    if mem_match:
+        data["memory_usage"] = float(mem_match.group(1))
+
+    mem_match_2 = re.search(r"Memory Using Percentage Is:\s+(\d+)%", text)
+    if mem_match_2:
+        data["memory_usage"] = float(mem_match_2.group(1))
+
+    disk_match = re.search(r"System Disk Usage Information[\s\S]*?(\d+\.?\d*)%", text)
+    if disk_match:
+        data["disk_usage"] = float(disk_match.group(1))
+
+    temp_match = re.search(r"TEMP\s+NORMAL\s+\d+\s+\d+\s+(\d+)", text)
+    if temp_match:
+        data["temperature"] = float(temp_match.group(1))
+
+    return data
+
+
 class HuaweiDevice(BaseDevice):
+    """
+    华为网络设备驱动
+    通过 SSH (Netmiko) 执行 display 命令采集设备信息。
+    """
     def __init__(self, device_info: Dict):
         super().__init__(device_info)
-        # Netmiko 的 device_type
-        # 华为 VRP 通常使用 'huawei'
+        # 设备类型：Netmiko 驱动使用
         self.device_type = 'huawei'
+        # 深度巡检的下一次执行时间
+        self.next_resource_sync_at = 0.0
 
-    async def collect_once(self) -> Dict[str, Any]:
-        """执行一次性采集"""
+    async def fetch_display_version(self) -> str:
+        # 获取设备版本与运行时间等静态信息（原始回显）
+        return await self.send_command("display version")
+
+    async def fetch_display_esn(self) -> str:
+        # 获取设备序列号（原始回显）
+        return await self.send_command("display esn")
+
+    async def fetch_display_health(self) -> str:
+        # 获取设备健康/资源信息（原始回显）
+        return await self.send_command("display health")
+
+    async def get_static_serial_info(self) -> Dict[str, Any]:
+        # 静态信息：序列号（结构化）
+        esn = await self.fetch_display_esn()
+        return parse_huawei_display_esn(esn)
+
+    async def collect_once(self) -> Any:
+        # 静态信息采集钩子：在首次成功建立连接后调用一次，用于补齐厂商/型号/版本/序列号等
+        # 在当前监控流程中通常只会在设备监控循环启动时触发一次；如需“每次重连后刷新”，需由上层再次调用
         try:
-            # 获取版本信息
-            version = await self.send_command("display version")
-            # 简单解析第一行或特定信息
-            # Huawei Versatile Routing Platform Software
-            # VRP (R) software, Version 5.130 (AR2200 V200R003C00)
-            if version:
-                self.static_info['version_raw'] = version
-                self.static_info['vendor'] = 'Huawei'
-                
-                # Version
-                match = re.search(r'Version\s+([\w.]+)', version)
-                if match:
-                    self.static_info['os_version'] = match.group(1)
-                    self.static_info['version'] = match.group(1)
-                
-                # Model
-                # Huawei AR2220 Router uptime...
-                # Huawei AR151-S2 Router uptime...
-                model_match = re.search(r'Huawei\s+(AR[\w-]+)\s+Router', version)
-                if model_match:
-                    self.static_info['model'] = model_match.group(1)
-            
-            # 获取序列号
-            esn = await self.send_command("display esn")
-            if esn:
-                # ESN of slot 0: 210235525010B9000006
-                sn_match = re.search(r'ESN of slot \d+:\s+(\w+)', esn)
-                if sn_match:
-                    self.static_info['serial_number'] = sn_match.group(1)
+            version_out = await self.fetch_display_version()
+            runtime = HuaweiDisplayVersionRuntime.from_output(version_out)
 
-            logger.info(f"华为设备 {self.ip} 静态信息采集完毕: {self.static_info}")
-            return self.static_info
+            serial_info = await self.get_static_serial_info()
+            serial_number = serial_info.get("serial_number")
+            if serial_number:
+                runtime = replace(runtime, serial_number=str(serial_number))
+
+            self.static_info = runtime
+            data = runtime.to_dict()
+            logger.info(f"华为设备 {self.ip} 静态信息采集完毕: {data}")
+            return runtime
         except Exception as e:
-            logger.error(f"华为设备 {self.ip} 一次性采集失败: {e}")
-        return {}
+            logger.error(f"华为设备 {self.ip} 一次性采集失败: {self._compact_exception_message(e)}")
+            return {}
     
     
 
     async def collect_status(self) -> Dict[str, Any]:
-        """采集华为设备状态"""
+        # 周期采集：用于实时状态面板（CPU/内存/磁盘/温度/uptime 等）
         result = {
-            'cpu_usage': 0.0,
-            'memory_usage': 0.0,
-            'disk_usage': 0.0,
-            'temperature': 0, # 温度
-            'uptime': None
+            "cpu_usage": 0.0,
+            "memory_usage": 0.0,
+            "disk_usage": 0.0,
+            "temperature": 0.0,
+            "uptime": None,
         }
-        
-        try:
-            # 1. 使用 display health 获取大部分信息 (CPU, Memory, Disk, Temp)
-            health_out = await self.send_command("display health")
-            if health_out:
-                health_data = self.parse_health(health_out)
-                result.update(health_data)
 
-            # 2. Uptime 仍需从 display version 获取
-            result['uptime'] = await self.get_uptime()
+        try:
+            health_out = await self.fetch_display_health()
+            if health_out:
+                result.update(parse_huawei_display_health(health_out))
+                if "CPU usage monitor is disabled" in str(health_out):
+                    logger.warning(f"华为设备 {self.ip} CPU 监控未开启")
+
+            version_out = await self.fetch_display_version()
+            result["uptime"] = parse_huawei_uptime_from_display_version(version_out)
             
+            # 深度资源同步检查
+            now = time.monotonic()
+            if now >= self.next_resource_sync_at:
+                try:
+                    # 避免循环引用，局部导入
+                    from app.services.network_resource_service import network_resource_service
+                    # 使用 asyncio.create_task 异步触发，不阻塞主监控循环
+                    asyncio.create_task(network_resource_service.sync_device_resources(self.device_id))
+                    
+                    interval = getattr(self.config, "resource_sync_interval", 3600.0) or 3600.0
+                    self.next_resource_sync_at = now + interval
+                    logger.info(f"触发华为设备 {self.ip} 资源同步，下次同步时间: {self.next_resource_sync_at} (间隔: {interval}s)")
+                except Exception as e:
+                    logger.error(f"触发资源同步失败: {e}")
+                    # 失败后稍后重试（例如 60s 后），避免死循环重试
+                    self.next_resource_sync_at = now + 60.0
+                    
         except Exception as e:
-            logger.error(f"采集华为设备 {self.ip} 状态失败: {e}")
-            
+            logger.error(f"采集华为设备 {self.ip} 状态失败: {self._compact_exception_message(e)}")
+
         return result
 
     def parse_health(self, output: str) -> Dict[str, Any]:
-        """解析 display health 输出"""
-        data = {}
-        
-        # CPU Parsing
-        # 1. Table format (e.g. AR151)
-        # System CPU Usage Information:
-        #   SlotID  CPU Usage  Upper Limit
-        #   0       8%         80%
-        cpu_match = re.search(r'System CPU Usage Information[\s\S]*?0\s+(\d+)\s*%', output)
-        if cpu_match:
-            data['cpu_usage'] = float(cpu_match.group(1))
-            
-        # 2. Check for disabled monitor
-        if "CPU usage monitor is disabled" in output:
-            logger.warning(f"华为设备 {self.ip} CPU 监控未开启")
-            # 保持默认 0.0 或设置为特定状态
+        # 兼容保留：业务若直接传入输出文本进行解析，可复用该方法
+        return parse_huawei_display_health(output)
 
-        # Memory Parsing
-        # 1. Table format (e.g. AR151)
-        # SlotID  Total Memory(MB)  Used Memory(MB)  Used Percentage  Upper Limit
-        # 0       335               153              45%
-        mem_match = re.search(r'System Memory Usage Information[\s\S]*?0\s+\d+\s+\d+\s+(\d+)%', output)
-        if mem_match:
-            data['memory_usage'] = float(mem_match.group(1))
-            
-        # 2. Text format (e.g. AR2220)
-        # Memory Using Percentage Is: 80%
-        mem_match_2 = re.search(r'Memory Using Percentage Is:\s+(\d+)%', output)
-        if mem_match_2:
-            data['memory_usage'] = float(mem_match_2.group(1))
-
-        # Disk Parsing
-        # 1. Table format
-        # System Disk Usage Information:
-        #   SlotID  Device ... Used Percentage
-        #   0       flash: ... 76.98%
-        disk_match = re.search(r'System Disk Usage Information[\s\S]*?(\d+\.?\d*)%', output)
-        if disk_match:
-            data['disk_usage'] = float(disk_match.group(1))
-
-        # Temperature Parsing
-        # Slot   Card   Sensor No.   SensorName            Status  Upper  Lower  Temp(C)
-        # 0     -     1           AR2220 TEMP      NORMAL  73     0      0 
-        temp_match = re.search(r'TEMP\s+NORMAL\s+\d+\s+\d+\s+(\d+)', output)
-        if temp_match:
-            data['temperature'] = float(temp_match.group(1))
-            
-        return data
-
-    async def get_uptime(self) -> str:
-        """获取运行时间"""
+    async def get_uptime(self) -> Optional[str]:
+        # 兼容保留：按需获取 uptime（会触发一次 display version）
         try:
-            cmd = "display version"
-            output = await self.send_command(cmd)
-            # Output: Huawei AR2220 Router uptime is 0 week, 0 day, 0 hour, 41 minutes
-            match = re.search(r'uptime is (.+)', output)
-            if match:
-                return match.group(1).strip()
+            output = await self.fetch_display_version()
+            return parse_huawei_uptime_from_display_version(output)
         except Exception as e:
-            logger.warning(f"获取运行时间失败: {e}")
-        return None
+            logger.warning(f"获取运行时间失败: {self._compact_exception_message(e)}")
+            return None
 
     async def get_health(self) -> str:
         """获取健康状态（温度、电压等）"""
         # 注意：不同型号命令可能不同，AR系列通常支持 display health
-        return await self.send_command("display health")
+        return await self.fetch_display_health()
+
+    async def fetch_display_interface_brief(self) -> str:
+        """获取接口简要信息"""
+        return await self.send_command("display interface brief")
+
+    async def fetch_display_ip_routing_table(self) -> str:
+        """获取路由表信息"""
+        return await self.send_command("display ip routing-table")
+
+    async def fetch_display_vlan(self) -> str:
+        """获取 VLAN 信息"""
+        return await self.send_command("display vlan")
+
+    async def collect_interfaces(self) -> List[Dict[str, Any]]:
+        """采集并解析接口列表"""
+        try:
+            output = await self.fetch_display_interface_brief()
+            items = HuaweiInterfaceRuntime.from_output(output)
+            return [item.to_dict() for item in items]
+        except Exception as e:
+            logger.error(f"采集华为设备 {self.ip} 接口失败: {self._compact_exception_message(e)}")
+            return []
+
+    async def collect_routes(self) -> List[Dict[str, Any]]:
+        """采集并解析路由表"""
+        try:
+            output = await self.fetch_display_ip_routing_table()
+            items = HuaweiRouteRuntime.from_output(output)
+            return [item.to_dict() for item in items]
+        except Exception as e:
+            logger.error(f"采集华为设备 {self.ip} 路由表失败: {self._compact_exception_message(e)}")
+            return []
+
+    async def collect_vlans(self) -> List[Dict[str, Any]]:
+        """采集并解析 VLAN 列表"""
+        try:
+            output = await self.fetch_display_vlan()
+            items = HuaweiVlanRuntime.from_output(output)
+            return [item.to_dict() for item in items]
+        except Exception as e:
+            logger.error(f"采集华为设备 {self.ip} VLAN 失败: {self._compact_exception_message(e)}")
+            return []

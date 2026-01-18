@@ -19,18 +19,22 @@ ssh_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 class MonitorBoostRequest(BaseModel):
+    """监控加速请求参数"""
     device_id: int
     ttl_seconds: int = 60
     interval: Optional[float] = None
     monitor_interval: Optional[float] = None
 
 class MonitorRestoreRequest(BaseModel):
+    """监控恢复请求参数"""
     device_id: int
 
 class DeviceRecycleActionRequest(BaseModel):
+    """设备回收站操作请求参数"""
     device_id: int
 
 class DeviceUpdateRequest(BaseModel):
+    """设备更新请求参数"""
     device_id: int
     device_name: Optional[str] = None
     type: Optional[str] = None
@@ -47,11 +51,26 @@ async def get_device(
     location_node_id: Optional[int] = Query(None),
     user_data: dict = Depends(PermissionChecker(["sys:device:list"]))
 ):
+    """
+    获取设备列表
+    
+    Args:
+        type: 设备类型过滤
+        search: 搜索关键字
+        location: 位置过滤
+        location_node_id: 位置节点ID过滤
+    """
     return await device_service.get_device_list(type, search_query=search, location_filter=location, location_node_id=location_node_id)
 
 # 添加设备
 @router.post("/add")
 async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionChecker(["sys:device:add"]))):
+    """
+    添加新设备
+    
+    Args:
+        device: 设备创建信息
+    """
     try:
         user_id = user_data.get('id')
         if not user_id:
@@ -68,6 +87,12 @@ async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionC
 # 删除设备
 @router.post("/delete")
 async def delete_device(data: DeviceDelete, user_data: dict = Depends(PermissionChecker(["sys:device:del"]))):
+    """
+    删除设备（移入回收站）
+    
+    Args:
+        data: 删除请求参数
+    """
     try:
         deleted_by = str(user_data.get("id") or "")
         await device_service.delete_device(data.id, data.ip, deleted_by=deleted_by)
@@ -82,13 +107,19 @@ async def delete_device(data: DeviceDelete, user_data: dict = Depends(Permission
 async def list_recycled_devices(
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
-    return {"code": 200, "data": await device_service.get_deleted_devices()}
+    """获取回收站中的设备列表"""
+    is_super = user_is_super(user_data)
+    user_id = user_data.get("id")
+    # 注意: get_deleted_devices 是 DeviceService 的实例方法，需要通过 device_service 实例调用
+    # 并且需要确保 user_id 类型正确（int）
+    return {"code": 200, "data": await device_service.get_deleted_devices(user_id=int(user_id) if user_id else None, is_super=is_super)}
 
 @router.post("/recycle/restore")
 async def restore_recycled_device(
     data: DeviceRecycleActionRequest,
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
+    """恢复回收站中的设备"""
     await device_service.restore_device(int(data.device_id), restored_by=str(user_data.get("id") or ""))
     return {"code": 200}
 
@@ -97,6 +128,7 @@ async def purge_recycled_device(
     data: DeviceRecycleActionRequest,
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
+    """彻底删除回收站中的设备"""
     await device_service.purge_device(int(data.device_id))
     return {"code": 200}
 
@@ -105,6 +137,12 @@ async def update_device(
     data: DeviceUpdateRequest,
     user_data: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
+    """
+    更新设备信息
+    
+    Args:
+        data: 更新请求参数
+    """
     patch = DeviceUpdate(
         device_name=data.device_name,
         type=data.type,
@@ -117,6 +155,12 @@ async def update_device(
 # 测试连接
 @router.post("/test_connect")
 async def test_connect(device: DeviceTest, user_data: dict = Depends(PermissionChecker(["sys:device:add", "sys:device:edit"]))):
+    """
+    测试设备连接
+    
+    Args:
+        device: 连接测试参数
+    """
     try:
         await device_service.test_connect(device)
         return {"message": "连接测试成功", "code": 200}
@@ -129,6 +173,7 @@ async def get_device_status(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """获取设备实时状态"""
     monitor = MonitorManager()
     snap = await monitor.get_runtime_snapshot_async(int(device_id))
     return format_ws_data(_snapshot_to_status_data(snap))
@@ -138,7 +183,25 @@ async def get_device_detail(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """
+    获取设备详细信息
+    
+    返回数据包含两部分：
+    1. 数据库中的静态配置信息（如 IP、位置、端口等）
+    2. 内存/Redis 中的实时运行时状态（如 CPU、内存、在线状态、OS版本等）
+    """
+    # 1. 查询数据库静态信息
+    # 使用 CTE 递归查询位置全路径
     sql = """
+        WITH RECURSIVE location_path AS (
+            SELECT id, parent_id, name, 1 as level, name as full_path
+            FROM location_nodes
+            WHERE parent_id IS NULL
+            UNION ALL
+            SELECT c.id, c.parent_id, c.name, p.level + 1, p.full_path || ' / ' || c.name
+            FROM location_nodes c
+            JOIN location_path p ON c.parent_id = p.id
+        )
         SELECT
             nd.id,
             nd.device_name,
@@ -146,7 +209,7 @@ async def get_device_detail(
             nd.ipv6,
             nd.mac,
             nd.device_type,
-            COALESCE(ln.name, '') AS location,
+            COALESCE(lp.full_path, ln.name, '') AS location,  -- 优先使用全路径
             lnd.node_id AS location_node_id,
             nd.ssh_port,
             nd.vendor,
@@ -159,16 +222,20 @@ async def get_device_detail(
         FROM network_devices nd
         LEFT JOIN location_node_devices lnd ON lnd.device_id = nd.id
         LEFT JOIN location_nodes ln ON ln.id = lnd.node_id
+        LEFT JOIN location_path lp ON lp.id = ln.id
         LEFT JOIN users u ON u.id::text = nd.created_by
         WHERE nd.id = $1
           AND COALESCE(nd.is_active, true) = true
     """
+    # 如果启用了逻辑删除，过滤掉已删除的记录
     if await device_service.has_deleted_at():
         sql += " AND nd.deleted_at IS NULL"
+    
     row = await db.fetch_one(sql, int(device_id))
     if not row:
         raise HTTPException(status_code=404, detail="设备不存在")
 
+    # 2. 格式化数据库返回的数据
     data = dict(row)
     data["created_by"] = str(data.get("created_by") or "")
     data["created_by_name"] = str(data.get("created_by_name") or "未知")
@@ -178,19 +245,29 @@ async def get_device_detail(
     data["mac"] = str(data.get("mac") or "")
     data["ssh_port"] = int(data.get("ssh_port") or 22)
     data["location"] = str(data.get("location") or "")
+    
+    # 处理位置节点 ID 类型
     if "location_node_id" in data and data.get("location_node_id") is not None:
         try:
             data["location_node_id"] = int(data.get("location_node_id"))
         except Exception:
             data["location_node_id"] = None
+            
     data["vendor"] = str(data.get("vendor") or "")
     data["model"] = str(data.get("model") or "")
     data["serial_number"] = str(data.get("serial_number") or "")
     data["type"] = str(data.get("device_type") or "")
 
+    # 3. 获取实时运行时状态
+    # 从 MonitorManager 获取内存快照（包含 CPU、Memory、Uptime、Version 等）
     monitor = MonitorManager()
     snap = await monitor.get_runtime_snapshot_async(int(device_id))
+    
+    # 4. 合并静态数据与运行时数据
+    # _snapshot_to_status_data 负责将快照转换为前端所需的格式
+    # format_ws_data 负责进一步标准化字段名（如转驼峰等）
     data.update(format_ws_data(_snapshot_to_status_data(snap)))
+    
     return data
 
 
@@ -199,6 +276,7 @@ async def get_device_config(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """获取设备配置信息"""
     data = await device_service.get_device_config(int(device_id))
     return {"code": 200, "data": data}
 
@@ -208,6 +286,7 @@ async def update_device_config(
     payload: DeviceConfigUpdate,
     user: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
+    """更新设备配置"""
     updated = await device_service.update_device_config(int(payload.device_id), payload.model_dump(exclude_unset=True))
     monitor = MonitorManager()
     try:
@@ -217,6 +296,44 @@ async def update_device_config(
     return {"code": 200, "data": updated}
 
 
+from app.services.network_resource_service import network_resource_service
+
+@router.get("/interfaces/{device_id}")
+async def get_device_interfaces(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+):
+    """获取设备接口列表"""
+    data = await network_resource_service.get_interfaces(int(device_id))
+    return {"code": 200, "data": data}
+
+@router.get("/routes/{device_id}")
+async def get_device_routes(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+):
+    """获取设备路由表"""
+    data = await network_resource_service.get_routes(int(device_id))
+    return {"code": 200, "data": data}
+
+@router.get("/vlans/{device_id}")
+async def get_device_vlans(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+):
+    """获取设备 VLAN 列表"""
+    data = await network_resource_service.get_vlans(int(device_id))
+    return {"code": 200, "data": data}
+
+@router.post("/resources/sync/{device_id}")
+async def sync_device_resources(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:edit"]))
+):
+    """手动触发设备资源同步（接口、路由、VLAN）"""
+    await network_resource_service.sync_device_resources(int(device_id))
+    return {"code": 200, "message": "同步任务已触发"}
+
 @router.get("/audit/logs/{device_id}")
 async def get_device_audit_logs(
     device_id: int,
@@ -224,6 +341,7 @@ async def get_device_audit_logs(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(PermissionChecker(["sys:device:audit"])),
 ):
+    """获取设备变更审计日志"""
     result = await device_service.get_device_change_logs(int(device_id), page=int(page), page_size=int(page_size))
     return {"code": 200, "data": result}
 
@@ -234,6 +352,7 @@ async def get_device_ssh_command_audit_logs(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(PermissionChecker(["sys:device:audit"])),
 ):
+    """获取设备 SSH 命令审计日志"""
     result = await device_service.get_ssh_command_audit_logs(int(device_id), page=int(page), page_size=int(page_size))
     return {"code": 200, "data": result}
 
@@ -242,6 +361,7 @@ async def boost_device_monitor(
     data: MonitorBoostRequest,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """临时提高设备监控频率（加速监控）"""
     monitor = MonitorManager()
     await monitor.boost_device(
         device_id=int(data.device_id),
@@ -256,6 +376,7 @@ async def restore_device_monitor(
     data: MonitorRestoreRequest,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """恢复设备默认监控频率"""
     monitor = MonitorManager()
     await monitor.restore_boost(int(data.device_id))
     return {"code": 200}
@@ -265,12 +386,18 @@ async def sync_device_monitor(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
+    """同步设备监控状态"""
     monitor = MonitorManager()
     snap = await monitor.sync_device_snapshot(int(device_id))
     return {"code": 200, "data": snap}
 
 @router.websocket("/ws/detail/{device_id}")
 async def websocket_device_detail(websocket: WebSocket, device_id: int):
+    """
+    WebSocket 设备详情实时更新
+    
+    提供设备状态、配置变更等实时推送
+    """
     await websocket.accept()
     token = websocket.query_params.get("token")
     user = await verify_token_ws(websocket, token)
@@ -678,7 +805,7 @@ def _parse_usage(value) -> float:
 
 def _snapshot_to_status_data(snapshot: dict) -> dict:
     fsm_state = str(snapshot.get("fsm_state") or "").strip()
-    return {
+    data = {
         "status": fsm_state,
         "online_status": fsm_state in {"online", "recovering", "degraded", "checking", "collecting"},
         "fsm_state": fsm_state,
@@ -693,6 +820,12 @@ def _snapshot_to_status_data(snapshot: dict) -> dict:
         "uptime": str(snapshot.get("uptime") or ""),
         "last_updated": str(snapshot.get("last_updated") or ""),
     }
+    # 动态透传其他所有字段（如 os_version, version, serial_number 等）
+    exclude_keys = set(data.keys())
+    for k, v in snapshot.items():
+        if k not in exclude_keys:
+            data[k] = v
+    return data
 
 def format_ws_data(status_data: dict) -> dict:
     raw_status = status_data.get('status')
@@ -702,7 +835,11 @@ def format_ws_data(status_data: dict) -> dict:
     elif status_data.get('online_status'):
         status = 'online'
         
-    return {
+    # Start with a copy of all data to ensure passthrough
+    result = status_data.copy()
+    
+    # Update/Overwrite with standardized camelCase fields expected by frontend
+    result.update({
         'status': status,
         'rawStatus': raw_status or '',
         'fsmState': status_data.get('fsm_state', ''),
@@ -718,4 +855,6 @@ def format_ws_data(status_data: dict) -> dict:
         'uptime': status_data.get('uptime', '未知'),
         'lastConnect': status_data.get('last_updated', ''),
         'osVersion': status_data.get('os_version', status_data.get('kernel', 'Unknown')),
-    }
+    })
+    
+    return result

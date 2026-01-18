@@ -7,10 +7,12 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 class Database:
+    """PostgreSQL 数据库管理类"""
     _pool: Optional[asyncpg.Pool] = None
 
     @classmethod
     async def connect(cls):
+        """连接数据库"""
         if cls._pool:
             return
             
@@ -32,6 +34,7 @@ class Database:
 
     @classmethod
     async def disconnect(cls):
+        """断开数据库连接"""
         if cls._pool:
             await cls._pool.close()
             cls._pool = None
@@ -78,7 +81,7 @@ TORTOISE_ORM = {
     "connections": {"default": settings.DATABASE_URL},
     "apps": {
         "models": {
-            "models": ["app.models.orm.user", "app.models.orm.device", "app.models.orm.location", "app.models.orm.rbac", "app.models.orm.repair", "aerich.models"],
+            "models": ["app.models.orm.user", "app.models.orm.device", "app.models.orm.location", "app.models.orm.rbac", "app.models.orm.repair", "app.models.orm.log", "app.models.orm.config", "aerich.models"],
             "default_connection": "default",
         },
     },

@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     repair_orders,
     rbac,
     locations,
+    alerts,
 )
 
 api_router = APIRouter()
@@ -23,6 +24,8 @@ api_router.include_router(users.router, prefix="/users", tags=["Users"])
 # 但为了统一 API 规范，建议迁移到 /api/v1/devices
 # 这里我们注册到 /devices，如果前端需要兼容，可以在 main.py 单独挂载，或者让前端改路径
 api_router.include_router(devices.router, prefix="/user/device", tags=["Device"])
+api_router.include_router(alerts.router, prefix="/user/device/alerts", tags=["Device Alerts"])
+
 
 api_router.include_router(system.router, prefix="/system", tags=["System"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])

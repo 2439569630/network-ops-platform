@@ -2,19 +2,23 @@
 from tortoise import fields, models
 
 class NetworkDevice(models.Model):
+    """网络设备模型"""
     id = fields.IntField(pk=True)
     device_name = fields.CharField(max_length=255)
     ipv4 = fields.CharField(max_length=50, null=True)
     ipv6 = fields.CharField(max_length=50, null=True)
-    mac = fields.CharField(max_length=50, null=True)
-    device_type = fields.CharField(max_length=50, null=True)
-    user_name = fields.CharField(max_length=50, null=True)
-    password = fields.CharField(max_length=128, null=True)
+    mac = fields.CharField(max_length=17, null=True)
+    device_type = fields.CharField(max_length=50)
+    
+    # SSH Credentials
+    user_name = fields.CharField(max_length=100, default="root")
+    password = fields.CharField(max_length=100, default="")
     ssh_port = fields.IntField(default=22)
     online_status = fields.BooleanField(default=False)
     is_active = fields.BooleanField(default=True)
     
-    vendor = fields.CharField(max_length=255, null=True)
+    # Metadata
+    vendor = fields.CharField(max_length=100, null=True)
     model = fields.CharField(max_length=255, null=True)
     serial_number = fields.CharField(max_length=255, null=True)
     last_seen = fields.DatetimeField(null=True)
@@ -25,11 +29,17 @@ class NetworkDevice(models.Model):
     updated_at = fields.DatetimeField(auto_now=True)
     deleted_at = fields.DatetimeField(null=True)
 
+    # Extended Resource Fields
+    routing_table = fields.JSONField(default=list, description="完整路由表数据")
+    resource_hash = fields.JSONField(default=dict, description="资源哈希指纹 {interfaces: md5, vlans: md5, ...}")
+    last_routing_update = fields.DatetimeField(null=True, description="路由表最后更新时间")
+
     class Meta:
         table = "network_devices"
 
 
 class DeviceConfigEntry(models.Model):
+    """设备监控配置模型"""
     device_id = fields.IntField(pk=True)
 
     interval = fields.FloatField(null=True)
@@ -46,6 +56,8 @@ class DeviceConfigEntry(models.Model):
     connect_max_retries = fields.IntField(null=True)
     connect_retry_delay_seconds = fields.FloatField(null=True)
     offline_retry_delay_seconds = fields.FloatField(null=True)
+    
+    resource_sync_interval = fields.FloatField(default=3600.0)
 
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

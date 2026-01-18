@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from typing import Optional, Tuple, Dict, Any
 import time
 
-
+# 状态机状态
 @dataclass
 class DeviceStatus:
     """设备状态数据类，用于记录设备连接与采集状态"""
@@ -125,7 +125,7 @@ class DeviceStatus:
             "status": self.label(),
         }
 
-
+# 设备配置
 @dataclass(frozen=True)
 class DeviceConfig:
     """设备连接配置数据类，所有字段不可变"""
