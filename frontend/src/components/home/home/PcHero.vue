@@ -4,7 +4,7 @@
     <div class="hero__inner">
       <div class="hero__top">
         <div class="identity">
-          <el-avatar :size="56" class="identity__avatar">
+          <el-avatar :size="56" class="identity__avatar" :src="store.form.avatar_url || ''">
             <span>{{ store.initials }}</span>
           </el-avatar>
           <div class="identity__meta">
@@ -201,4 +201,3 @@ const gridStyle = computed(() => {
   }
 }
 </style>
-

@@ -1,5 +1,5 @@
 <template>
-  <div class="location-container">
+  <div class="location-container" v-loading="globalLoading">
     <!-- 侧边栏：位置树 -->
     <div class="sidebar-card">
       <div class="sidebar-header">
@@ -27,7 +27,7 @@
         />
       </div>
       
-      <div class="tree-content" v-loading="loading">
+      <div class="tree-content">
            <el-tree
             ref="treeRef"
             :data="locationData"
@@ -61,7 +61,7 @@
     </div>
 
     <!-- 主内容区 -->
-    <div class="main-content" v-loading="detailLoading">
+    <div class="main-content">
       <div v-if="currentNode" class="content-wrapper">
         <!-- 顶部头信息 -->
         <div class="content-header">
@@ -187,7 +187,7 @@
                     <el-table-column prop="status" label="状态" width="90">
                             <template #default="{ row }">
                                 <el-tag :type="getDeviceStatusTagType(getDeviceStatusModel(row))" size="small" effect="dark">
-                                    {{ getDeviceStatusText(getDeviceStatusModel(row)) }}
+                                    {{ getDeviceStatusText(getDeviceStatusModel(row), nowTick) }}
                                 </el-tag>
                             </template>
                     </el-table-column>
@@ -439,11 +439,14 @@ const treeRef = ref(null)
 const currentNode = ref(null)
 const loading = ref(false)
 const detailLoading = ref(false)
+const globalLoading = computed(() => loading.value || detailLoading.value)
 const saving = ref(false)
 const isExpandAll = ref(true)
 const store = homeDataStore()
 const deviceStore = useDeviceStore()
 store.syncAuthFromToken()
+const nowTick = ref(Date.now())
+let nowTimer = null
 
 // Dialogs
 const dialogVisible = ref(false)
@@ -1066,9 +1069,16 @@ onMounted(async () => {
     await store.fetchPermissions({ force: false })
     await fetchTree()
     deviceStore.startRealtime()
+    nowTimer = window.setInterval(() => {
+        nowTick.value = Date.now()
+    }, 1000)
 })
 
 onBeforeUnmount(() => {
+    if (nowTimer) {
+        clearInterval(nowTimer)
+        nowTimer = null
+    }
     deviceStore.stopRealtime()
 })
 

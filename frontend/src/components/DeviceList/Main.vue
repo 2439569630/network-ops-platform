@@ -24,89 +24,124 @@
         <div :class="$style.content">
             <!-- 卡片视图 -->
             <div v-if="isCardView" :class="$style.cardGrid">
-                <el-card v-for="(item, index) in deviceList" :key="index" :class="$style.card" shadow="hover">
-                    <template #header>
-                        <div :class="$style.cardHeader">
-                            <span :class="$style.deviceName" :title="item.device_name">{{ item.device_name }}</span>
-                            <el-tag :type="getDeviceStatusTagType(item)" size="small" effect="dark">
-                                {{ getDeviceStatusText(item) }}
-                            </el-tag>
-                        </div>
-                    </template>
-                    
-                    <div :class="$style.cardBody">
-                        <div :class="$style.infoGrid">
-                            <div :class="$style.infoItem">
-                                <span :class="$style.label">设备类型</span>
-                                <span :class="$style.value">{{ item.type }}</span>
+                <div v-for="(item, index) in deviceList" :key="index" :class="$style.card">
+                    <div :class="[$style.statusStrip, $style[getDeviceStatusTagType(item)]]"></div>
+                    <div :class="$style.cardContent">
+                        <div :class="$style.cardTop">
+                            <div :class="$style.cardHeaderRow">
+                                <span :class="$style.deviceName" :title="item.device_name">{{ item.device_name }}</span>
+                                <el-tag :type="getDeviceStatusTagType(item)" size="small" effect="light" round>
+                                    {{ getDeviceStatusText(item, nowTick) }}
+                                </el-tag>
                             </div>
-                            <div :class="$style.infoItem">
-                                <span :class="$style.label">位置</span>
-                                <span :class="$style.value">{{ item.location }}</span>
-                            </div>
-                            <div :class="$style.infoItem">
-                                <span :class="$style.label">IPv4</span>
-                                <span :class="$style.value">{{ item.ipv4 }}</span>
-                            </div>
-                            <div :class="$style.infoItem">
-                                <span :class="$style.label">MAC</span>
-                                <span :class="$style.value" :title="item.mac">{{ formatMac(item.mac) }}</span>
+                            <div :class="$style.cardSubHeader">
+                                <el-icon><Link /></el-icon>
+                                <span>{{ item.ipv4 }}</span>
                             </div>
                         </div>
 
-                        <div :class="$style.statsList">
-                            <div :class="$style.statItem">
-                                <div :class="$style.statHeader">
-                                    <span>CPU</span>
-                                    <span :class="$style.statValue">{{ item.cpu_usage || '0' }}</span>
-                                </div>
-                                <el-progress :percentage="parseFloat(item.cpu_usage || 0)" :color="getProgressColor" :show-text="false" :stroke-width="6" />
+                        <div :class="$style.infoSection">
+                            <div :class="$style.infoRow">
+                                <el-icon :class="$style.icon"><Monitor /></el-icon>
+                                <span :class="$style.infoText">{{ item.type }}</span>
                             </div>
-                            <div :class="$style.statItem">
-                                <div :class="$style.statHeader">
-                                    <span>内存</span>
-                                    <span :class="$style.statValue">{{ item.memory_usage || '0' }}</span>
-                                </div>
-                                <el-progress :percentage="parseFloat(item.memory_usage || 0)" :color="getProgressColor" :show-text="false" :stroke-width="6" />
+                            <div :class="$style.infoRow">
+                                <el-icon :class="$style.icon"><Location /></el-icon>
+                                <span :class="$style.infoText">{{ item.location }}</span>
                             </div>
-                            <div :class="$style.statItem">
-                                <div :class="$style.statHeader">
-                                    <span>磁盘</span>
-                                    <span :class="$style.statValue">{{ item.disk_usage || '0' }}</span>
-                                </div>
-                                <el-progress :percentage="parseFloat(item.disk_usage || 0)" :color="getProgressColor" :show-text="false" :stroke-width="6" />
+                            <div :class="$style.infoRow">
+                                <el-icon :class="$style.icon"><Odometer /></el-icon>
+                                <span :class="$style.infoText" :title="item.mac">{{ formatMac(item.mac) }}</span>
                             </div>
                         </div>
 
-                        <div :class="$style.actions">
-                            <el-button type="primary" size="small" :icon="View" @click="showDeviceDetail(item)">详情</el-button>
-                            <el-button v-if="canSsh" type="success" size="small" :icon="Connection" @click="connectSSH(item)" :disabled="!isSshEnabled(item)">SSH</el-button>
-                            <el-button v-if="canDelete" type="danger" size="small" :icon="Delete" @click="handleDelete(item)">删除</el-button>
+                        <div :class="$style.resourceSection">
+                            <div :class="$style.resItem">
+                                <div :class="$style.resLabel">CPU</div>
+                                <el-progress :percentage="parseFloat(item.cpu_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" class="flex-1" />
+                                <div :class="$style.resValue">{{ item.cpu_usage || '0%' }}</div>
+                            </div>
+                            <div :class="$style.resItem">
+                                <div :class="$style.resLabel">MEM</div>
+                                <el-progress :percentage="parseFloat(item.memory_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" class="flex-1" />
+                                <div :class="$style.resValue">{{ item.memory_usage || '0%' }}</div>
+                            </div>
+                        </div>
+
+                        <div :class="$style.cardFooter">
+                            <el-tooltip content="查看详情" placement="top" :show-after="500">
+                                <el-button text circle type="primary" :icon="View" @click="showDeviceDetail(item)" />
+                            </el-tooltip>
+                            <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
+                                <el-button text circle type="success" :icon="Connection" @click="connectSSH(item)" :disabled="!isSshEnabled(item)" />
+                            </el-tooltip>
+                            <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
+                                <el-button text circle type="danger" :icon="Delete" @click="handleDelete(item)" />
+                            </el-tooltip>
                         </div>
                     </div>
-                </el-card>
+                </div>
             </div>
 
             <!-- 列表视图 -->
             <div v-else :class="$style.tableWrapper">
-                <el-table :data="deviceList" style="width: 100%; height: 100%" :header-cell-style="{background:'#f5f7fa', color:'#606266'}">
-                    <el-table-column prop="device_name" label="设备名称" min-width="150" sortable />
-                    <el-table-column prop="ipv4" label="IPv4" min-width="140" sortable />
-                    <el-table-column prop="mac" label="MAC地址" min-width="160" />
+                <el-table :data="deviceList" style="width: 100%; height: 100%" :header-cell-style="{background:'#f5f7fa', color:'#606266', fontWeight: '600'}">
+                    <el-table-column prop="device_name" label="设备名称" min-width="180" sortable fixed>
+                        <template #default="{ row }">
+                            <div :class="$style.deviceNameCell">
+                                <div :class="[$style.statusDot, $style[getDeviceStatusTagType(row)]]"></div>
+                                <span :title="row.device_name" style="font-weight: 600; color: #303133;">{{ row.device_name }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="ipv4" label="IPv4" min-width="140" sortable>
+                         <template #default="{ row }">
+                            <span style="font-family: monospace;">{{ row.ipv4 }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="mac" label="MAC地址" min-width="160">
+                        <template #default="{ row }">
+                            <span style="font-family: monospace; color: #909399;">{{ formatMac(row.mac) }}</span>
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="status" label="状态" width="100" sortable>
                         <template #default="{ row }">
-                            <el-tag :type="getDeviceStatusTagType(row)">{{ getDeviceStatusText(row) }}</el-tag>
+                            <el-tag :type="getDeviceStatusTagType(row)" size="small" effect="light" round>
+                                {{ getDeviceStatusText(row, nowTick) }}
+                            </el-tag>
                         </template>
                     </el-table-column>
                     <el-table-column prop="type" label="类型" width="120" sortable />
                     <el-table-column prop="location" label="位置" width="120" />
-                    <el-table-column prop="cpu_usage" label="CPU" width="100" sortable />
-                    <el-table-column prop="memory_usage" label="内存" width="100" sortable />
-                    <el-table-column label="操作" width="200" fixed="right">
+                    <el-table-column prop="cpu_usage" label="CPU" width="160" sortable>
                         <template #default="{ row }">
-                            <el-button link type="primary" size="small" @click="showDeviceDetail(row)">详情</el-button>
-                            <el-button v-if="canSsh" link type="success" size="small" @click="connectSSH(row)" :disabled="!isSshEnabled(row)">SSH</el-button>
-                            <el-button v-if="canDelete" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+                            <div :class="$style.resourceCell">
+                                <el-progress :percentage="parseFloat(row.cpu_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
+                                <span :class="$style.resValueText">{{ row.cpu_usage || '0%' }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="memory_usage" label="内存" width="160" sortable>
+                        <template #default="{ row }">
+                            <div :class="$style.resourceCell">
+                                <el-progress :percentage="parseFloat(row.memory_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
+                                <span :class="$style.resValueText">{{ row.memory_usage || '0%' }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="150" fixed="right" align="center">
+                        <template #default="{ row }">
+                            <div :class="$style.actionButtons">
+                                <el-tooltip content="查看详情" placement="top" :show-after="500">
+                                    <el-button text circle type="primary" :icon="View" size="small" @click="showDeviceDetail(row)" />
+                                </el-tooltip>
+                                <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
+                                    <el-button text circle type="success" :icon="Connection" size="small" @click="connectSSH(row)" :disabled="!isSshEnabled(row)" />
+                                </el-tooltip>
+                                <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
+                                    <el-button text circle type="danger" :icon="Delete" size="small" @click="handleDelete(row)" />
+                                </el-tooltip>
+                            </div>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -118,7 +153,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Grid, List, View, Connection, Delete } from '@element-plus/icons-vue';
+import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Odometer } from '@element-plus/icons-vue';
 import { useDeviceStore } from './store';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
@@ -128,6 +163,8 @@ const store = useDeviceStore();
 const router = useRouter();
 const authStore = homeDataStore()
 const activeTab = ref('0');
+const nowTick = ref(Date.now())
+let nowTimer = null
 
 // 计算属性和状态
 const isCardView = computed(() => store.getdataCardType() === 0);
@@ -212,9 +249,16 @@ const handleDelete = (item) => {
 onMounted(() => {
     authStore.syncAuthFromToken()
     authStore.fetchPermissions()
+    nowTimer = window.setInterval(() => {
+        nowTick.value = Date.now()
+    }, 1000)
 })
 
 onBeforeUnmount(() => {
+    if (nowTimer) {
+        clearInterval(nowTimer)
+        nowTimer = null
+    }
     store.stopRealtime();
 });
 </script>
@@ -263,106 +307,155 @@ onBeforeUnmount(() => {
 .cardGrid {
     height: 100%;
     overflow-y: auto;
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     align-content: flex-start;
     gap: 20px;
-    padding-bottom: 20px; /* 底部留白 */
+    padding-bottom: 20px;
 }
 
 .card {
-    width: 300px;
+    background: #fff;
+    border-radius: 12px;
+    position: relative;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid #ebeef5;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    border: none;
-    transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
-.cardHeader {
+/* 状态颜色通用类 */
+.success { background-color: #67c23a !important; }
+.warning { background-color: #e6a23c !important; }
+.danger { background-color: #f56c6c !important; }
+.info { background-color: #909399 !important; }
+
+.statusStrip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: #909399;
+}
+
+/* 移除旧的组合选择器，使用通用类 */
+/* .statusStrip.success { background: #67c23a; } */
+/* ... */
+
+.cardContent {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.cardTop {
+    margin-bottom: 16px;
+}
+
+.cardHeaderRow {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 8px;
 }
 
 .deviceName {
     font-weight: 600;
     font-size: 16px;
+    color: #303133;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
+    max-width: 160px;
 }
 
-.cardBody {
+.cardSubHeader {
     display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.infoGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    font-size: 13px;
-    background: #f8f9fa;
-    padding: 10px;
-    border-radius: 6px;
-}
-
-.infoItem {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.label {
+    align-items: center;
+    gap: 6px;
     color: #909399;
-    font-size: 12px;
+    font-size: 13px;
 }
 
-.value {
-    color: #303133;
-    font-weight: 500;
-    word-break: break-all;
-}
-
-.statsList {
+.infoSection {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
 }
 
-.statItem {
+.infoRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #606266;
+    line-height: 1.2;
+}
+
+.icon {
+    font-size: 14px;
+    color: #909399;
+    flex-shrink: 0;
+}
+
+.infoText {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.resourceSection {
+    margin-top: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 12px;
+    margin-bottom: 16px;
 }
 
-.statHeader {
+.resItem {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
     font-size: 12px;
+}
+
+.resLabel {
+    width: 32px;
+    color: #909399;
+    font-weight: 500;
+}
+
+.resValue {
+    width: 40px;
+    text-align: right;
     color: #606266;
+    font-family: monospace;
 }
 
-.statValue {
-    font-weight: 600;
-    color: #409eff;
-}
-
-.actions {
+.cardFooter {
+    border-top: 1px solid #f0f2f5;
+    padding-top: 12px;
     display: flex;
-    justify-content: space-between;
-    margin-top: 5px;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
-.actions button {
-    width: 48%;
+.cardFooter :global(.el-button) {
+    margin-left: 0 !important;
 }
 
 /* 列表视图容器 */
@@ -372,5 +465,38 @@ onBeforeUnmount(() => {
     border-radius: 8px;
     padding: 20px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.deviceNameCell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.statusDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.resourceCell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.resValueText {
+    font-family: monospace;
+    font-size: 12px;
+    color: #606266;
+    width: 35px;
+    text-align: right;
+}
+
+.actionButtons {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
 }
 </style>

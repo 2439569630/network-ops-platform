@@ -4,7 +4,20 @@
       <template #header>
         <div class="card-header">
           <span class="title">预警规则</span>
-          <el-button type="primary" size="small" @click="openAddDialog">添加规则</el-button>
+          <div class="header-actions">
+            <el-dropdown trigger="click" @command="applyTemplate">
+              <el-button size="small">添加模板</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="basic">基础模板（离线+CPU/内存/磁盘）</el-dropdown-item>
+                  <el-dropdown-item command="temp">温度模板（temperature）</el-dropdown-item>
+                  <el-dropdown-item command="if_counts">接口模板（down计数）</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-button size="small" @click="openSubscriptionDialog">订阅通知</el-button>
+            <el-button type="primary" size="small" @click="openAddDialog">添加规则</el-button>
+          </div>
         </div>
       </template>
 
@@ -106,11 +119,20 @@
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="监控指标" prop="metric">
-          <el-select v-model="form.metric" placeholder="请选择监控指标">
+          <el-select
+            v-model="form.metric"
+            placeholder="请选择或输入监控指标"
+            filterable
+            allow-create
+            default-first-option
+          >
             <el-option label="CPU使用率" value="cpu_usage" />
             <el-option label="内存使用率" value="memory_usage" />
             <el-option label="磁盘使用率" value="disk_usage" />
+            <el-option label="温度" value="temperature" />
             <el-option label="在线状态" value="online_status" />
+            <el-option label="接口物理Down数" value="if_phy_down_count" />
+            <el-option label="接口协议Down数" value="if_protocol_down_count" />
           </el-select>
         </el-form-item>
         
@@ -118,21 +140,29 @@
           <el-row :gutter="10">
             <el-col :span="10">
               <el-form-item prop="operator">
-                <el-select v-model="form.operator" placeholder="条件">
+                <el-select v-if="form.metric !== 'online_status'" v-model="form.operator" placeholder="条件">
                   <el-option label="大于" value=">" />
                   <el-option label="大于等于" value=">=" />
                   <el-option label="小于" value="<" />
                   <el-option label="小于等于" value="<=" />
                   <el-option label="等于" value="=" />
                 </el-select>
+                <el-select v-else v-model="form.operator" placeholder="条件" disabled>
+                  <el-option label="等于" value="=" />
+                </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="14">
               <el-form-item prop="threshold">
-                <el-input-number 
-                  v-model="form.threshold" 
-                  :min="0" 
-                  style="width: 100%" 
+                <el-select v-if="form.metric === 'online_status'" v-model="form.threshold" style="width: 100%">
+                  <el-option label="离线(0)" :value="0" />
+                  <el-option label="在线(1)" :value="1" />
+                </el-select>
+                <el-input-number
+                  v-else
+                  v-model="form.threshold"
+                  :min="0"
+                  style="width: 100%"
                   placeholder="阈值"
                   :controls="false"
                 >
@@ -169,6 +199,43 @@
         </span>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="subscriptionDialogVisible"
+      title="订阅设备告警通知"
+      width="520px"
+      destroy-on-close
+    >
+      <el-form label-width="100px">
+        <el-form-item label="通知渠道">
+          <el-checkbox-group v-model="subscriptionForm.channels">
+            <el-checkbox label="site">站内消息</el-checkbox>
+            <el-checkbox label="email">邮箱</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+
+        <el-form-item label="告警级别">
+          <el-checkbox-group v-model="subscriptionForm.severities">
+            <el-checkbox label="info">提示</el-checkbox>
+            <el-checkbox label="warning">警告</el-checkbox>
+            <el-checkbox label="critical">严重</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-tip">不勾选表示订阅全部级别</div>
+        </el-form-item>
+
+        <el-form-item label="启用">
+          <el-switch v-model="subscriptionForm.is_enabled" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button v-if="subscriptionForm.id" type="danger" plain :loading="subscriptionSubmitting" @click="deleteSubscription">取消订阅</el-button>
+          <el-button @click="subscriptionDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="subscriptionSubmitting" @click="saveSubscription">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -192,6 +259,8 @@ const submitting = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const formRef = ref(null)
+const subscriptionDialogVisible = ref(false)
+const subscriptionSubmitting = ref(false)
 
 const alertRules = ref([])
 const alertLogs = ref([])
@@ -209,6 +278,13 @@ const form = reactive({
   is_enabled: true
 })
 
+const subscriptionForm = reactive({
+  id: null,
+  channels: ['site'],
+  severities: [],
+  is_enabled: true
+})
+
 const rules = {
   metric: [{ required: true, message: '请选择监控指标', trigger: 'change' }],
   operator: [{ required: true, message: '请选择条件', trigger: 'change' }],
@@ -221,7 +297,10 @@ const getMetricLabel = (val) => {
     cpu_usage: 'CPU使用率', 
     memory_usage: '内存使用率', 
     disk_usage: '磁盘使用率',
-    online_status: '在线状态' 
+    temperature: '温度',
+    online_status: '在线状态',
+    if_phy_down_count: '接口物理Down数',
+    if_protocol_down_count: '接口协议Down数',
   }
   return map[val] || val
 }
@@ -265,6 +344,34 @@ const fetchRules = async () => {
   }
 }
 
+const fetchDeviceSubscription = async () => {
+  if (!props.deviceId) return
+  try {
+    const res = await axios.get('/api/v1/user/device/alerts/subscriptions', {
+      params: { scope_type: 'device', scope_id: props.deviceId }
+    })
+    const rawData = res?.data || res
+    const list = Array.isArray(rawData) ? rawData : []
+    const sub = list.length ? list[0] : null
+    if (sub) {
+      subscriptionForm.id = sub.id
+      subscriptionForm.channels = Array.isArray(sub.channels) && sub.channels.length ? sub.channels : ['site']
+      subscriptionForm.severities = Array.isArray(sub.severities) ? sub.severities : []
+      subscriptionForm.is_enabled = Boolean(sub.is_enabled)
+    } else {
+      subscriptionForm.id = null
+      subscriptionForm.channels = ['site']
+      subscriptionForm.severities = []
+      subscriptionForm.is_enabled = true
+    }
+  } catch (e) {
+    subscriptionForm.id = null
+    subscriptionForm.channels = ['site']
+    subscriptionForm.severities = []
+    subscriptionForm.is_enabled = true
+  }
+}
+
 const fetchLogs = async () => {
   if (!props.deviceId) return
   logsLoading.value = true
@@ -300,12 +407,96 @@ const openAddDialog = () => {
   isEdit.value = false
   form.id = null
   form.metric = 'cpu_usage'
-  form.operator = '>'
-  form.threshold = 80
+  form.operator = '>='
+  form.threshold = 90
   form.severity = 'warning'
-  form.duration = 60
+  form.duration = 300
   form.is_enabled = true
   dialogVisible.value = true
+}
+
+const openSubscriptionDialog = async () => {
+  await fetchDeviceSubscription()
+  subscriptionDialogVisible.value = true
+}
+
+const saveSubscription = async () => {
+  if (!props.deviceId) return
+  if (!Array.isArray(subscriptionForm.channels) || subscriptionForm.channels.length === 0) {
+    ElMessage.error('请选择至少一个通知渠道')
+    return
+  }
+  subscriptionSubmitting.value = true
+  try {
+    const payload = {
+      channels: subscriptionForm.channels,
+      severities: Array.isArray(subscriptionForm.severities) && subscriptionForm.severities.length ? subscriptionForm.severities : null,
+      is_enabled: Boolean(subscriptionForm.is_enabled)
+    }
+    if (subscriptionForm.id) {
+      await axios.put(`/api/v1/user/device/alerts/subscriptions/${subscriptionForm.id}`, payload)
+    } else {
+      await axios.post('/api/v1/user/device/alerts/subscriptions', {
+        scope_type: 'device',
+        scope_id: props.deviceId,
+        ...payload
+      })
+    }
+    ElMessage.success('订阅已保存')
+    subscriptionDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  } finally {
+    subscriptionSubmitting.value = false
+  }
+}
+
+const deleteSubscription = async () => {
+  if (!subscriptionForm.id) return
+  try {
+    await ElMessageBox.confirm('确定要取消订阅吗？', '提示', { type: 'warning' })
+    subscriptionSubmitting.value = true
+    await axios.delete(`/api/v1/user/device/alerts/subscriptions/${subscriptionForm.id}`)
+    ElMessage.success('已取消订阅')
+    subscriptionDialogVisible.value = false
+    subscriptionForm.id = null
+    subscriptionForm.channels = ['site']
+    subscriptionForm.severities = []
+    subscriptionForm.is_enabled = true
+  } catch (e) {
+  } finally {
+    subscriptionSubmitting.value = false
+  }
+}
+
+const applyTemplate = async (name) => {
+  if (!props.deviceId) return
+  const templates = {
+    basic: [
+      { metric: 'online_status', operator: '=', threshold: 0, severity: 'critical', duration: 0, is_enabled: true },
+      { metric: 'cpu_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
+      { metric: 'memory_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
+      { metric: 'disk_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
+    ],
+    temp: [
+      { metric: 'temperature', operator: '>=', threshold: 75, severity: 'warning', duration: 120, is_enabled: true },
+    ],
+    if_counts: [
+      { metric: 'if_phy_down_count', operator: '>', threshold: 0, severity: 'warning', duration: 60, is_enabled: true },
+      { metric: 'if_protocol_down_count', operator: '>', threshold: 0, severity: 'warning', duration: 60, is_enabled: true },
+    ],
+  }
+  const list = templates[String(name)] || []
+  if (!list.length) return
+  try {
+    for (const r of list) {
+      await axios.post('/api/v1/user/device/alerts/rules', { ...r, device_id: props.deviceId })
+    }
+    ElMessage.success('模板添加成功')
+    fetchRules()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '模板添加失败')
+  }
 }
 
 const handleEdit = (row) => {
@@ -372,10 +563,23 @@ const handleSubmit = async () => {
   })
 }
 
+watch(
+  () => form.metric,
+  (val) => {
+    if (String(val || '').trim() === 'online_status') {
+      form.operator = '='
+      if (form.threshold !== 0 && form.threshold !== 1) {
+        form.threshold = 0
+      }
+    }
+  }
+)
+
 watch(() => props.deviceId, (newVal) => {
   if (newVal) {
     fetchRules()
     fetchLogs()
+    fetchDeviceSubscription()
   }
 }, { immediate: true })
 
@@ -383,6 +587,7 @@ onMounted(() => {
   if (props.deviceId) {
     fetchRules()
     fetchLogs()
+    fetchDeviceSubscription()
   }
 })
 </script>
@@ -394,6 +599,11 @@ onMounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+.header-actions {
+  display: flex;
+  gap: 10px;
   align-items: center;
 }
 .title {

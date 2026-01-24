@@ -13,6 +13,7 @@
             <template #extra>
                 <div class="header-actions">
                     <el-button
+                        class="hidden-xs-only"
                         style="background-color: #409EFF; border-color: #409EFF; color: #fff;"
                         @mouseover="this.style.backgroundColor='#66b1ff'; this.style.borderColor='#66b1ff'"
                         @mouseout="this.style.backgroundColor='#409EFF'; this.style.borderColor='#409EFF'"
@@ -25,6 +26,7 @@
                         plain 
                         icon="Edit"
                         @click="dialogStatusVisible = true"
+                        class="status-btn-mobile"
                     >修改状态</el-button>
                     
                     <el-button icon="Refresh" circle @click="fetchDetail" />
@@ -67,7 +69,7 @@
                         </div>
                         <div class="info-item">
                             <label>报修位置</label>
-                            <div class="content"><el-icon><Location /></el-icon> {{ order?.location_name || '未指定' }}</div>
+                            <div class="content"><el-icon><Location /></el-icon> {{ fullLocationPath || order?.location_name || '未指定' }}</div>
                         </div>
                         <div class="info-item">
                             <label>优先级</label>
@@ -81,6 +83,70 @@
                     
                     <!-- 图片附件展示区 (预留) -->
                     <!-- <div class="attachments" v-if="order?.images?.length">...</div> -->
+                </el-card>
+
+                <!-- 关联设备 -->
+                <el-card v-if="order?.location_id || order?.location_name" class="device-card" shadow="hover">
+                    <template #header>
+                        <div class="card-title">
+                            <el-icon><Monitor /></el-icon> 关联设备
+                            <span v-if="fullLocationPath || order?.location_name" style="font-size: 12px; color: #909399; font-weight: normal; margin-left: 8px;">
+                                <!-- ({{ fullLocationPath || order.location_name }}) -->
+                            </span>
+                        </div>
+                    </template>
+                    
+                    <div v-loading="loadingDevices">
+                        <el-alert
+                            v-if="deviceFetchForbidden"
+                            type="warning"
+                            title="无权限查看关联设备"
+                            :closable="false"
+                            style="margin-bottom: 12px;"
+                        />
+                        <el-alert
+                            v-else-if="deviceFetchError"
+                            type="error"
+                            :title="deviceFetchError"
+                            :closable="false"
+                            style="margin-bottom: 12px;"
+                        />
+                        <el-table 
+                            v-else-if="relatedDevices.length > 0" 
+                            :data="relatedDevices" 
+                            style="width: 100%" 
+                            size="small"
+                        >
+                            <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
+                            <el-table-column prop="ipv4" label="IP地址" width="130" />
+                            <el-table-column label="状态" width="100">
+                                <template #default="{ row }">
+                                    <el-tag :type="getDeviceStatusTagType(row)" size="small">
+                                        {{ getDeviceStatusText(row, nowTick) }}
+                                    </el-tag>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="80" fixed="right">
+                                <template #default="{ row }">
+                                    <el-button 
+                                        v-if="canSsh && isSshEnabled(row)" 
+                                        type="success" 
+                                        link 
+                                        size="small" 
+                                        @click="handleSSH(row)"
+                                    >
+                                        <el-icon><Connection /></el-icon> SSH
+                                    </el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                        
+                        <el-empty v-else description="该位置下暂无关联设备" :image-size="60">
+                             <template #description>
+                                <p>该位置 ({{ fullLocationPath || order?.location_name || '未知' }}) 下暂无绑定设备</p>
+                            </template>
+                        </el-empty>
+                    </div>
                 </el-card>
 
                 <!-- 工作记录 (新增) -->
@@ -281,7 +347,7 @@
     </el-dialog>
 
     <!-- 弹窗：添加工作记录 -->
-    <el-dialog v-model="dialogWorkLogVisible" title="添加工作记录" width="500px" append-to-body>
+    <el-dialog v-model="dialogWorkLogVisible" title="添加工作记录" class="work-log-dialog" append-to-body>
         <el-form label-position="top">
             <el-form-item label="工作内容描述">
                 <el-input 
@@ -291,17 +357,40 @@
                     placeholder="请详细描述维修过程、更换配件或处理结果..." 
                 />
             </el-form-item>
-             <!-- Image Upload Placeholder -->
-             <el-form-item label="上传现场照片 (暂未接入文件服务)">
+            <el-form-item label="上传现场照片" v-if="canUploadRepairImages">
+                <div class="upload-options">
+                    <div class="upload-btn camera" @click="triggerCamera">
+                        <el-icon><Camera /></el-icon>
+                        <span>拍照上传</span>
+                    </div>
+                    <div class="upload-btn gallery" @click="triggerGallery">
+                        <el-icon><Picture /></el-icon>
+                        <span>从相册选择</span>
+                    </div>
+                </div>
+
+                <input type="file" ref="cameraInputRef" accept="image/*" capture="environment" style="display:none" @change="handleCustomUpload" />
+                <input type="file" ref="galleryInputRef" accept="image/*" style="display:none" @change="handleCustomUpload" />
+
                 <el-upload
-                    action="#"
+                    v-model:file-list="repairImageFileList"
                     list-type="picture-card"
-                    :auto-upload="false"
-                    disabled
+                    :before-upload="beforeRepairImageUpload"
+                    :http-request="handleRepairImageUpload"
+                    :on-remove="handleRepairImageRemove"
+                    :on-success="handleRepairImageSuccess"
+                    :limit="6"
+                    class="hide-upload-btn"
+                    accept="image/*"
                 >
-                    <el-icon><Plus /></el-icon>
+                    <template #trigger>
+                        <!-- Hide default trigger -->
+                    </template>
                 </el-upload>
-                <div class="el-upload__tip">由于文件服务暂未配置，目前仅支持文本记录。</div>
+                <div class="el-upload__tip">支持上传图片并自动关联到本次工作记录。</div>
+            </el-form-item>
+            <el-form-item label="上传现场照片" v-else>
+                <div class="el-upload__tip">无上传权限。</div>
             </el-form-item>
         </el-form>
         <template #footer>
@@ -313,25 +402,34 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, reactive } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { 
     ArrowLeft, Document, Location, Timer, Right, Star, 
-    Edit, Refresh, Check, Tools, Plus
+    Edit, Refresh, Check, Tools, Plus, Monitor, Connection,
+    Camera, Picture
 } from '@element-plus/icons-vue';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
+import { getDeviceStatusTagType, getDeviceStatusText, isSshEnabled } from '@/components/DeviceList/deviceStatus';
 
 const route = useRoute();
 const router = useRouter();
 const orderId = route.params.id;
 const order = ref(null);
 const loading = ref(false);
+const nowTick = ref(Date.now())
+let nowTimer = null
 const roleCodes = ref([]);
 const permissions = ref([]);
 const isSuper = ref(false);
+const fullLocationPath = ref('');
+const locationTreeLoading = ref(false);
+const locationTreeLoaded = ref(false);
+const locationTreeForbidden = ref(false);
+const locationNodeById = reactive({});
 
 // Dialogs
 const dialogAssignVisible = ref(false);
@@ -377,6 +475,12 @@ const processedLogs = computed(() => {
 // Computeds
 const isAdmin = computed(() => isSuper.value);
 const isMaintenance = computed(() => roleCodes.value.includes('yunwei') || permissions.value.includes('sys:repair:accept'));
+const canUploadRepairImages = computed(() => isSuper.value || permissions.value.includes('sys:repair:image:add'));
+const canDeleteRepairImages = computed(() => isSuper.value || permissions.value.includes('sys:repair:image:del'));
+const canSsh = computed(() => isSuper.value || permissions.value.includes('sys:ssh:connect'));
+
+const repairImageFileList = ref([]);
+const repairImageIdByUid = reactive({});
 
 const currentStep = computed(() => {
     if (!order.value) return 0;
@@ -470,6 +574,127 @@ const goBack = () => {
     router.push('/user/repair/list');
 };
 
+const buildLocationNodeIndex = (nodes) => {
+    const stack = Array.isArray(nodes) ? [...nodes] : [];
+    while (stack.length > 0) {
+        const node = stack.pop();
+        if (!node || node.id == null) continue;
+        locationNodeById[String(node.id)] = node;
+        const children = node.children;
+        if (Array.isArray(children) && children.length > 0) {
+            for (const c of children) stack.push(c);
+        }
+    }
+};
+
+const getLocationPathById = (nodeId) => {
+    const labels = [];
+    let cur = nodeId;
+    const guard = new Set();
+    while (cur != null && !guard.has(cur)) {
+        guard.add(cur);
+        const node = locationNodeById[String(cur)];
+        if (!node) break;
+        if (node.label) labels.push(String(node.label));
+        cur = node.parent_id;
+    }
+    return labels.reverse().join(' / ');
+};
+
+const loadLocationTreeIfNeeded = async () => {
+    if (locationTreeLoaded.value || locationTreeLoading.value || locationTreeForbidden.value) return;
+    locationTreeLoading.value = true;
+    try {
+        const res = await axios.get('/api/v1/locations/tree');
+        if (res?.data?.code === 200) {
+            buildLocationNodeIndex(res.data.data || []);
+            locationTreeLoaded.value = true;
+        }
+    } catch (e) {
+        if (e?.response?.status === 403) {
+            locationTreeForbidden.value = true;
+        }
+    } finally {
+        locationTreeLoading.value = false;
+    }
+};
+
+const updateFullLocationPath = async () => {
+    fullLocationPath.value = '';
+    if (!order.value?.location_id) return;
+    await loadLocationTreeIfNeeded();
+    if (!locationTreeLoaded.value) return;
+    fullLocationPath.value = getLocationPathById(order.value.location_id);
+};
+
+const relatedDevices = ref([]);
+const loadingDevices = ref(false);
+const deviceFetchForbidden = ref(false);
+const deviceFetchError = ref('');
+
+const fetchRelatedDevices = async () => {
+    if (!order.value?.location_id && !order.value?.location_name) {
+        return;
+    }
+    
+    loadingDevices.value = true;
+    deviceFetchForbidden.value = false;
+    deviceFetchError.value = '';
+    try {
+        const params = {};
+        if (order.value.location_id) {
+            params.location_node_id = order.value.location_id;
+        } else {
+            params.location = order.value.location_name;
+        }
+        
+        const res = await axios.get('/api/v1/user/device/get', { params });
+        let payload = res?.data;
+        if (typeof payload === 'string') {
+            try {
+                payload = JSON.parse(payload);
+            } catch {}
+        }
+        if (Array.isArray(payload)) {
+            relatedDevices.value = payload;
+            return;
+        }
+        if (payload && typeof payload === 'object') {
+            if (payload.code === 200 && Array.isArray(payload.data)) {
+                relatedDevices.value = payload.data || [];
+                return;
+            }
+            if (Array.isArray(payload.data)) {
+                relatedDevices.value = payload.data || [];
+                return;
+            }
+        }
+        relatedDevices.value = [];
+        deviceFetchError.value = payload?.message || payload?.detail || '设备列表获取失败';
+    } catch (e) {
+        relatedDevices.value = [];
+        const status = e?.response?.status;
+        if (status === 403) {
+            deviceFetchForbidden.value = true;
+            deviceFetchError.value = '无权限查看该位置下的设备';
+        } else {
+            deviceFetchError.value = '设备列表获取失败';
+        }
+    } finally {
+        loadingDevices.value = false;
+    }
+};
+
+const handleSSH = (device) => {
+    if (!canSsh.value) return;
+    if (device?.ipv4) {
+        router.push({
+            name: 'ssh-connection',
+            params: { ip: device.ipv4 }
+        });
+    }
+};
+
 // API Actions
 const fetchDetail = async () => {
     loading.value = true;
@@ -478,6 +703,8 @@ const fetchDetail = async () => {
         if (res.data.code === 200) {
             order.value = res.data.data;
             statusForm.status = order.value.status; // Init status form
+            updateFullLocationPath();
+            fetchRelatedDevices();
         } else {
             ElMessage.error(res.data.message);
         }
@@ -588,6 +815,131 @@ const handleForceUpdateStatus = async () => {
     }
 }
 
+const handleRepairImageUpload = async (options) => {
+    if (!canUploadRepairImages.value) {
+        options?.onError?.(new Error('无上传权限'));
+        return;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('file', options.file);
+        const res = await axios.post('/api/v1/repair-images/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data.code === 200) {
+            options?.onSuccess?.(res.data, options.file);
+        } else {
+            options?.onError?.(new Error(res.data.message || '上传失败'));
+        }
+    } catch (e) {
+        const status = e?.response?.status;
+        if (status === 413) {
+            ElMessage.error('图片过大(最大 20MB)');
+        } else if (!e?.response) {
+            const maxBytes = 20 * 1024 * 1024;
+            const size = Number(options?.file?.size || 0);
+            if (size > maxBytes) ElMessage.error('图片过大(最大 20MB)');
+        }
+        options?.onError?.(e);
+    }
+};
+
+const beforeRepairImageUpload = (file) => {
+    const maxBytes = 20 * 1024 * 1024;
+    const type = String(file?.type || '');
+    if (!type.startsWith('image/')) {
+        ElMessage.error('仅支持图片文件');
+        return false;
+    }
+    const size = Number(file?.size || 0);
+    if (size > maxBytes) {
+        ElMessage.error('图片过大(最大 20MB)');
+        return false;
+    }
+    return true;
+};
+
+const handleRepairImageSuccess = (response, uploadFile) => {
+    const id = response?.data?.id;
+    const url = response?.data?.url;
+    if (id) {
+        repairImageIdByUid[uploadFile.uid] = id;
+        if (!workLogForm.images.includes(id)) {
+            workLogForm.images.push(id);
+        }
+    }
+    if (url) {
+        uploadFile.url = url;
+    }
+};
+
+const cameraInputRef = ref(null);
+const galleryInputRef = ref(null);
+
+const triggerCamera = () => {
+    cameraInputRef.value?.click();
+};
+
+const triggerGallery = () => {
+    galleryInputRef.value?.click();
+};
+
+const handleCustomUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!beforeRepairImageUpload(file)) {
+        event.target.value = '';
+        return;
+    }
+
+    const uid = Date.now();
+    const uploadFile = reactive({
+        uid: uid,
+        name: file.name,
+        status: 'uploading',
+        percentage: 0,
+        raw: file,
+        url: URL.createObjectURL(file)
+    });
+
+    repairImageFileList.value.push(uploadFile);
+
+    try {
+        const options = {
+            file: file,
+            onSuccess: (res) => {
+                uploadFile.status = 'success';
+                handleRepairImageSuccess(res, uploadFile);
+            },
+            onError: (err) => {
+                uploadFile.status = 'fail';
+                const idx = repairImageFileList.value.indexOf(uploadFile);
+                if (idx > -1) repairImageFileList.value.splice(idx, 1);
+                ElMessage.error(err.message || '上传失败');
+            }
+        };
+        await handleRepairImageUpload(options);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        event.target.value = '';
+    }
+};
+
+const handleRepairImageRemove = async (uploadFile) => {
+    const id = repairImageIdByUid[uploadFile.uid];
+    if (id) {
+        workLogForm.images = workLogForm.images.filter(x => x !== id);
+        delete repairImageIdByUid[uploadFile.uid];
+        if (canDeleteRepairImages.value) {
+            try {
+                await axios.delete(`/api/v1/repair-images/${id}`);
+            } catch (e) {}
+        }
+    }
+};
+
 const handleAddWorkLog = async () => {
     if (!workLogForm.content.trim()) {
         ElMessage.warning('请输入工作内容');
@@ -604,6 +956,8 @@ const handleAddWorkLog = async () => {
             dialogWorkLogVisible.value = false;
             workLogForm.content = '';
             workLogForm.images = [];
+            repairImageFileList.value = [];
+            Object.keys(repairImageIdByUid).forEach(k => delete repairImageIdByUid[k]);
             fetchDetail();
         } else {
             ElMessage.error(res.data.message || '添加失败');
@@ -616,6 +970,9 @@ const handleAddWorkLog = async () => {
 };
 
 onMounted(() => {
+    nowTimer = window.setInterval(() => {
+        nowTick.value = Date.now()
+    }, 1000)
     const token = Cookies.get('token');
     if (token) {
         try {
@@ -643,6 +1000,13 @@ onMounted(() => {
         fetchMaintenanceUsers();
     }
 });
+
+onBeforeUnmount(() => {
+    if (nowTimer) {
+        clearInterval(nowTimer)
+        nowTimer = null
+    }
+})
 </script>
 
 <style scoped>
@@ -669,6 +1033,7 @@ onMounted(() => {
     font-size: 20px;
     font-weight: 600;
     color: #1f2f3d;
+    white-space: nowrap;
 }
 
 .main-content {
@@ -678,7 +1043,7 @@ onMounted(() => {
 }
 
 /* Cards */
-.step-card, .detail-card, .log-card, .review-card, .action-card, .meta-card {
+.step-card, .detail-card, .log-card, .review-card, .action-card, .meta-card, .device-card {
     margin-bottom: 20px;
     border-radius: 8px;
     border: none;
@@ -890,6 +1255,48 @@ onMounted(() => {
     margin-top: 16px;
 }
 
+/* Upload Options */
+.upload-options {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    width: 100%;
+}
+
+.upload-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: #f5f7fa;
+    border: 1px dashed #dcdfe6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    color: #606266;
+}
+
+.upload-btn:hover {
+    border-color: #409eff;
+    color: #409eff;
+    background: #ecf5ff;
+}
+
+.upload-btn .el-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.upload-btn span {
+    font-size: 14px;
+}
+
+:deep(.hide-upload-btn .el-upload--picture-card) {
+    display: none;
+}
+
 @media (max-width: 768px) {
     .main-content {
         padding: 0 10px;
@@ -899,6 +1306,63 @@ onMounted(() => {
     }
     .info-item.full-width {
         grid-column: span 1;
+    }
+    
+    .upload-options {
+        gap: 10px;
+    }
+    
+    .upload-btn {
+        padding: 15px;
+    }
+}
+</style>
+
+<style>
+/* Global overrides for append-to-body dialogs */
+.work-log-dialog {
+    width: 500px;
+    border-radius: 12px !important;
+}
+
+@media (max-width: 768px) {
+    .work-log-dialog {
+        width: 90% !important;
+    }
+
+    /* 修复手机端头部错乱 */
+    .page-header :deep(.el-page-header__header) {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .page-header :deep(.el-page-header__left) {
+        margin-right: 0;
+    }
+
+    .page-header :deep(.el-page-header__content) {
+        flex: 1;
+        overflow: hidden;
+        margin-right: 8px;
+    }
+
+    .header-title {
+        font-size: 16px;
+    }
+
+    .header-content {
+        gap: 8px;
+    }
+
+    /* 移动端修改状态按钮变小一点 */
+    .status-btn-mobile {
+        padding: 8px 10px;
+        height: 32px;
+    }
+
+    /* Element Plus 自带的 hidden-xs-only 类可能需要 display-none */
+    .hidden-xs-only {
+        display: none !important;
     }
 }
 </style>

@@ -8,7 +8,7 @@
 
     <div class="mini">
       <div class="mini__top">
-        <el-avatar :size="56" class="mini__avatar">
+        <el-avatar :size="56" class="mini__avatar" :src="store.form.avatar_url || ''">
           <span>{{ store.initials }}</span>
         </el-avatar>
         <div class="mini__meta">

@@ -261,6 +261,8 @@ import DeviceConfig from './DeviceConfig.vue'
 const route = useRoute()
 const router = useRouter()
 const authStore = homeDataStore()
+const nowTick = ref(Date.now())
+let nowTimer = null
 
 const deviceId = computed(() => {
   const raw = route.params.id
@@ -349,7 +351,7 @@ const editForm = reactive({
   ssh_port: 22,
 })
 
-const statusText = computed(() => getDeviceStatusText(detail))
+const statusText = computed(() => getDeviceStatusText(detail, nowTick.value))
 
 const statusTagType = computed(() => getDeviceStatusTagType(detail))
 
@@ -599,6 +601,9 @@ const goBack = () => {
 onMounted(async () => {
   authStore.syncAuthFromToken()
   await authStore.fetchPermissions()
+  nowTimer = window.setInterval(() => {
+    nowTick.value = Date.now()
+  }, 1000)
   if (route.query.tab === 'audit' && !canAudit.value) {
     const nextQuery = { ...route.query }
     delete nextQuery.tab
@@ -612,6 +617,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(async () => {
+  if (nowTimer) {
+    clearInterval(nowTimer)
+    nowTimer = null
+  }
   closeWs()
   try {
     await restoreMonitor()

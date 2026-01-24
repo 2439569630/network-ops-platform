@@ -7,29 +7,6 @@
           <div class="subtitle">统一管理系统监控、安全、基础参数与消息渠道</div>
         </div>
 
-        <div class="header-actions">
-          <el-input
-            v-model="searchText"
-            clearable
-            class="search"
-            placeholder="搜索 Key / 描述"
-            :prefix-icon="Search"
-          />
-
-          <div class="action-group">
-            <el-switch v-model="onlyChanged" inline-prompt active-text="仅改动" inactive-text="全部" />
-            <el-button :icon="Refresh" @click="fetchConfigs" :loading="loading">刷新</el-button>
-            <el-button
-              type="primary"
-              :icon="Check"
-              :disabled="dirtyItems.length === 0 || loading"
-              :loading="savingAll"
-              @click="handleSaveAll"
-            >
-              保存全部
-            </el-button>
-          </div>
-        </div>
       </div>
 
       <div class="header-meta">
@@ -149,16 +126,13 @@
 import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
-import { Check, CopyDocument, Refresh, Search } from '@element-plus/icons-vue';
+import { CopyDocument } from '@element-plus/icons-vue';
 
 const loading = ref(false);
 const configs = ref([]);
 const activeTab = ref('');
 const testEmailTarget = ref('');
-const searchText = ref('');
-const onlyChanged = ref(false);
 const savingKeys = ref({});
-const savingAll = ref(false);
 const originalValues = ref({});
 const tabPosition = ref('left'); // 动态控制 Tabs 位置
 
@@ -181,6 +155,7 @@ const groupDescriptions = {
   monitor: '采集频率、阈值与健康检查相关参数',
   security: '鉴权、安全策略与敏感配置项',
   system: '系统通用配置与运行参数',
+  repair: '报修相关参数与图片服务配置',
   notification: '消息推送渠道（邮件、PushPlus 等）'
 };
 
@@ -189,6 +164,7 @@ const getGroupLabel = (group) => {
     'monitor': '监控配置',
     'security': '安全配置',
     'system': '系统配置',
+    'repair': '图片服务配置',
     'notification': '消息渠道配置'
   };
   return map[group] || group;
@@ -196,7 +172,7 @@ const getGroupLabel = (group) => {
 
 const groupOrder = computed(() => {
   const keys = Object.keys(groupedConfigs.value);
-  const priority = ['monitor', 'system', 'security', 'notification'];
+  const priority = ['monitor', 'system', 'repair', 'security', 'notification'];
   const sorted = [
     ...priority.filter(k => keys.includes(k)),
     ...keys.filter(k => !priority.includes(k)).sort((a, b) => String(a).localeCompare(String(b)))
@@ -220,27 +196,7 @@ const activeTabDirtyCount = computed(() => {
   return list.filter(isDirty).length;
 });
 
-const visibleGroupedConfigs = computed(() => {
-  const needle = searchText.value.trim().toLowerCase();
-  const result = {};
-
-  Object.entries(groupedConfigs.value).forEach(([group, items]) => {
-    let list = items;
-    if (needle) {
-      list = list.filter(i => {
-        const hay1 = String(i.key || '').toLowerCase();
-        const hay2 = String(i.description || '').toLowerCase();
-        return hay1.includes(needle) || hay2.includes(needle);
-      });
-    }
-    if (onlyChanged.value) {
-      list = list.filter(isDirty);
-    }
-    result[group] = list;
-  });
-
-  return result;
-});
+const visibleGroupedConfigs = computed(() => groupedConfigs.value);
 
 const getInputType = (item) => {
   const key = String(item.key || '').toLowerCase();
@@ -301,36 +257,6 @@ const handleUpdate = async (item) => {
   }
 };
 
-const handleSaveAll = async () => {
-  if (dirtyItems.value.length === 0) return;
-  savingAll.value = true;
-  let success = 0;
-  let fail = 0;
-  for (const item of dirtyItems.value) {
-    try {
-      const res = await axios.post('/api/v1/system/config/update', {
-        key: item.key,
-        value: item.value
-      });
-      if (res.data.code === 200) {
-        success += 1;
-        originalValues.value = { ...originalValues.value, [item.key]: item.value };
-      } else {
-        fail += 1;
-      }
-    } catch (e) {
-      fail += 1;
-    }
-  }
-  savingAll.value = false;
-  if (fail === 0) {
-    ElMessage.success(`保存完成（${success} 项）`);
-  } else if (success === 0) {
-    ElMessage.error(`保存失败（${fail} 项）`);
-  } else {
-    ElMessage.warning(`部分成功：成功 ${success} 项，失败 ${fail} 项`);
-  }
-};
 
 const copyKey = async (key) => {
   try {
@@ -451,22 +377,6 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   font-size: 12px;
   color: #606266;
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.search {
-  width: 320px;
-}
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 .header-meta {
   margin-top: 12px;
@@ -626,21 +536,6 @@ onBeforeUnmount(() => {
 
   .header-title .title {
     font-size: 22px;
-  }
-
-  .header-actions {
-    justify-content: flex-start;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search {
-    width: 100%;
-  }
-
-  .action-group {
-    justify-content: space-between;
-    width: 100%;
   }
 
   .main-card {

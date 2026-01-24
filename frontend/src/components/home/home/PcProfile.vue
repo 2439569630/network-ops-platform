@@ -7,6 +7,23 @@
     </template>
 
     <el-form ref="profileFormRef" :model="store.profileForm" :rules="profileRules" label-width="90px" class="form">
+      <el-form-item label="头像">
+        <div class="avatar-row">
+          <el-avatar :size="56" class="avatar" :src="store.form.avatar_url || ''">
+            <span>{{ store.initials }}</span>
+          </el-avatar>
+          <el-upload
+            :show-file-list="false"
+            accept="image/*"
+            :before-upload="beforeAvatarUpload"
+            :http-request="handleAvatarUpload"
+            :disabled="avatarUploading || store.profileLoading"
+          >
+            <el-button :loading="avatarUploading" type="primary">上传头像</el-button>
+          </el-upload>
+          <div class="avatar-tip muted">支持 jpg/png/gif/webp/bmp，最大 5MB</div>
+        </div>
+      </el-form-item>
       <el-form-item label="昵称" prop="nickname">
         <el-input v-model="store.profileForm.nickname" maxlength="20" show-word-limit />
       </el-form-item>
@@ -21,9 +38,12 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { homeDataStore } from './data';
+import axios from '@/axios/axios';
+import { ElMessage } from 'element-plus';
 
 const store = homeDataStore();
 const profileFormRef = ref(null);
+const avatarUploading = ref(false);
 
 const profileRules = {
   nickname: [
@@ -43,6 +63,46 @@ const saveProfile = async () => {
 const resetProfileForm = () => {
   store.syncProfileForm();
   profileFormRef.value?.clearValidate?.();
+};
+
+const beforeAvatarUpload = (file) => {
+  const maxBytes = 5 * 1024 * 1024;
+  const type = String(file?.type || '');
+  if (!type.startsWith('image/')) {
+    ElMessage.error('仅支持图片文件');
+    return false;
+  }
+  const size = Number(file?.size || 0);
+  if (size > maxBytes) {
+    ElMessage.error('头像图片过大(最大 5MB)');
+    return false;
+  }
+  return true;
+};
+
+const handleAvatarUpload = async (options) => {
+  try {
+    avatarUploading.value = true;
+    const formData = new FormData();
+    formData.append('file', options.file);
+    const res = await axios.post('/api/v1/users/avatar/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    if (res.data.code === 200) {
+      ElMessage.success('头像已更新');
+      await store.fetchProfile({ syncProfileForm: true });
+      options?.onSuccess?.(res.data, options.file);
+      return;
+    }
+    const msg = res.data.message || '上传失败';
+    ElMessage.error(msg);
+    options?.onError?.(new Error(msg));
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '上传失败');
+    options?.onError?.(e);
+  } finally {
+    avatarUploading.value = false;
+  }
 };
 
 onMounted(() => {
@@ -72,5 +132,26 @@ onMounted(() => {
 .form {
   max-width: 720px;
 }
-</style>
 
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.avatar {
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.18), rgba(103, 194, 58, 0.16));
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  color: #111827;
+  font-weight: 800;
+}
+
+.avatar-tip {
+  font-size: 12px;
+}
+
+.muted {
+  color: #6b7280;
+}
+</style>

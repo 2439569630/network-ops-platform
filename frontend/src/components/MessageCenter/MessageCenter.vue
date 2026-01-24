@@ -61,7 +61,12 @@
                     @click="openSiteMessageDetail(m)"
                   >
                     <div class="site-card-avatar">
-                      <el-avatar :size="40" :icon="UserFilled" class="sender-avatar" />
+                      <el-avatar 
+                        :size="40" 
+                        :icon="getAvatarConfig(m).icon" 
+                        class="sender-avatar" 
+                        :style="{ backgroundColor: getAvatarConfig(m).bg, color: getAvatarConfig(m).color }"
+                      />
                       <div class="unread-dot" v-if="!m.is_read"></div>
                     </div>
                     <div class="site-card-content">
@@ -246,7 +251,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
-import { Bell, InfoFilled, WarningFilled, Message, Setting } from '@element-plus/icons-vue';
+import { Bell, InfoFilled, WarningFilled, Message, Setting, UserFilled, Monitor, BellFilled } from '@element-plus/icons-vue';
 
 const activeTab = ref('site');
 const notifications = ref([]);
@@ -411,6 +416,23 @@ const getLevelType = (level) => {
         case 'info': return 'info';
         default: return '';
     }
+};
+
+const getAvatarConfig = (row) => {
+    const source = normalizeText(row.source);
+    const sender = normalizeText(row.sender_name);
+    const title = normalizeText(row.title);
+    
+    // 系统消息/通知
+    if (source.includes('系统') || source.includes('system') || (!row.sender_name && !row.source)) {
+        return { icon: BellFilled, color: '#409eff', bg: '#ecf5ff' };
+    }
+    // 监控/设备相关
+    if (source.includes('monitor') || source.includes('监控') || source.includes('alert') || title.includes('告警')) {
+        return { icon: Monitor, color: '#e6a23c', bg: '#fdf6ec' };
+    }
+    // 默认用户头像
+    return { icon: UserFilled, color: '#909399', bg: '#f4f4f5' };
 };
 
 const buildTestNotifications = () => {
@@ -1130,4 +1152,30 @@ onUnmounted(() => {
 .mb-12 {
     margin-bottom: 12px;
 }
+
+.site-card-avatar {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.sender-avatar {
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.site-card-wrap:hover .sender-avatar {
+    transform: scale(1.1);
+}
+
+.unread-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 10px;
+    height: 10px;
+    background-color: #f56c6c;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(245, 108, 108, 0.2);
+}
+
 </style>

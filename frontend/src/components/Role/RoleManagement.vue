@@ -244,9 +244,6 @@
            <div class="panel-header">
               <span class="panel-title">权限目录</span>
               <div>
-                <el-button size="small" :loading="permSyncing" @click="handleSyncPermissions">一键同步</el-button>
-                <el-button size="small" @click="fetchPermissionDirectory">刷新</el-button>
-                <el-button type="primary" size="small" circle :icon="Plus" @click="handleCreatePerm" />
               </div>
             </div>
              <div class="search-bar">
@@ -310,7 +307,10 @@
                   <el-button v-if="isMobile" link :icon="Back" @click="handleBackToList" style="margin-right:8px;font-size:18px;"></el-button>
                   <span class="panel-title">权限详情</span>
                 </div>
-                <el-button type="primary" :disabled="!currentPerm?.id" :loading="permSaving" @click="saveCurrentPerm">保存</el-button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <el-button size="small" :disabled="!currentPerm?.in_directory || !currentPerm?.code" :loading="permRestoring" @click="restoreCurrentPerm">恢复默认</el-button>
+                  <el-button type="primary" :disabled="!currentPerm?.id" :loading="permSaving" @click="saveCurrentPerm">保存</el-button>
+                </div>
               </div>
               <div class="panel-body">
                 <div class="config-section">
@@ -425,7 +425,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
 import { 
-  Key, InfoFilled, Avatar, Lock, Plus, UserFilled, MoreFilled, 
+  Key, InfoFilled, Avatar, Lock, UserFilled, MoreFilled, 
   Search, Connection, Delete, User, Back
 } from '@element-plus/icons-vue';
 
@@ -473,6 +473,7 @@ const currentRolePermIds = ref([]); // 当前角色选中的权限ID集合
 // --- Permission State ---
 const permissionLoading = ref(false);
 const permSaving = ref(false);
+const permRestoring = ref(false);
 const allPermissions = ref([]); // 所有的权限列表
 const permissionDirectory = ref([]);
 const permSyncing = ref(false);
@@ -1220,6 +1221,17 @@ const handleCreatePerm = () => {
     Object.assign(currentPermForm, newPerm);
 };
 
+const selectPermByCode = (code) => {
+    const c = String(code || '').trim();
+    if (!c) return;
+    const fromDirectory = (permissionDirectory.value || []).find(p => String(p.code || '').trim() === c);
+    const fromAll = (allPermissions.value || []).find(p => String(p.code || '').trim() === c);
+    const next = fromDirectory || fromAll;
+    if (!next) return;
+    currentPerm.value = next;
+    Object.assign(currentPermForm, next);
+};
+
 const saveCurrentPerm = async () => {
     if (!currentPerm.value?.id) {
         ElMessage.warning('该权限未同步入库，无法保存');
@@ -1256,6 +1268,39 @@ const saveCurrentPerm = async () => {
         ElMessage.error(e.message || '保存失败');
     } finally {
         permSaving.value = false;
+    }
+};
+
+const restoreCurrentPerm = async () => {
+    const code = String(currentPermForm.code || '').trim();
+    if (!code) {
+        ElMessage.warning('权限编码不能为空');
+        return;
+    }
+    if (!currentPerm.value?.in_directory) {
+        ElMessage.warning('仅系统权限可恢复默认');
+        return;
+    }
+    try {
+        await ElMessageBox.confirm('确认恢复该权限的默认名称和描述？', '提示', { type: 'warning' });
+    } catch {
+        return;
+    }
+    permRestoring.value = true;
+    try {
+        const res = await axios.post('/api/v1/rbac/permissions/restore', { code });
+        if (res.data.code === 200) {
+            ElMessage.success(res.data.message || '恢复成功');
+            await fetchPermissions();
+            await fetchPermissionDirectory();
+            selectPermByCode(code);
+        } else {
+            ElMessage.error(res.data.message || '恢复失败');
+        }
+    } catch (e) {
+        ElMessage.error('恢复失败');
+    } finally {
+        permRestoring.value = false;
     }
 };
 

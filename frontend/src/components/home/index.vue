@@ -9,7 +9,16 @@
   </div>
 </template>
 <script setup>
+import { onMounted } from 'vue'
 import LEFT from './left/left.vue'
+import { homeDataStore } from '@/components/home/home/data'
+
+const store = homeDataStore()
+
+onMounted(() => {
+  store.syncAuthFromToken()
+  if (!store.isSuper) void store.fetchPermissions()
+})
 </script>
 <style scoped>
 .common-layout{

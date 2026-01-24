@@ -88,6 +88,13 @@ const canAccessRouteMeta = (meta, ctx) => {
     return true
 }
 
+const getFirstAccessibleUserPath = (ctx) => {
+    for (const r of userRouteCandidates) {
+        if (canAccessRouteMeta(r.meta, ctx)) return r.path
+    }
+    return '/login'
+}
+
 const getDefaultAuthedPath = async (decoded) => {
     const roleCodes = Array.isArray(decoded?.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : []
     const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
@@ -96,10 +103,7 @@ const getDefaultAuthedPath = async (decoded) => {
     store.syncAuthFromToken()
     const perms = isSuper ? [] : await store.fetchPermissions()
     const ctx = { roleCodes, isSuper, userRole, userPerms: Array.isArray(perms) ? perms.map(String) : [] }
-    for (const r of userRouteCandidates) {
-        if (canAccessRouteMeta(r.meta, ctx)) return r.path
-    }
-    return '/login'
+    return getFirstAccessibleUserPath(ctx)
 }
 
 
@@ -112,41 +116,42 @@ router.beforeEach(async (to, from, next) => {
 
     // 权限检查
     let token = Cookies.get('token');
-
-    if (token && to.path === '/login') {
+    let decoded = null;
+    if (token) {
         try {
-            const decoded = jwtDecode(token)
+            decoded = jwtDecode(token);
+        } catch (e) {
+            Cookies.remove('token');
+            token = null;
+        }
+    }
+
+    if (token && decoded && to.path === '/login') {
+        try {
             const fallback = await getDefaultAuthedPath(decoded)
             if (fallback && fallback !== '/login') {
                 next(fallback)
                 return
             }
-        } catch (e) {
-            Cookies.remove('token')
-            token = null
-        }
+        } catch (e) {}
     }
 
-    if (token && to.path.startsWith('/user')) {
-        token = Cookies.get('token')
-    }
-
-    if (token) {
+    if (token && decoded) {
         try {
-            const decoded = jwtDecode(token);
             const roleCodes = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
             const isSuper = Boolean(decoded.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin');
             const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2);
+            const store = homeDataStore();
+            store.syncAuthFromToken();
 
             let denied = false;
             const hasPermMeta = to.meta.perms && Array.isArray(to.meta.perms) && to.meta.perms.length > 0;
+            let userPerms = [];
 
             if (hasPermMeta) {
                 if (!isSuper) {
-                    const store = homeDataStore();
-                    store.syncAuthFromToken();
-                    await store.fetchPermissions();
-                    const userPerms = Array.isArray(store.permissions) ? store.permissions.map(String) : [];
+                    const perms = await store.fetchPermissions();
+                    userPerms = Array.isArray(perms) ? perms.map(String) : [];
                     const hasAnyPerm = to.meta.perms.some(p => userPerms.includes(String(p)));
                     denied = !hasAnyPerm;
                 }
@@ -166,7 +171,8 @@ router.beforeEach(async (to, from, next) => {
                     type: 'error',
                 });
 
-                const fallback = await getDefaultAuthedPath(decoded)
+                const ctx = { roleCodes, isSuper, userRole, userPerms }
+                const fallback = getFirstAccessibleUserPath(ctx)
                 if (fallback && fallback !== to.path) {
                     next(fallback)
                     return

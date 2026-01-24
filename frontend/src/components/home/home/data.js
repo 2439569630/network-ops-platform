@@ -29,6 +29,7 @@ export const homeDataStore = defineStore('homeData', () => {
     username: '',
     nickname: '',
     email: '',
+    avatar_url: '',
     created_at: ''
   });
 
@@ -85,6 +86,7 @@ export const homeDataStore = defineStore('homeData', () => {
   const permVer = ref(null);
   const permissionsLoading = ref(false);
   const permissionsLoadedAt = ref(0);
+  let permissionsPromise = null;
 
   const PERMS_CACHE_KEY = 'auth:permissions_cache:v1';
 
@@ -150,9 +152,10 @@ export const homeDataStore = defineStore('homeData', () => {
         cached &&
         cached.permissions.length > 0 &&
         Date.now() - cached.loadedAt < 5 * 60 * 1000 &&
-        tokenPermVer !== null &&
-        cached.permVer !== null &&
-        String(tokenPermVer) === String(cached.permVer)
+        (
+          (tokenPermVer !== null && cached.permVer !== null && String(tokenPermVer) === String(cached.permVer)) ||
+          tokenPermVer === null
+        )
       ) {
         permissions.value = cached.permissions;
         permVer.value = cached.permVer;
@@ -173,7 +176,12 @@ export const homeDataStore = defineStore('homeData', () => {
       return [];
     }
 
-    if (permissionsLoading.value) return permissions.value;
+    if (permissionsPromise && !force) return permissionsPromise;
+    if (permissionsPromise && force) {
+      try {
+        await permissionsPromise;
+      } catch {}
+    }
 
     try {
       const decoded = jwtDecode(token);
@@ -188,9 +196,10 @@ export const homeDataStore = defineStore('homeData', () => {
           cached &&
           cached.permissions.length > 0 &&
           Date.now() - cached.loadedAt < 5 * 60 * 1000 &&
-          tokenPermVer !== null &&
-          cached.permVer !== null &&
-          String(tokenPermVer) === String(cached.permVer)
+          (
+            (tokenPermVer !== null && cached.permVer !== null && String(tokenPermVer) === String(cached.permVer)) ||
+            tokenPermVer === null
+          )
         ) {
           permissions.value = cached.permissions;
           permVer.value = cached.permVer;
@@ -208,24 +217,31 @@ export const homeDataStore = defineStore('homeData', () => {
     }
 
     permissionsLoading.value = true;
-    try {
-      const res = await axios.get('/api/v1/auth/permissions');
-      if (res.data?.code === 200) {
-        const data = res.data?.data || {};
-        const perms = Array.isArray(data.permissions) ? data.permissions.map(String) : [];
-        permissions.value = perms;
-        permVer.value = data.perm_ver ?? null;
-        permissionsLoadedAt.value = Date.now();
-        savePermsCache();
-        return permissions.value;
+    permissionsPromise = (async () => {
+      try {
+        const res = await axios.get('/api/v1/auth/permissions');
+        if (res.data?.code === 200) {
+          const data = res.data?.data || {};
+          const perms = Array.isArray(data.permissions) ? data.permissions.map(String) : [];
+          permissions.value = perms;
+          permVer.value = data.perm_ver ?? null;
+          permissionsLoadedAt.value = Date.now();
+          savePermsCache();
+          return permissions.value;
+        }
+        clearAuthCache();
+        return [];
+      } catch (e) {
+        clearAuthCache();
+        return [];
+      } finally {
+        permissionsLoading.value = false;
       }
-      clearAuthCache();
-      return [];
-    } catch (e) {
-      clearAuthCache();
-      return [];
+    })();
+    try {
+      return await permissionsPromise;
     } finally {
-      permissionsLoading.value = false;
+      permissionsPromise = null;
     }
   };
 

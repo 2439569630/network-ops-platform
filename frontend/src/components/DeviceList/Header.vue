@@ -251,7 +251,7 @@ const rules = reactive({
         { type: 'number', message: '必须为数字', trigger: 'blur' }
     ],
     mac: [
-        { required: false, message: 'MAC地址', trigger: 'blur' },
+        // { required: false, message: 'MAC地址', trigger: 'blur' },
         {
             pattern: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/,
             message: 'MAC地址格式不正确',
