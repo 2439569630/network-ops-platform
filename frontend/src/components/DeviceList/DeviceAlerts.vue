@@ -83,6 +83,19 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="fetchLogs"
+          small
+          background
+        />
+      </div>
     </el-card>
 
     <el-dialog
@@ -182,6 +195,9 @@ const formRef = ref(null)
 
 const alertRules = ref([])
 const alertLogs = ref([])
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
 
 const form = reactive({
   id: null,
@@ -253,15 +269,31 @@ const fetchLogs = async () => {
   if (!props.deviceId) return
   logsLoading.value = true
   try {
-    const res = await axios.get(`/api/v1/user/device/alerts/logs/${props.deviceId}`)
+    const res = await axios.get(`/api/v1/user/device/alerts/logs/${props.deviceId}`, {
+      params: {
+        limit: pageSize.value,
+        offset: (currentPage.value - 1) * pageSize.value
+      }
+    })
     const rawData = res?.data || res
-    alertLogs.value = Array.isArray(rawData) ? rawData : []
+    if (rawData && typeof rawData.total === 'number') {
+      alertLogs.value = Array.isArray(rawData.items) ? rawData.items : []
+      total.value = rawData.total
+    } else {
+      alertLogs.value = Array.isArray(rawData) ? rawData : []
+      total.value = alertLogs.value.length
+    }
   } catch (error) {
     ElMessage.error('获取告警记录失败')
     alertLogs.value = []
   } finally {
     logsLoading.value = false
   }
+}
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+  fetchLogs()
 }
 
 const openAddDialog = () => {
@@ -372,5 +404,10 @@ onMounted(() => {
   color: #909399;
   line-height: 1.5;
   margin-top: 5px;
+}
+.pagination-container {
+  margin-top: 15px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

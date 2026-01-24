@@ -49,6 +49,7 @@
                       filterable
                       class="location-select"
                       size="large"
+                      v-loading="locationLoading"
                     >
                       <template #prefix>
                         <el-icon><Location /></el-icon>
@@ -164,6 +165,7 @@ import { Html5Qrcode } from "html5-qrcode";
 const router = useRouter();
 const repairFormRef = ref(null);
 const loading = ref(false);
+const locationLoading = ref(false);
 const submitting = ref(false);
 const locationOptions = ref([]);
 
@@ -201,6 +203,7 @@ const rules = reactive({
 
 // 获取位置树
 const fetchLocations = async () => {
+    locationLoading.value = true;
     try {
         const res = await axios.get('/api/v1/locations/tree');
         if (res.data && res.data.code === 200) {
@@ -208,6 +211,8 @@ const fetchLocations = async () => {
         }
     } catch (error) {
         console.error("Location fetch error", error);
+    } finally {
+        locationLoading.value = false;
     }
 };
 

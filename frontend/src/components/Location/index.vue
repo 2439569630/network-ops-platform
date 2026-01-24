@@ -114,7 +114,7 @@
                     <el-icon><User /></el-icon>
                 </div>
                 <div class="stat-info">
-                    <div class="stat-label">绑定用户</div>
+                    <div class="stat-label">管理员</div>
                     <div class="stat-value">{{ (currentNode.userIds || []).length }}</div>
                 </div>
             </div>
@@ -149,7 +149,7 @@
                     <el-descriptions-item label="位置编码">
                         <el-tag type="info" effect="plain">{{ currentNode.code || '未设置' }}</el-tag>
                     </el-descriptions-item>
-                    <el-descriptions-item label="绑定用户">
+                    <el-descriptions-item label="管理员">
                         <div v-if="currentNodeUserLabels.length" class="tag-list">
                             <el-tag v-for="t in currentNodeUserLabels" :key="t" type="success" effect="plain" class="mr-1">{{ t }}</el-tag>
                         </div>
@@ -181,13 +181,13 @@
                     </div>
                 </div>
                 <el-table :data="deviceList" style="width: 100%" height="400" stripe>
-                    <el-table-column prop="name" label="设备名称" show-overflow-tooltip />
+                    <el-table-column prop="device_name" label="设备名称" show-overflow-tooltip />
                     <el-table-column prop="type" label="类型" width="100" />
                     <el-table-column prop="ipv4" label="IP地址" width="130" />
                     <el-table-column prop="status" label="状态" width="90">
                             <template #default="{ row }">
-                                <el-tag :type="row.status === 'online' ? 'success' : 'danger'" size="small" effect="dark">
-                                    {{ row.status === 'online' ? '在线' : '离线' }}
+                                <el-tag :type="getDeviceStatusTagType(getDeviceStatusModel(row))" size="small" effect="dark">
+                                    {{ getDeviceStatusText(getDeviceStatusModel(row)) }}
                                 </el-tag>
                             </template>
                     </el-table-column>
@@ -311,7 +311,7 @@
                     </el-form-item>
                 </el-col>
                 <el-col :span="24">
-                     <el-form-item label="绑定用户">
+                     <el-form-item label="管理员">
                         <div class="user-binding-container" style="width: 100%">
                             <div class="filter-bar" style="display: flex; gap: 8px; margin-bottom: 8px;">
                                 <el-select 
@@ -420,7 +420,7 @@
 </template>
 
 <script setup>
-import { ref, watch, reactive, nextTick, computed, onMounted } from 'vue'
+import { ref, watch, reactive, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
     Plus, Edit, Delete, Search, Download, Refresh, Sort, 
@@ -430,6 +430,8 @@ import {
 } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { homeDataStore } from '@/components/home/home/data'
+import { useDeviceStore } from '@/components/DeviceList/store'
+import { getDeviceStatusTagType, getDeviceStatusText } from '@/components/DeviceList/deviceStatus'
 
 // --- State ---
 const filterText = ref('')
@@ -440,6 +442,7 @@ const detailLoading = ref(false)
 const saving = ref(false)
 const isExpandAll = ref(true)
 const store = homeDataStore()
+const deviceStore = useDeviceStore()
 store.syncAuthFromToken()
 
 // Dialogs
@@ -1052,10 +1055,21 @@ const handleRemoveDevice = (row) => {
     })
 }
 
+const getDeviceStatusModel = (row) => {
+    if (!row) return {}
+    const found = deviceStore.data.find(d => d.id === row.id)
+    return found || row
+}
+
 onMounted(async () => {
     store.syncAuthFromToken()
     await store.fetchPermissions({ force: false })
     await fetchTree()
+    deviceStore.startRealtime()
+})
+
+onBeforeUnmount(() => {
+    deviceStore.stopRealtime()
 })
 
 </script>

@@ -163,32 +163,6 @@
       </el-col>
     </el-row>
     
-    <!-- 4. Quick Actions & My Focus (Optional expansion) -->
-    <el-row :gutter="20" class="mt-20">
-         <el-col :span="24">
-             <el-card shadow="hover">
-                 <div class="quick-access">
-                     <div class="qa-item" @click="handleQuickAction('scan')">
-                         <div class="qa-icon" style="background: #409EFF"><el-icon><Aim /></el-icon></div>
-                         <span>一键检测</span>
-                     </div>
-                     <div class="qa-item" @click="handleQuickAction('report')">
-                         <div class="qa-icon" style="background: #67C23A"><el-icon><Document /></el-icon></div>
-                         <span>导出报表</span>
-                     </div>
-                     <div class="qa-item" @click="handleQuickAction('log')">
-                         <div class="qa-icon" style="background: #E6A23C"><el-icon><List /></el-icon></div>
-                         <span>系统日志</span>
-                     </div>
-                     <div class="qa-item" @click="handleQuickAction('settings')">
-                         <div class="qa-icon" style="background: #909399"><el-icon><Setting /></el-icon></div>
-                         <span>面板设置</span>
-                     </div>
-                 </div>
-             </el-card>
-         </el-col>
-    </el-row>
-
   </div>
 </template>
 
@@ -222,6 +196,14 @@ const autoRefresh = ref(true)
 const refreshTimer = ref(null)
 const lastUpdateTime = ref('')
 const alertFilter = ref('all')
+
+// Real-time Resource History
+const resourceHistory = ref([])
+// Alert Statistics
+const alertStatsData = reactive({
+    xAxis: [],
+    series: []
+})
 
 // Initial Data Load
 onMounted(async () => {
@@ -262,12 +244,25 @@ const refreshData = async (silent = false) => {
     if (!silent) refreshing.value = true
     try {
         store.refreshData()
+        fetchAlertStats()
         lastUpdateTime.value = new Date().toLocaleTimeString()
         if (!silent) ElMessage.success('数据已刷新')
     } catch (e) {
         // Error handled in store usually
     } finally {
         if (!silent) refreshing.value = false
+    }
+}
+
+const fetchAlertStats = async () => {
+    try {
+        const res = await axios.get('/api/v1/alerts/statistics')
+        if (res.data) {
+            alertStatsData.xAxis = res.data.xAxis
+            alertStatsData.series = res.data.series
+        }
+    } catch (e) {
+        console.error("Failed to fetch alert stats", e)
     }
 }
 
@@ -343,26 +338,55 @@ const statusChartOption = computed(() => ({
 const alertChartOption = computed(() => ({
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] },
+    xAxis: { type: 'category', data: alertStatsData.xAxis.length ? alertStatsData.xAxis : ['暂无数据'] },
     yAxis: { type: 'value' },
-    series: [
-        { name: '严重', type: 'bar', stack: 'total', data: [2, 5, 1, 3, 2, 0, 1], itemStyle: { color: '#F56C6C' } },
-        { name: '警告', type: 'bar', stack: 'total', data: [5, 8, 3, 6, 4, 2, 3], itemStyle: { color: '#E6A23C' } },
-        { name: '提醒', type: 'bar', stack: 'total', data: [10, 15, 8, 12, 10, 5, 8], itemStyle: { color: '#909399' } }
+    series: alertStatsData.series.length ? alertStatsData.series : [
+        { name: '严重', type: 'bar', stack: 'total', data: [], itemStyle: { color: '#F56C6C' } },
+        { name: '警告', type: 'bar', stack: 'total', data: [], itemStyle: { color: '#E6A23C' } },
+        { name: '提醒', type: 'bar', stack: 'total', data: [], itemStyle: { color: '#909399' } }
     ]
 }))
 
-const resourceTrendOption = computed(() => ({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['CPU平均', '内存平均'] },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', boundaryGap: false, data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'] },
-    yAxis: { type: 'value', max: 100 },
-    series: [
-        { name: 'CPU平均', type: 'line', smooth: true, data: [30, 32, 45, 60, 55, 40], itemStyle: { color: '#409EFF' }, areaStyle: { opacity: 0.1 } },
-        { name: '内存平均', type: 'line', smooth: true, data: [50, 52, 55, 65, 62, 58], itemStyle: { color: '#67C23A' }, areaStyle: { opacity: 0.1 } }
-    ]
-}))
+const resourceTrendOption = computed(() => {
+    const times = resourceHistory.value.map(item => item.time)
+    const cpuData = resourceHistory.value.map(item => item.cpu)
+    const memData = resourceHistory.value.map(item => item.mem)
+    
+    return {
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['CPU平均', '内存平均'] },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'category', boundaryGap: false, data: times },
+        yAxis: { type: 'value', max: 100 },
+        series: [
+            { name: 'CPU平均', type: 'line', smooth: true, data: cpuData, itemStyle: { color: '#409EFF' }, areaStyle: { opacity: 0.1 } },
+            { name: '内存平均', type: 'line', smooth: true, data: memData, itemStyle: { color: '#67C23A' }, areaStyle: { opacity: 0.1 } }
+        ]
+    }
+})
+
+// Watch device data for real-time trend
+watch(deviceData, (newVal) => {
+    if (!newVal) return
+    
+    const now = new Date().toLocaleTimeString()
+    let avgCpu = 0
+    let avgMem = 0
+    
+    const onlineDevs = newVal.filter(d => d.status === '在线')
+    if (onlineDevs.length > 0) {
+        const totalCpu = onlineDevs.reduce((sum, d) => sum + (parseFloat(d.cpu_usage) || 0), 0)
+        const totalMem = onlineDevs.reduce((sum, d) => sum + (parseFloat(d.memory_usage) || 0), 0)
+        avgCpu = (totalCpu / onlineDevs.length).toFixed(1)
+        avgMem = (totalMem / onlineDevs.length).toFixed(1)
+    }
+    
+    resourceHistory.value.push({ time: now, cpu: avgCpu, mem: avgMem })
+    
+    if (resourceHistory.value.length > 20) {
+        resourceHistory.value.shift()
+    }
+})
 
 const topUsageDevices = computed(() => {
     return [...deviceData.value].sort((a, b) => {
@@ -402,10 +426,6 @@ const handleAlertAction = (row, type) => {
     } else {
         ElMessage.success('告警已标记为处理中')
     }
-}
-
-const handleQuickAction = (action) => {
-    ElMessage.info(`触发操作: ${action}`)
 }
 
 </script>
@@ -491,33 +511,6 @@ const handleQuickAction = (action) => {
 }
 .resource-bar .el-progress {
     flex: 1;
-}
-
-/* Quick Actions */
-.quick-access {
-    display: flex;
-    justify-content: space-around;
-    padding: 10px 0;
-}
-.qa-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    gap: 10px;
-    transition: transform 0.2s;
-}
-.qa-item:hover { transform: scale(1.1); }
-.qa-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 20px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 
 /* Responsive */

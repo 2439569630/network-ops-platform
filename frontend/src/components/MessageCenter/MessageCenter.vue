@@ -40,6 +40,7 @@
               </el-space>
               <div class="toolbar__right">
                 <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="goPublishPage">发布通知</el-button>
+                <el-button size="small" type="success" plain @click="markAllRead">一键已阅</el-button>
               </div>
             </div>
           </div>
@@ -54,29 +55,29 @@
                 </div>
 
                 <div v-for="m in filteredSiteMessages" :key="m.id" class="site-item">
-                  <el-card
-                    shadow="never"
-                    class="site-card"
-                    :class="m.is_read ? 'site-card--read' : 'site-card--unread'"
+                  <div 
+                    class="site-card-wrap"
+                    :class="{ 'is-unread': !m.is_read }"
                     @click="openSiteMessageDetail(m)"
                   >
-                    <div class="site-card__header">
-                      <div class="site-card__title">{{ m.title }}</div>
-                      <div class="site-card__tags">
-                        <el-tag :type="m.is_read ? 'info' : 'warning'" effect="plain" size="small">
-                          {{ m.is_read ? '已阅' : '未阅' }}
-                        </el-tag>
+                    <div class="site-card-avatar">
+                      <el-avatar :size="40" :icon="UserFilled" class="sender-avatar" />
+                      <div class="unread-dot" v-if="!m.is_read"></div>
+                    </div>
+                    <div class="site-card-content">
+                      <div class="site-card-row-1">
+                        <span class="site-card-title">{{ m.title }}</span>
+                        <span class="site-card-time">{{ formatDateTime(m.created_at) }}</span>
+                      </div>
+                      <div class="site-card-row-2">
+                        {{ buildSiteMessageSnippet(m.content) }}
+                      </div>
+                      <div class="site-card-row-3">
+                        <span class="sender-name">{{ m.sender_name || m.source || '系统消息' }}</span>
+                        <el-tag v-if="!m.is_read" type="danger" size="small" effect="light" class="status-tag">NEW</el-tag>
                       </div>
                     </div>
-                    <div class="site-card__content">
-                      {{ buildSiteMessageSnippet(m.content) }}
-                    </div>
-                    <div class="site-card__meta">
-                      <span class="muted">{{ m.sender_name || m.source || '-' }}</span>
-                      <span class="dot">·</span>
-                      <span class="muted">{{ formatDateTime(m.created_at) }}</span>
-                    </div>
-                  </el-card>
+                  </div>
                 </div>
               </div>
             </div>
@@ -241,7 +242,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, reactive, computed, nextTick, watch } from 'vue';
 import axios from '@/axios/axios';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
@@ -263,9 +264,9 @@ const hasPerm = (p) => (isSuper.value ? true : perms.value.includes(String(p)));
 const hasAnyPerm = (arr) => (isSuper.value ? true : (arr || []).some((p) => perms.value.includes(String(p))));
 
 const canViewHistory = computed(() => hasPerm('sys:notify:history'));
-const canViewConfig = computed(() => hasPerm('sys:notify:config:view'));
-const canEditConfig = computed(() => hasPerm('sys:notify:config:edit'));
-const canTest = computed(() => hasPerm('sys:notify:test'));
+const canViewConfig = computed(() => false); // Always false
+const canEditConfig = computed(() => false); // Always false
+const canTest = computed(() => false); // Always false
 const canSendSiteMessages = computed(() => isSuper.value);
 const canSubscribeAlerts = computed(() => {
     return hasPerm('sys:alert:subscribe');
@@ -401,19 +402,7 @@ const clearAlerts = () => {
 };
 const lastHandledAlertSeq = ref(0);
 
-const config = reactive({
-    enable_email: false,
-    email_config: {
-        host: '',
-        port: '',
-        username: '',
-        password: ''
-    },
-    enable_pushplus: false,
-    pushplus_token: '',
-    enable_http: false,
-    http_url: ''
-});
+const config = reactive({});
 
 const getLevelType = (level) => {
     switch(level) {
@@ -540,6 +529,35 @@ const markSiteMessageUnread = async (row) => {
     }
 };
 
+const markAllRead = async () => {
+    try {
+        await ElMessageBox.confirm(
+            '确定要将所有未读消息标记为已读吗？',
+            '提示',
+            {
+                confirmButtonText: '确定',
+                cancelButtonText: '取消',
+                type: 'warning',
+            }
+        );
+        
+        const res = await axios.post('/api/v1/notifications/site-messages/read-all');
+        if (res.data.code === 200) {
+            ElMessage.success(res.data.message || '操作成功');
+            // 刷新列表和计数
+            await loadSiteMessages();
+            await msgStore.fetchSiteMessageUnreadCount();
+        } else {
+            ElMessage.error(res.data.message || '操作失败');
+        }
+        
+    } catch (e) {
+        if (e !== 'cancel') {
+             ElMessage.error('操作失败: ' + (e.response?.data?.message || e.message || '未知错误'));
+        }
+    }
+};
+
 const goPublishPage = () => {
     router.push({ name: 'site-message-publish' });
 };
@@ -550,84 +568,27 @@ const openSiteMessageDetail = (row) => {
     router.push({ name: 'site-message-detail', params: { id: String(id) } });
 };
 
-const fetchConfig = async () => {
-    configLoading.value = true;
-    try {
-        const res = await axios.get('/api/v1/notifications/config');
-        if (res.data.code === 200) {
-            const data = res.data.data;
-            
-            // 确保 email_config 结构完整，防止 v-model 报错
-            if (!data.email_config) {
-                data.email_config = {};
-            }
-            // 合并默认值
-            data.email_config = {
-                host: '',
-                port: '',
-                username: '',
-                password: '',
-                ...data.email_config
-            };
-
-            Object.assign(config, data);
-        }
-    } catch (error) {
-        ElMessage.error('获取配置失败');
-    } finally {
-        configLoading.value = false;
-    }
-};
-
-const saveConfig = async () => {
-    try {
-        const res = await axios.post('/api/v1/notifications/config', config);
-        if (res.data.code === 200) {
-            ElMessage.success('配置保存成功');
-        } else {
-            ElMessage.error(res.data.message || '保存失败');
-        }
-    } catch (error) {
-        ElMessage.error('保存失败: ' + (error.response?.data?.detail?.message || error.message));
-    }
-};
-
-const handleTest = async (channel) => {
-    try {
-        const payload = {
-            channel: channel,
-            config: config,
-            target: channel === 'email' ? testEmailTarget.value : null
-        };
-        
-        const res = await axios.post('/api/v1/notifications/test', payload);
-        if (res.data.code === 200) {
-            ElMessage.success('测试消息发送成功');
-        } else {
-            ElMessage.error(res.data.message || '测试失败');
-        }
-    } catch (error) {
-        ElMessage.error('测试请求失败: ' + (error.response?.data?.detail?.message || error.message));
-    }
-};
+// Config related functions removed
+const fetchConfig = async () => {};
+const saveConfig = async () => {};
+const handleTest = async (channel) => {};
 
 onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     const tab = String(route.query?.tab || '').trim();
-    if (['site', 'notifications', 'settings'].includes(tab)) {
+    if (['site', 'notifications'].includes(tab)) {
         activeTab.value = tab;
     }
     if (canViewHistory.value) fetchNotifications();
     if (!Array.isArray(msgStore.siteMessages) || msgStore.siteMessages.length === 0) loadSiteMessages();
-    if (canViewConfig.value) fetchConfig();
 });
 
 watch(
     () => route.query?.tab,
     (tab) => {
         const t = String(tab || '').trim();
-        if (['site', 'notifications', 'settings'].includes(t)) {
+        if (['site', 'notifications'].includes(t)) {
             activeTab.value = t;
         }
     }
@@ -1071,9 +1032,101 @@ onUnmounted(() => {
     align-items: center;
     justify-content: space-between;
 }
+
+.site-card-wrap {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    background: #ffffff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.site-card-wrap:hover {
+    border-color: #c6e2ff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.site-card-wrap.is-unread {
+    background-color: #fffcf9;
+    border-left: 3px solid #f56c6c;
+}
+
+.site-card-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.site-card-row-1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.site-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #303133;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.is-unread .site-card-title {
+    color: #000;
+    font-weight: 700;
+}
+
+.site-card-time {
+    font-size: 12px;
+    color: #909399;
+    flex-shrink: 0;
+}
+
+.site-card-row-2 {
+    font-size: 13px;
+    color: #606266;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.site-card-row-3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.sender-name {
+    font-size: 12px;
+    color: #909399;
+    background: #f5f7fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.status-tag {
+    height: 20px;
+    padding: 0 6px;
+    font-size: 12px;
+}
+
 .settings-card__title {
     font-weight: 600;
 }
+
 .mb-12 {
     margin-bottom: 12px;
 }

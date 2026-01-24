@@ -6,12 +6,12 @@
           <span class="title">路由表</span>
           <div>
             <el-button type="success" size="small" :loading="syncing" @click="handleSync" style="margin-right: 8px">从设备同步</el-button>
-            <el-button type="primary" size="small" @click="fetchRoutes">刷新</el-button>
+            <el-button type="primary" size="small" :loading="loading" @click="refreshRoutes">刷新</el-button>
           </div>
         </div>
       </template>
 
-      <el-table :data="routes" style="width: 100%" v-loading="loading">
+      <el-table :data="routes" style="width: 100%">
         <el-table-column prop="destination" label="目的网络" min-width="140" />
         <el-table-column prop="mask" label="掩码" width="120" />
         <el-table-column prop="gateway" label="下一跳" min-width="140" />
@@ -29,9 +29,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
+import Cookies from 'js-cookie'
 
 const props = defineProps({
   deviceId: {
@@ -43,6 +44,10 @@ const props = defineProps({
 const loading = ref(false)
 const syncing = ref(false)
 const routes = ref([])
+let ws = null
+let reconnectTimer = null
+let reconnectAttempts = 0
+let manualClose = false
 
 const getProtocolType = (proto) => {
   const p = (proto || '').toLowerCase()
@@ -53,9 +58,22 @@ const getProtocolType = (proto) => {
   return ''
 }
 
-const fetchRoutes = async () => {
+const applyRoutes = (rawList) => {
+  const list = Array.isArray(rawList) ? rawList : []
+  routes.value = list.map(item => ({
+    destination: item.destination || item.network || '',
+    mask: item.mask || item.netmask || '',
+    gateway: item.nexthop || item.gateway || item.next_hop || '-',
+    interface: item.interface || '-',
+    protocol: item.protocol || item.proto || 'Unknown',
+    metric: item.metric || item.cost || 0,
+    updated_at: item.updated_at || '-'
+  }))
+}
+
+const fetchRoutes = async ({ showLoading = false } = {}) => {
   if (!props.deviceId) return
-  loading.value = true
+  if (showLoading) loading.value = true
   try {
     const res = await axios.get(`/api/v1/user/device/routes/${props.deviceId}`)
     // 后端返回 JSON 列表，字段映射需要根据 netmiko/huawei 解析结果调整
@@ -69,21 +87,17 @@ const fetchRoutes = async () => {
         rawList = res
     }
     
-    routes.value = rawList.map(item => ({
-      destination: item.destination || item.network || '',
-      mask: item.mask || item.netmask || '',
-      gateway: item.nexthop || item.gateway || item.next_hop || '-',
-      interface: item.interface || '-',
-      protocol: item.protocol || item.proto || 'Unknown',
-      metric: item.metric || item.cost || 0,
-      updated_at: item.updated_at || '-' // 路由表通常没有单条路由的时间戳，除非存库时加了
-    }))
+    applyRoutes(rawList)
   } catch (error) {
     ElMessage.error('获取路由表失败')
     routes.value = []
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
+}
+
+const refreshRoutes = async () => {
+  await fetchRoutes({ showLoading: true })
 }
 
 const handleSync = async () => {
@@ -99,9 +113,118 @@ const handleSync = async () => {
   }
 }
 
+const normalizeHostname = (hostname) => {
+  const h = String(hostname || '').trim()
+  if (!h || h === '0.0.0.0') return '127.0.0.1'
+  return h
+}
+
+const closeWs = () => {
+  manualClose = true
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  try {
+    if (ws) ws.close()
+  } catch {}
+  ws = null
+}
+
+const openWs = () => {
+  if (!props.deviceId) return
+  const token = Cookies.get('token')
+  if (!token) return
+
+  manualClose = false
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsHost = normalizeHostname(window.location.hostname)
+  const wsPort = window.location.port ? `:${window.location.port}` : ''
+  const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/resources/${props.deviceId}?token=${encodeURIComponent(token)}`
+
+  try {
+    ws = new WebSocket(wsUrl)
+  } catch {
+    ws = null
+    return
+  }
+
+  ws.onopen = () => {
+    reconnectAttempts = 0
+  }
+
+  ws.onmessage = async (evt) => {
+    let msg = null
+    try {
+      msg = JSON.parse(evt.data)
+    } catch {
+      msg = null
+    }
+    if (!msg || typeof msg !== 'object') return
+    if (msg.type === 'resources_snapshot') {
+      const data = msg.data || {}
+      if (Array.isArray(data.routes)) applyRoutes(data.routes)
+      return
+    }
+    if (msg.type === 'resources_updated') {
+      const res = Array.isArray(msg.resources) ? msg.resources : []
+      if (res.includes('routes')) {
+        const data = msg.data || {}
+        if (Array.isArray(data.routes)) {
+          applyRoutes(data.routes)
+        } else {
+          await fetchRoutes({ showLoading: false })
+        }
+      }
+    }
+  }
+
+  ws.onclose = async (e) => {
+    ws = null
+    if (manualClose) return
+
+    if (e?.code === 4003) return
+
+    if (e?.code === 4001) {
+      try {
+        const res = await axios.post('/api/v1/auth/refresh')
+        const nextToken = res?.data?.token
+        if (nextToken) {
+          Cookies.set('token', nextToken, { sameSite: 'lax' })
+          reconnectAttempts = 0
+          openWs()
+        }
+      } catch {
+        return
+      }
+      return
+    }
+
+    const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempts))
+    reconnectAttempts++
+    reconnectTimer = setTimeout(() => {
+      openWs()
+    }, delay)
+  }
+}
+
 onMounted(() => {
-  fetchRoutes()
+  openWs()
+  fetchRoutes({ showLoading: false })
 })
+
+onBeforeUnmount(() => {
+  closeWs()
+})
+
+watch(
+  () => props.deviceId,
+  () => {
+    closeWs()
+    fetchRoutes({ showLoading: false })
+    openWs()
+  }
+)
 </script>
 
 <style scoped>

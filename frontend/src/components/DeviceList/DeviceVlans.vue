@@ -6,12 +6,12 @@
           <span class="title">VLAN 信息</span>
           <div>
             <el-button type="success" size="small" :loading="syncing" @click="handleSync" style="margin-right: 8px">从设备同步</el-button>
-            <el-button type="primary" size="small" @click="fetchVlans">刷新</el-button>
+            <el-button type="primary" size="small" :loading="loading" @click="refreshVlans">刷新</el-button>
           </div>
         </div>
       </template>
 
-      <el-table :data="vlans" style="width: 100%" v-loading="loading">
+      <el-table :data="vlans" style="width: 100%">
         <el-table-column prop="vlan_id" label="VLAN ID" width="100" sortable />
         <el-table-column prop="name" label="名称" width="150" />
         <el-table-column prop="status" label="状态" width="100">
@@ -39,9 +39,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
+import Cookies from 'js-cookie'
 
 const props = defineProps({
   deviceId: {
@@ -53,10 +54,25 @@ const props = defineProps({
 const loading = ref(false)
 const syncing = ref(false)
 const vlans = ref([])
+let ws = null
+let reconnectTimer = null
+let reconnectAttempts = 0
+let manualClose = false
 
-const fetchVlans = async () => {
+const applyVlans = (rawList) => {
+  const list = Array.isArray(rawList) ? rawList : []
+  vlans.value = list.map(item => ({
+    vlan_id: item.vlan_id || 0,
+    name: item.name || `VLAN${item.vlan_id}`,
+    status: (item.status || 'active').toLowerCase(),
+    description: item.description || item.type || '',
+    ports: Array.isArray(item.ports) ? item.ports : []
+  }))
+}
+
+const fetchVlans = async ({ showLoading = false } = {}) => {
   if (!props.deviceId) return
-  loading.value = true
+  if (showLoading) loading.value = true
   try {
     const res = await axios.get(`/api/v1/user/device/vlans/${props.deviceId}`)
     let rawList = []
@@ -69,19 +85,17 @@ const fetchVlans = async () => {
     }
     
 
-    vlans.value = rawList.map(item => ({
-      vlan_id: item.vlan_id || 0,
-      name: item.name || `VLAN${item.vlan_id}`, // 有些设备可能没有 VLAN 名称
-      status: (item.status || 'active').toLowerCase(),
-      description: item.description || item.type || '',
-      ports: Array.isArray(item.ports) ? item.ports : []
-    }))
+    applyVlans(rawList)
   } catch (error) {
     ElMessage.error('获取VLAN列表失败')
     vlans.value = []
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
+}
+
+const refreshVlans = async () => {
+  await fetchVlans({ showLoading: true })
 }
 
 const handleSync = async () => {
@@ -97,9 +111,118 @@ const handleSync = async () => {
   }
 }
 
+const normalizeHostname = (hostname) => {
+  const h = String(hostname || '').trim()
+  if (!h || h === '0.0.0.0') return '127.0.0.1'
+  return h
+}
+
+const closeWs = () => {
+  manualClose = true
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  try {
+    if (ws) ws.close()
+  } catch {}
+  ws = null
+}
+
+const openWs = () => {
+  if (!props.deviceId) return
+  const token = Cookies.get('token')
+  if (!token) return
+
+  manualClose = false
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsHost = normalizeHostname(window.location.hostname)
+  const wsPort = window.location.port ? `:${window.location.port}` : ''
+  const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/resources/${props.deviceId}?token=${encodeURIComponent(token)}`
+
+  try {
+    ws = new WebSocket(wsUrl)
+  } catch {
+    ws = null
+    return
+  }
+
+  ws.onopen = () => {
+    reconnectAttempts = 0
+  }
+
+  ws.onmessage = async (evt) => {
+    let msg = null
+    try {
+      msg = JSON.parse(evt.data)
+    } catch {
+      msg = null
+    }
+    if (!msg || typeof msg !== 'object') return
+    if (msg.type === 'resources_snapshot') {
+      const data = msg.data || {}
+      if (Array.isArray(data.vlans)) applyVlans(data.vlans)
+      return
+    }
+    if (msg.type === 'resources_updated') {
+      const res = Array.isArray(msg.resources) ? msg.resources : []
+      if (res.includes('vlans')) {
+        const data = msg.data || {}
+        if (Array.isArray(data.vlans)) {
+          applyVlans(data.vlans)
+        } else {
+          await fetchVlans({ showLoading: false })
+        }
+      }
+    }
+  }
+
+  ws.onclose = async (e) => {
+    ws = null
+    if (manualClose) return
+
+    if (e?.code === 4003) return
+
+    if (e?.code === 4001) {
+      try {
+        const res = await axios.post('/api/v1/auth/refresh')
+        const nextToken = res?.data?.token
+        if (nextToken) {
+          Cookies.set('token', nextToken, { sameSite: 'lax' })
+          reconnectAttempts = 0
+          openWs()
+        }
+      } catch {
+        return
+      }
+      return
+    }
+
+    const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempts))
+    reconnectAttempts++
+    reconnectTimer = setTimeout(() => {
+      openWs()
+    }, delay)
+  }
+}
+
 onMounted(() => {
-  fetchVlans()
+  openWs()
+  fetchVlans({ showLoading: false })
 })
+
+onBeforeUnmount(() => {
+  closeWs()
+})
+
+watch(
+  () => props.deviceId,
+  () => {
+    closeWs()
+    fetchVlans({ showLoading: false })
+    openWs()
+  }
+)
 </script>
 
 <style scoped>

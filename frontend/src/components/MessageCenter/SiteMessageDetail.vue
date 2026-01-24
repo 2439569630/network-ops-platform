@@ -1,33 +1,56 @@
 <template>
   <div class="smd-container">
-    <div class="smd-header">
-      <el-button @click="goBack">返回</el-button>
-      <div class="smd-title">{{ message?.title || '站内消息' }}</div>
-      <div class="smd-actions">
-        <el-button v-if="message && !message.is_read" type="primary" :loading="marking" @click="markRead">标记已读</el-button>
-        <el-button v-if="message && message.is_read" :loading="marking" @click="markUnread">标记未读</el-button>
+    <div class="smd-topbar">
+      <div class="topbar-left" @click="goBack">
+        <el-icon class="back-icon"><ArrowLeft /></el-icon>
+        <span>返回列表</span>
       </div>
     </div>
 
-    <el-card v-loading="loading" shadow="never" class="smd-card">
-      <div v-if="message" class="smd-meta">
-        <div class="smd-meta__row">
-          <el-tag :type="message.is_read ? 'info' : 'warning'" effect="plain">
-            {{ message.is_read ? '已读' : '未读' }}
-          </el-tag>
-        </div>
-        <div class="smd-meta__row">
-          <div class="smd-meta__item"><span class="k">发件人</span><span class="v">{{ message.sender_name || message.source || '-' }}</span></div>
-          <div class="smd-meta__item"><span class="k">时间</span><span class="v">{{ formatDateTime(message.created_at) }}</span></div>
+    <div class="smd-scroll-area">
+      <div class="smd-paper" v-loading="loading">
+        <template v-if="message">
+          <div class="smd-paper__header">
+            <div class="smd-title-row">
+              <h1 class="smd-title">{{ message.title }}</h1>
+              <div class="smd-actions">
+                <el-tooltip content="标记为已读" v-if="!message.is_read">
+                  <el-button circle size="small" type="success" plain @click="markRead">
+                    <el-icon><Check /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="标记为未读" v-if="message.is_read">
+                  <el-button circle size="small" type="info" plain @click="markUnread">
+                    <el-icon><RefreshLeft /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </div>
+            </div>
+
+            <div class="smd-meta-row">
+              <div class="meta-info">
+                <span class="sender-name">{{ message.sender_name || message.source || '系统消息' }}</span>
+                <span class="meta-dot">·</span>
+                <span class="send-time">{{ formatDateTime(message.created_at) }}</span>
+              </div>
+              <el-tag :type="message.is_read ? 'info' : 'danger'" size="small" effect="plain" round>
+                {{ message.is_read ? '已读' : '未读' }}
+              </el-tag>
+            </div>
+          </div>
+
+          <el-divider class="smd-divider" />
+
+          <div class="smd-paper__content">
+            <div class="content-text">{{ message.content }}</div>
+          </div>
+        </template>
+
+        <div v-else-if="!loading" class="smd-empty">
+          <el-empty description="消息不存在或无权限查看" />
         </div>
       </div>
-
-      <el-empty v-if="!loading && !message" description="消息不存在或无权限查看" />
-
-      <div v-if="message" class="smd-content">
-        <pre class="smd-content__pre">{{ message.content }}</pre>
-      </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -37,6 +60,7 @@ import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
+import { ArrowLeft, Check, RefreshLeft } from '@element-plus/icons-vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -51,7 +75,13 @@ const formatDateTime = (value) => {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString();
+  return d.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 const fetchDetail = async () => {
@@ -143,67 +173,118 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  background-color: #f5f7fa;
 }
 
-.smd-header {
+.smd-topbar {
+  height: 50px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  padding: 0 20px;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #606266;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.topbar-left:hover {
+  color: #409eff;
+}
+
+.back-icon {
+  font-size: 16px;
+}
+
+.smd-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 20px 40px 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.smd-paper {
+  width: 100%;
+  max-width: 900px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  padding: 40px;
+  margin-top: 10px;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.smd-paper__header {
+  margin-bottom: 20px;
+}
+
+.smd-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
 }
 
 .smd-title {
-  font-size: 18px;
-  font-weight: 600;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
-.smd-actions {
+.smd-meta-row {
   display: flex;
-  gap: 8px;
-}
-
-.smd-card {
-  flex: 1;
-  overflow: hidden;
-}
-
-.smd-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.smd-meta__row {
-  display: flex;
-  gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: space-between;
 }
 
-.smd-meta__item {
+.meta-info {
   display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: baseline;
-}
-
-.k {
   color: #909399;
+  font-size: 14px;
 }
 
-.v {
+.sender-name {
+  font-weight: 600;
+  color: #606266;
+}
+
+.meta-dot {
+  font-weight: bold;
+}
+
+.smd-divider {
+  margin: 0 0 30px 0;
+}
+
+.smd-paper__content {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.8;
   color: #303133;
 }
 
-.smd-content__pre {
-  margin: 0;
+.content-text {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
-  line-height: 1.7;
+}
+
+.smd-empty {
+  margin-top: 100px;
 }
 </style>

@@ -103,6 +103,12 @@ const homeRoutes = [
                 meta: { title: '系统设置', roleCodes: ['admin', 'superadmin'] }
             },
             {
+                path: 'notification-subscribers',
+                name: 'notification-subscribers',
+                component: () => import('@/components/System/NotificationSubscribers.vue'),
+                meta: { title: '预警通知订阅', perms: ['sys:alert:subscribe', 'sys:user:list'] }
+            },
+            {
                 path: 'repair/apply',
                 name: 'repair-apply',
                 component: () => import('@/components/Repair/Apply.vue'),

@@ -21,6 +21,8 @@ export const homeDataStore = defineStore('homeData', () => {
   let clockTimer = null;
   let emailCooldownTimer = null;
   let pollingTimer = null;
+  let alertsWs = null;
+  let alertsWsReconnectTimer = null;
 
   const form = reactive({
     id: null,
@@ -403,10 +405,89 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const stopAlertsRealtime = () => {
+    try {
+      if (alertsWs) alertsWs.close();
+    } catch {}
+    alertsWs = null;
+    if (alertsWsReconnectTimer) {
+      clearTimeout(alertsWsReconnectTimer);
+      alertsWsReconnectTimer = null;
+    }
     alertsWsStatus.value = 'disconnected';
   };
 
   const startAlertsRealtime = async () => {
+    const hasPerm = isSuper.value || (Array.isArray(permissions.value) ? permissions.value : []).includes('sys:notify:history');
+    if (!hasPerm) {
+      stopAlertsRealtime();
+      return;
+    }
+    const token = Cookies.get('token') || '';
+    if (!token) {
+      stopAlertsRealtime();
+      return;
+    }
+    if (alertsWs && (alertsWsStatus.value === 'connected' || alertsWsStatus.value === 'connecting')) return;
+
+    stopAlertsRealtime();
+    alertsWsStatus.value = 'connecting';
+
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${proto}://${window.location.host}/api/v1/notifications/ws/system-alerts?token=${encodeURIComponent(token)}`;
+
+    const mapToHistoryItem = (p) => {
+      const time = String((p && (p.time || p.created_at)) || '').trim();
+      const title = String((p && (p.source || p.device_name || p.deviceName)) || '系统告警').trim();
+      const content = String((p && (p.description || p.content || p.message)) || '').trim();
+      const level = String((p && p.level) || '').trim();
+      return {
+        id: p && p.id,
+        created_at: time || new Date().toISOString(),
+        title,
+        content,
+        level,
+        raw: p || null,
+      };
+    };
+
+    const pushItems = (items) => {
+      const list = Array.isArray(items) ? items : [];
+      const mapped = list.map(mapToHistoryItem).filter((x) => x && x.content);
+      const seen = new Set();
+      const merged = [...mapped, ...(Array.isArray(notificationHistory.value) ? notificationHistory.value : [])].filter((it) => {
+        const key = String(it.id || '') || `${it.created_at}::${it.title}::${it.content}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      notificationHistory.value = merged.slice(0, 6);
+    };
+
+    alertsWs = new WebSocket(url);
+    alertsWs.onopen = () => {
+      alertsWsStatus.value = 'connected';
+    };
+    alertsWs.onclose = () => {
+      alertsWsStatus.value = 'disconnected';
+      alertsWs = null;
+      if (alertsWsReconnectTimer) clearTimeout(alertsWsReconnectTimer);
+      alertsWsReconnectTimer = setTimeout(() => {
+        startAlertsRealtime();
+      }, 3000);
+    };
+    alertsWs.onerror = () => {
+      alertsWsStatus.value = 'disconnected';
+    };
+    alertsWs.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg && msg.type === 'init') {
+          pushItems(msg.data);
+        } else if (msg && msg.type === 'alert') {
+          pushItems([msg.data]);
+        }
+      } catch {}
+    };
   };
 
   const refreshAll = async (options = {}) => {

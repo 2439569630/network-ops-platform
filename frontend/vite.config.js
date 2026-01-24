@@ -19,7 +19,8 @@ export default defineConfig({
   },
   server: {
     open: true,
-    host: '127.0.0.1',
+    host: true,
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: backendTarget,

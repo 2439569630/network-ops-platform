@@ -107,25 +107,29 @@
 
             <el-descriptions :column="2" border size="small">
               <el-descriptions-item label="添加人">{{ detail.created_by_name || '未知' }}</el-descriptions-item>
-              <el-descriptions-item label="运维管理员">{{ detail.ops_admin_name || '未知' }}</el-descriptions-item>
+              <el-descriptions-item label="管理员">{{ detail.ops_admin_name || '未知' }}</el-descriptions-item>
             </el-descriptions>
           </el-card>
         </el-tab-pane>
 
-        <el-tab-pane label="接口列表" name="interfaces">
+        <el-tab-pane v-if="isNetworkDevice && canViewInterfaces" label="接口列表" name="interfaces">
           <DeviceInterfaces :device-id="deviceId" />
         </el-tab-pane>
 
-        <el-tab-pane label="路由表" name="routes">
+        <el-tab-pane v-if="isNetworkDevice && canViewRoutes" label="路由表" name="routes">
           <DeviceRoutes :device-id="deviceId" />
         </el-tab-pane>
 
-        <el-tab-pane label="VLAN" name="vlans">
+        <el-tab-pane v-if="isNetworkDevice && canViewVlans" label="VLAN" name="vlans">
           <DeviceVlans :device-id="deviceId" />
         </el-tab-pane>
 
         <el-tab-pane label="预警" name="alerts">
           <DeviceAlerts :device-id="deviceId" />
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canEdit" label="配置" name="config">
+          <DeviceConfig :device-id="deviceId" />
         </el-tab-pane>
 
         <el-tab-pane v-if="canAudit" label="审计" name="audit">
@@ -246,11 +250,13 @@ import axios from '@/axios/axios'
 import Cookies from 'js-cookie'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { homeDataStore } from '@/components/home/home/data'
+import { getDeviceStatusTagType, getDeviceStatusText } from './deviceStatus'
 
 import DeviceAlerts from './DeviceAlerts.vue'
 import DeviceRoutes from './DeviceRoutes.vue'
 import DeviceVlans from './DeviceVlans.vue'
 import DeviceInterfaces from './DeviceInterfaces.vue'
+import DeviceConfig from './DeviceConfig.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -275,9 +281,10 @@ const detail = reactive({
   created_by_name: '',
   ops_admin_name: '',
   status: 'offline',
+  connectivity: 'offline',
+  displayStatus: '',
   fsmState: '',
-  statePhase: '',
-  stateReason: '',
+  fsmReason: '',
   cpuUsage: 0,
   memoryUsage: 0,
   diskUsage: 0,
@@ -296,13 +303,29 @@ let ws = null
 const canEdit = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:edit')))
 const canDelete = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:del')))
 const canAudit = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:audit')))
+const canViewInterfaces = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:interface:view')))
+const canViewRoutes = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:route:view')))
+const canViewVlans = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:vlan:view')))
+
+const isNetworkDevice = computed(() => {
+  const t = String(detail.type || '').toLowerCase()
+  return t.includes('switch') || 
+         t.includes('router') || 
+         t.includes('firewall') || 
+         t.includes('交换机') || 
+         t.includes('路由器') || 
+         t.includes('防火墙')
+})
 
 const activeTab = computed({
   get() {
     const tab = String(route.query.tab || '')
     if (tab === 'audit' && canAudit.value) return 'audit'
     if (tab === 'alerts') return 'alerts'
-    if (['routes', 'vlans', 'interfaces'].includes(tab)) return tab
+    if (tab === 'interfaces' && canViewInterfaces.value) return 'interfaces'
+    if (tab === 'routes' && canViewRoutes.value) return 'routes'
+    if (tab === 'vlans' && canViewVlans.value) return 'vlans'
+    if (tab === 'config' && canEdit.value) return 'config'
     return 'overview'
   },
   set(val) {
@@ -310,6 +333,7 @@ const activeTab = computed({
     const nextQuery = { ...route.query }
     if (next === 'audit') nextQuery.tab = 'audit'
     else if (next === 'alerts') nextQuery.tab = 'alerts'
+    else if (next === 'config') nextQuery.tab = 'config'
     else if (['routes', 'vlans', 'interfaces'].includes(next)) nextQuery.tab = next
     else delete nextQuery.tab
     router.replace({ query: nextQuery })
@@ -325,34 +349,9 @@ const editForm = reactive({
   ssh_port: 22,
 })
 
-const statusText = computed(() => {
-  const fsm = (detail.fsmState || detail.status || '').toLowerCase()
-  const phase = (detail.statePhase || '').toLowerCase()
-  const reason = detail.stateReason || ''
-  
-  if (fsm === 'online') {
-    if (phase === 'collecting') return '采集中'
-    return '在线'
-  }
-  if (fsm === 'checking') return '检测中'
-  if (fsm === 'recovering') return '恢复中'
-  if (fsm === 'degraded') return '降级'
-  
-  // 离线状态显示具体原因
-  if (reason.includes('timeout')) return '连接超时'
-  if (reason.includes('auth')) return '认证失败'
-  if (reason.includes('unreachable')) return '不可达'
-  
-  return '离线'
-})
+const statusText = computed(() => getDeviceStatusText(detail))
 
-const statusTagType = computed(() => {
-  const s = statusText.value
-  if (s === '在线' || s === '采集中') return 'success'
-  if (s === '检测中' || s === '恢复中') return 'warning'
-  if (s === '降级') return 'warning'
-  return 'danger'
-})
+const statusTagType = computed(() => getDeviceStatusTagType(detail))
 
 const clampPercent = (val) => {
   const n = Number(val)
@@ -367,17 +366,20 @@ const formatPercent = (val) => `${clampPercent(val).toFixed(0)}%`
 const applyStatusPayload = (payload) => {
   if (!payload || typeof payload !== 'object') return
   if (payload.status) detail.status = payload.status
+  if (payload.connectivity) detail.connectivity = payload.connectivity
+  if (payload.displayStatus) detail.displayStatus = payload.displayStatus
+  if (payload.display_status) detail.displayStatus = payload.display_status
   if (payload.fsmState) detail.fsmState = payload.fsmState
-  if (payload.statePhase) detail.statePhase = payload.statePhase
-  if (payload.stateReason) detail.stateReason = payload.stateReason
+  if (payload.fsm_state) detail.fsmState = payload.fsm_state
+  if (payload.fsmReason) detail.fsmReason = payload.fsmReason
+  if (payload.fsm_reason) detail.fsmReason = payload.fsm_reason
   
   if (payload.cpuUsage !== undefined) detail.cpuUsage = Number(payload.cpuUsage) || 0
   if (payload.memoryUsage !== undefined) detail.memoryUsage = Number(payload.memoryUsage) || 0
   if (payload.diskUsage !== undefined) detail.diskUsage = Number(payload.diskUsage) || 0
   if (payload.uptime) detail.uptime = payload.uptime
   if (payload.osVersion) detail.osVersion = payload.osVersion
-  
-  // 动态字段映射
+
   if (payload.vendor) detail.vendor = payload.vendor
   if (payload.model) detail.model = payload.model
   if (payload.product) detail.product = payload.product
