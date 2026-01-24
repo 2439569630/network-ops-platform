@@ -10,8 +10,9 @@ from app.utils.notification_sender import send_email, send_pushplus, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
 
 # ORM Imports
-from app.models.orm.notification import DeviceNotification, SiteMessage, SiteMessageRead, UserNotificationConfig
+from app.models.orm.notification import DeviceNotification, SiteMessage, SiteMessageRead
 from app.models.orm.device import NetworkDevice
+from app.models.orm.user import User
 from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,16 @@ class NotificationService:
 
             result = []
             for n in notifications:
+                d_name = device_map.get(n.device_id, "")
                 result.append({
                     "id": n.id,
                     "device_id": n.device_id,
-                    "device_name": device_map.get(n.device_id, ""),
+                    "device_name": d_name,
                     "level": n.level,
                     "message": n.message,
-                    "created_at": n.created_at
+                    "created_at": n.created_at,
+                    "title": d_name or "系统通知",
+                    "content": n.message
                 })
             return result
         else:
@@ -72,13 +76,16 @@ class NotificationService:
             
             result = []
             for n in notifications:
+                d_name = device_map.get(n.device_id, "")
                 result.append({
                     "id": n.id,
                     "device_id": n.device_id,
-                    "device_name": device_map.get(n.device_id, ""),
+                    "device_name": d_name,
                     "level": n.level,
                     "message": n.message,
-                    "created_at": n.created_at
+                    "created_at": n.created_at,
+                    "title": d_name or "系统通知",
+                    "content": n.message
                 })
             return result
 
@@ -274,6 +281,42 @@ class NotificationService:
         return True
 
     @staticmethod
+    async def mark_all_site_messages_read(*, user_id: int) -> int:
+        """
+        标记所有站内信为已读
+        """
+        # 1. Get all relevant message IDs
+        all_ids = await SiteMessage.filter(
+            Q(is_global=True) | Q(target_user_id=user_id)
+        ).values_list('id', flat=True)
+        
+        if not all_ids:
+            return 0
+            
+        # 2. Get already read message IDs
+        read_ids = await SiteMessageRead.filter(user_id=user_id).values_list('message_id', flat=True)
+        
+        # 3. Determine unread
+        unread_ids = set(all_ids) - set(read_ids)
+        if not unread_ids:
+            return 0
+            
+        # 4. Bulk create
+        now = datetime.now(timezone.utc)
+        to_create = [
+            SiteMessageRead(user_id=user_id, message_id=mid, read_at=now)
+            for mid in unread_ids
+        ]
+        await SiteMessageRead.bulk_create(to_create)
+        
+        # 5. Publish event (optional, or just reuse single read event? No, too many.
+        # Ideally client should reload unread count.
+        # We can publish a special event type "site_message_read_all" if needed, 
+        # or rely on the client refreshing after the API call returns.)
+        
+        return len(unread_ids)
+
+    @staticmethod
     def get_site_messages_user_channel(user_id: int) -> str:
         return f"{NotificationService.SITE_MESSAGES_CHANNEL_USER_PREFIX}{int(user_id)}"
 
@@ -384,10 +427,9 @@ class NotificationService:
                     device_id=device_id,
                     level=level,
                     message=description,
-                    created_at=datetime.now(timezone.utc),
                 )
             except Exception as e:
-                logger.error(f"写入通知历史失败: {e}")
+                logger.error(f"写入通知历史失败: {e}; payload_time={payload.get('time')}")
 
         if publish_realtime or cache_realtime:
             try:
@@ -539,39 +581,110 @@ class NotificationService:
         )
 
     @staticmethod
+    async def notify_repair_order_assigned(
+        *,
+        order_id: int,
+        title: str,
+        assignee_id: int,
+        priority: str,
+        reason: str = "工单指派",
+    ) -> Dict[str, Any]:
+        """
+        发送工单指派通知 (站内信 + 邮件)
+        """
+        # 1. 发送站内信
+        site_msg_content = f"【{reason}】工单 #{order_id} 已指派给您。\n标题: {title}\n优先级: {priority}"
+        await NotificationService.create_site_message(
+            sender_id=None, # System
+            sender_name="系统",
+            title=f"新工单 ({reason})",
+            content=site_msg_content,
+            source="工单系统",
+            target_user_id=assignee_id,
+            is_global=False
+        )
+        
+        # 2. 发送邮件
+        try:
+            # 获取用户信息
+            user = await User.filter(id=assignee_id).first()
+            # Remove is_email_notify check as requested
+            if not user or not user.email:
+                return {"site_message": "sent", "email": "skipped_no_email"}
+            
+            # Check global email switch
+            email_enabled = SystemConfig.get("email_enabled")
+            if email_enabled != "1" and email_enabled != "true":
+                return {"site_message": "sent", "email": "skipped_global_disabled"}
+            
+            # 获取系统配置
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
+            
+            # 检查配置完整性
+            if not all([host, port, username, password]):
+                # 尝试重新加载配置
+                await SystemConfig.load()
+                host = SystemConfig.get("email_host")
+                port = SystemConfig.get("email_port")
+                username = SystemConfig.get("email_username")
+                password = SystemConfig.get("email_password")
+                nickname = SystemConfig.get("email_nickname")
+                
+            if not all([host, port, username, password]):
+                logger.warning("系统邮件配置不完整，跳过发送工单邮件")
+                return {"site_message": "sent", "email": "config_missing"}
+
+            # 发送邮件
+            email_subject = f"【{reason}】#{order_id} - {title}"
+            email_content = f"""
+尊敬的 {user.nickname or user.username}:
+
+您有一个新的报修工单待处理。
+
+工单编号: #{order_id}
+指派类型: {reason}
+标题: {title}
+优先级: {priority}
+
+请登录系统查看详情并及时处理。
+"""
+            success, msg = await send_email(
+                host, port, username, password, 
+                user.email, email_subject, email_content, 
+                nickname=str(nickname or "运维系统").strip()
+            )
+            
+            if not success:
+                logger.error(f"工单邮件发送失败: {msg}")
+                return {"site_message": "sent", "email": "failed", "error": msg}
+                
+            return {"site_message": "sent", "email": "sent"}
+            
+        except Exception as e:
+            logger.error(f"工单邮件通知流程异常: {e}")
+            return {"site_message": "sent", "email": "error", "error": str(e)}
+
+    @staticmethod
     async def get_config(user_id: int) -> dict:
         """获取用户通知配置"""
-        config = await UserNotificationConfig.filter(user_id=user_id).first()
-        
-        if not config:
-            return {
-                "enable_email": False,
-                "email_config": {},
-                "enable_pushplus": False,
-                "pushplus_token": "",
-                "enable_http": False,
-                "http_url": ""
-            }
-            
-        data = dict(config)
-        # JSONField automatically handles deserialization in Tortoise, usually.
-        # But if it was stored as string previously, we might need to handle it.
-        # Since we use new table/model, it should be fine.
-        return data
+        return {
+            "enable_email": False,
+            "email_config": {},
+            "enable_pushplus": False,
+            "pushplus_token": "",
+            "enable_http": False,
+            "http_url": ""
+        }
 
     @staticmethod
     async def update_config(user_id: int, data: NotificationConfig):
         """更新用户通知配置"""
-        # Upsert
-        defaults = {
-            "enable_email": data.enable_email,
-            "email_config": data.email_config or {},
-            "enable_pushplus": data.enable_pushplus,
-            "pushplus_token": data.pushplus_token,
-            "enable_http": data.enable_http,
-            "http_url": data.http_url
-        }
-        await UserNotificationConfig.update_or_create(defaults=defaults, user_id=user_id)
+        # 功能已禁用，不做任何操作
+        pass
 
     @staticmethod
     async def test_notification(data: TestNotification):

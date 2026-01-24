@@ -143,7 +143,10 @@ async def assign_order(
 
         # 修改为 pending 状态，等待维修人员确认接单
         update_data = RepairOrderUpdate(status="pending", assignee_id=target_assignee_id)
-        await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True)
+        
+        assign_reason = "自动派单 (负载均衡)" if auto_assign else "管理员指派"
+        await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True, assign_reason=assign_reason)
+        
         if auto_assign:
             await RepairOrderService.log_action(
                 id,

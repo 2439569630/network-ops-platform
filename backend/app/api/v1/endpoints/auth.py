@@ -310,14 +310,16 @@ async def login(data: LoginForm, response: Response, request: Request):
         logger.error(f"Failed to record login log: {e}")
 
     # 发送登录提醒邮件
-    if user.get("is_email_notify") and user.get("email"):
+    # Check global email switch AND user preference
+    email_enabled = SystemConfig.get("email_enabled")
+    if (email_enabled == "1" or email_enabled == "true") and user.get("is_email_notify") and user.get("email"):
         # 调试日志
         logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
         asyncio.create_task(_send_login_notification_task(
             str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
         ))
     else:
-        logger.info(f"Skip login notification: is_email_notify={user.get('is_email_notify')}, email={user.get('email')}")
+        logger.info(f"Skip login notification: global email_enabled={email_enabled}, is_email_notify={user.get('is_email_notify')}, email={user.get('email')}")
 
     # 发送站内信通知 (始终发送，不依赖邮件开关)
     try:
@@ -735,35 +737,69 @@ async def read_current_user(response: Response, token = Depends(verify_token)):
 
 @router.get("/users/me/security")
 async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
+    """
+    获取用户安全设置
+    """
     user_id = token_payload.get("id")
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录")
     
-    row = await db.fetch_one("SELECT is_email_notify FROM users WHERE id = $1", int(user_id))
+    row = await db.fetch_one("SELECT email, password, is_email_notify FROM users WHERE id = $1", int(user_id))
     if not row:
-         raise HTTPException(status_code=404, detail="User not found")
+         raise HTTPException(status_code=404, detail="用户不存在")
          
     return {
         "code": 200,
-        "status": "success",
         "data": {
+            "email": row.get("email"),
+            "has_password": bool(row.get("password")),
             "is_email_notify": bool(row.get("is_email_notify") or False)
         }
     }
 
+class UserSecurityUpdate(BaseModel):
+    email: Optional[str] = None
+    old_password: Optional[str] = None
+    new_password: Optional[str] = None
+    is_email_notify: Optional[bool] = None
+
 @router.put("/users/me/security")
-async def update_my_security_settings(data: UpdateSecurityForm, token_payload: dict = Depends(verify_token)):
+async def update_my_security_settings(
+    settings: UserSecurityUpdate,
+    token_payload: dict = Depends(verify_token)
+):
+    """
+    更新用户安全设置 (邮箱、密码、通知)
+    """
     user_id = token_payload.get("id")
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录")
+
+    user = await db.fetch_one("SELECT id, password, email FROM users WHERE id = $1", int(user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # Update email
+    if settings.email is not None:
+        # Check if email is used by other users
+        if settings.email:
+            exists = await db.fetch_val("SELECT id FROM users WHERE email = $1 AND id != $2", settings.email, int(user_id))
+            if exists:
+                return {"code": 400, "message": "该邮箱已被其他用户使用"}
+        await db.execute("UPDATE users SET email = $1 WHERE id = $2", settings.email, int(user_id))
     
-    if data.is_email_notify is not None:
-        await db.execute(
-            "UPDATE users SET is_email_notify = $1 WHERE id = $2",
-            data.is_email_notify, int(user_id)
-        )
+    # Update notification setting
+    if settings.is_email_notify is not None:
+        await db.execute("UPDATE users SET is_email_notify = $1 WHERE id = $2", settings.is_email_notify, int(user_id))
+        
+    # Update password
+    if settings.new_password:
+        if not _verify_password_compat(str(settings.old_password or ""), user.get("password")):
+             return {"code": 400, "message": "原密码错误"}
+        hashed_pw = get_password_hash(settings.new_password)
+        await db.execute("UPDATE users SET password = $1 WHERE id = $2", hashed_pw, int(user_id))
     
-    return {"code": 200, "status": "success", "message": "设置已更新"}
+    return {"code": 200, "message": "设置更新成功"}
 
 @router.get("/users/me/login-logs")
 async def get_my_login_logs(

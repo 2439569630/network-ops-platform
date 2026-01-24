@@ -50,6 +50,11 @@ async def _run() -> int:
         await db.connect()
     except Exception as e:
         logger.error(f"DB connect failed: {e}")
+        try:
+            await redis_manager.close()
+        except Exception:
+            pass
+        return 1
 
     # 初始化 Tortoise ORM：传入数据库 URL 与模型模块列表，并自动生成表结构
     try:
@@ -65,8 +70,6 @@ async def _run() -> int:
                 "app.models.orm.location",
                 "app.models.orm.config",
                 "app.models.orm.alert",
-                "app.models.orm.interface",
-                "app.models.orm.vlan",
             ]},
         )
         # 根据模型定义在数据库中创建缺失的表
@@ -74,6 +77,15 @@ async def _run() -> int:
         logger.info("Tortoise ORM initialized")
     except Exception as e:
         logger.error(f"Tortoise ORM init failed: {e}")
+        try:
+            await asyncio.gather(db.disconnect(), redis_manager.close())
+        except Exception:
+            pass
+        try:
+            await Tortoise.close_connections()
+        except Exception:
+            pass
+        return 1
 
     # 确保站内信所需的数据表已创建，失败仅记录错误
     try:
@@ -106,11 +118,9 @@ async def _run() -> int:
     # 收到退出信号后进入清理阶段
     logger.info("监控守护进程正在停止...")
     
-    # 优先清理 Redis 中的设备运行时状态，避免残留过期数据
-    await monitor.clear_all_redis_statuses()
-    
-    # 停止所有监控任务
+    # 停止所有监控任务（内部已包含 Redis 状态清理和并发断开连接）
     await monitor.stop()
+
     # 并发关闭数据库与 Redis 连接
     await asyncio.gather(db.disconnect(), redis_manager.close())
     # 关闭 Tortoise 连接池

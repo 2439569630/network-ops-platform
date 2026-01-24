@@ -10,6 +10,7 @@ from .models.huawei_runtime import (
     HuaweiInterfaceRuntime,
     HuaweiRouteRuntime,
     HuaweiVlanRuntime,
+    HuaweiInterfaceDetailRuntime,
 )
 
 # 使用新的 logger 名称
@@ -92,8 +93,12 @@ class HuaweiDevice(BaseDevice):
         super().__init__(device_info)
         # 设备类型：Netmiko 驱动使用
         self.device_type = 'huawei'
-        # 深度巡检的下一次执行时间
-        self.next_resource_sync_at = 0.0
+        self.next_interfaces_sync_at = 0.0
+        self.next_routes_sync_at = 0.0
+        self.next_vlans_sync_at = 0.0
+        self.next_interfaces_slot0_sync_at = 0.0
+        self._next_health_collect_at = 0.0
+        self._next_version_collect_at = 0.0
 
     async def fetch_display_version(self) -> str:
         # 获取设备版本与运行时间等静态信息（原始回显）
@@ -126,7 +131,11 @@ class HuaweiDevice(BaseDevice):
 
             self.static_info = runtime
             data = runtime.to_dict()
-            logger.info(f"华为设备 {self.ip} 静态信息采集完毕: {data}")
+            
+            # 优化日志显示：排除冗长的原始回显
+            log_data = data.copy()
+            log_data.pop("version_raw", None)
+            logger.debug(f"华为设备 {self.ip} 静态信息采集完毕: {log_data}")
             return runtime
         except Exception as e:
             logger.error(f"华为设备 {self.ip} 一次性采集失败: {self._compact_exception_message(e)}")
@@ -135,41 +144,34 @@ class HuaweiDevice(BaseDevice):
     
 
     async def collect_status(self) -> Dict[str, Any]:
-        # 周期采集：用于实时状态面板（CPU/内存/磁盘/温度/uptime 等）
+        now = time.monotonic()
         result = {
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-            "disk_usage": 0.0,
-            "temperature": 0.0,
-            "uptime": None,
+            "cpu_usage": float(self.last_metrics.get("cpu_usage") or 0.0),
+            "memory_usage": float(self.last_metrics.get("memory_usage") or 0.0),
+            "disk_usage": float(self.last_metrics.get("disk_usage") or 0.0),
+            "temperature": float(self.last_metrics.get("temperature") or 0.0),
+            "uptime": str(self.last_metrics.get("uptime") or "") or None,
         }
 
         try:
-            health_out = await self.fetch_display_health()
-            if health_out:
-                result.update(parse_huawei_display_health(health_out))
-                if "CPU usage monitor is disabled" in str(health_out):
-                    logger.warning(f"华为设备 {self.ip} CPU 监控未开启")
+            if now >= float(self._next_health_collect_at or 0.0):
+                health_out = await self.fetch_display_health()
+                if health_out:
+                    parsed = parse_huawei_display_health(health_out)
+                    for k, v in parsed.items():
+                        self.last_metrics[k] = v
+                        result[k] = v
+                    if "CPU usage monitor is disabled" in str(health_out):
+                        logger.warning(f"华为设备 {self.ip} CPU 监控未开启")
+                self._next_health_collect_at = now + 1.0
 
-            version_out = await self.fetch_display_version()
-            result["uptime"] = parse_huawei_uptime_from_display_version(version_out)
-            
-            # 深度资源同步检查
-            now = time.monotonic()
-            if now >= self.next_resource_sync_at:
-                try:
-                    # 避免循环引用，局部导入
-                    from app.services.network_resource_service import network_resource_service
-                    # 使用 asyncio.create_task 异步触发，不阻塞主监控循环
-                    asyncio.create_task(network_resource_service.sync_device_resources(self.device_id))
-                    
-                    interval = getattr(self.config, "resource_sync_interval", 3600.0) or 3600.0
-                    self.next_resource_sync_at = now + interval
-                    logger.info(f"触发华为设备 {self.ip} 资源同步，下次同步时间: {self.next_resource_sync_at} (间隔: {interval}s)")
-                except Exception as e:
-                    logger.error(f"触发资源同步失败: {e}")
-                    # 失败后稍后重试（例如 60s 后），避免死循环重试
-                    self.next_resource_sync_at = now + 60.0
+            if now >= float(self._next_version_collect_at or 0.0):
+                version_out = await self.fetch_display_version()
+                uptime = parse_huawei_uptime_from_display_version(version_out)
+                if uptime:
+                    self.last_metrics["uptime"] = str(uptime)
+                    result["uptime"] = str(uptime)
+                self._next_version_collect_at = now + 60.0
                     
         except Exception as e:
             logger.error(f"采集华为设备 {self.ip} 状态失败: {self._compact_exception_message(e)}")
@@ -198,6 +200,9 @@ class HuaweiDevice(BaseDevice):
         """获取接口简要信息"""
         return await self.send_command("display interface brief")
 
+    async def fetch_display_interface_slot(self, slot_id: int = 0) -> str:
+        return await self.send_command(f"display interface slot {int(slot_id)}")
+
     async def fetch_display_ip_routing_table(self) -> str:
         """获取路由表信息"""
         return await self.send_command("display ip routing-table")
@@ -206,17 +211,33 @@ class HuaweiDevice(BaseDevice):
         """获取 VLAN 信息"""
         return await self.send_command("display vlan")
 
-    async def collect_interfaces(self) -> List[Dict[str, Any]]:
+    async def collect_interfaces(self) -> Optional[List[Dict[str, Any]]]:
         """采集并解析接口列表"""
         try:
             output = await self.fetch_display_interface_brief()
             items = HuaweiInterfaceRuntime.from_output(output)
-            return [item.to_dict() for item in items]
+            payload = [item.to_dict() for item in items]
+            self.last_interfaces = payload
+            self.last_interfaces_updated = time.time()
+            return payload
         except Exception as e:
             logger.error(f"采集华为设备 {self.ip} 接口失败: {self._compact_exception_message(e)}")
-            return []
+            return None
 
-    async def collect_routes(self) -> List[Dict[str, Any]]:
+    async def collect_interfaces_detailed(self, slot_id: int = 0) -> Optional[List[Dict[str, Any]]]:
+        try:
+            output = await self.fetch_display_interface_slot(int(slot_id))
+            items = HuaweiInterfaceDetailRuntime.from_output(output)
+            payload = [item.to_dict() for item in items]
+            sid = int(slot_id)
+            self.last_interfaces_detailed_by_slot[sid] = payload
+            self.last_interfaces_detailed_updated_by_slot[sid] = time.time()
+            return payload
+        except Exception as e:
+            logger.error(f"采集华为设备 {self.ip} 插槽{slot_id}接口详情失败: {self._compact_exception_message(e)}")
+            return None
+
+    async def collect_routes(self) -> Optional[List[Dict[str, Any]]]:
         """采集并解析路由表"""
         try:
             output = await self.fetch_display_ip_routing_table()
@@ -224,9 +245,9 @@ class HuaweiDevice(BaseDevice):
             return [item.to_dict() for item in items]
         except Exception as e:
             logger.error(f"采集华为设备 {self.ip} 路由表失败: {self._compact_exception_message(e)}")
-            return []
+            return None
 
-    async def collect_vlans(self) -> List[Dict[str, Any]]:
+    async def collect_vlans(self) -> Optional[List[Dict[str, Any]]]:
         """采集并解析 VLAN 列表"""
         try:
             output = await self.fetch_display_vlan()
@@ -234,4 +255,4 @@ class HuaweiDevice(BaseDevice):
             return [item.to_dict() for item in items]
         except Exception as e:
             logger.error(f"采集华为设备 {self.ip} VLAN 失败: {self._compact_exception_message(e)}")
-            return []
+            return None

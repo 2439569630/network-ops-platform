@@ -14,14 +14,7 @@ class NetworkDevice(models.Model):
     user_name = fields.CharField(max_length=100, default="root")
     password = fields.CharField(max_length=100, default="")
     ssh_port = fields.IntField(default=22)
-    online_status = fields.BooleanField(default=False)
     is_active = fields.BooleanField(default=True)
-    
-    # Metadata
-    vendor = fields.CharField(max_length=100, null=True)
-    model = fields.CharField(max_length=255, null=True)
-    serial_number = fields.CharField(max_length=255, null=True)
-    last_seen = fields.DatetimeField(null=True)
     
     created_by = fields.CharField(max_length=50, null=True)
     updated_by = fields.CharField(max_length=50, null=True)
@@ -29,13 +22,9 @@ class NetworkDevice(models.Model):
     updated_at = fields.DatetimeField(auto_now=True)
     deleted_at = fields.DatetimeField(null=True)
 
-    # Extended Resource Fields
-    routing_table = fields.JSONField(default=list, description="完整路由表数据")
-    resource_hash = fields.JSONField(default=dict, description="资源哈希指纹 {interfaces: md5, vlans: md5, ...}")
-    last_routing_update = fields.DatetimeField(null=True, description="路由表最后更新时间")
-
     class Meta:
         table = "network_devices"
+        unique_together = (("ipv4", "ssh_port"),)
 
 
 class DeviceConfigEntry(models.Model):
@@ -58,6 +47,10 @@ class DeviceConfigEntry(models.Model):
     offline_retry_delay_seconds = fields.FloatField(null=True)
     
     resource_sync_interval = fields.FloatField(default=3600.0)
+    interfaces_sync_interval = fields.FloatField(default=3600.0)
+    interfaces_slot0_sync_interval = fields.FloatField(default=3600.0)
+    routes_sync_interval = fields.FloatField(default=3600.0)
+    vlans_sync_interval = fields.FloatField(default=3600.0)
 
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

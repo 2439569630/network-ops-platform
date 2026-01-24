@@ -29,6 +29,12 @@ class DeviceResponse(DeviceBase):
     """设备响应模型"""
     id: int
     status: str = '待加载'
+    display_status: str = '待加载'
+    connectivity: str = 'offline'
+    online_status: bool = False
+    fsm_state: str = ''
+    fsm_reason: str = ''
+    fsm_updated: str = ''
     cpu_usage: str = '0%'
     memory_usage: str = '0%'
     disk_usage: str = '0%'
@@ -70,3 +76,7 @@ class DeviceConfigUpdate(BaseModel):
     connect_retry_delay_seconds: Optional[float] = None
     offline_retry_delay_seconds: Optional[float] = None
     resource_sync_interval: Optional[float] = None
+    interfaces_sync_interval: Optional[float] = None
+    interfaces_slot0_sync_interval: Optional[float] = None
+    routes_sync_interval: Optional[float] = None
+    vlans_sync_interval: Optional[float] = None

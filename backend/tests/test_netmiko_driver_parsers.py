@@ -1,5 +1,6 @@
 from pprint import pprint
 import unittest
+import os
 
 from app.drivers.netmiko_driver import (
     HuaweiDevice,
@@ -88,10 +89,10 @@ class TestHuaweiParsers(unittest.TestCase):
 
 
 # 集成测试用配置（通过环境变量或手动修改）
-HUAWEI_HOST = "	127.0.0.1"
-HUAWEI_USERNAME = "root"
-HUAWEI_PASSWORD = "root"
-HUAWEI_PORT = 2223
+HUAWEI_HOST = str(os.getenv("HUAWEI_HOST", "") or "").strip()
+HUAWEI_USERNAME = str(os.getenv("HUAWEI_USERNAME", "") or "").strip()
+HUAWEI_PASSWORD = str(os.getenv("HUAWEI_PASSWORD", "") or "").strip()
+HUAWEI_PORT = int(os.getenv("HUAWEI_PORT", "22") or 22)
 
 
 def _huawei_configured() -> bool:

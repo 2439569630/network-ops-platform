@@ -12,6 +12,8 @@ from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse, Devic
 from app.services.device_service import device_service
 from app.workers.monitor.manager import MonitorManager
 from app.core.redis import redis_manager
+from app.drivers.ssh_retry import classify_ssh_failure
+from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
 
 router = APIRouter()
@@ -76,8 +78,8 @@ async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionC
         if not user_id:
             raise HTTPException(status_code=401, detail="无法获取用户信息")
             
-        await device_service.add_device(device, user_id)
-        return {"message": "设备添加成功", "code": 200}
+        device_id = await device_service.add_device(device, user_id)
+        return {"message": "设备添加成功", "code": 200, "data": {"device_id": int(device_id)}}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -176,7 +178,7 @@ async def get_device_status(
     """获取设备实时状态"""
     monitor = MonitorManager()
     snap = await monitor.get_runtime_snapshot_async(int(device_id))
-    return format_ws_data(_snapshot_to_status_data(snap))
+    return format_ws_data(snap)
 
 @router.get("/detail/{device_id}")
 async def get_device_detail(
@@ -212,9 +214,6 @@ async def get_device_detail(
             COALESCE(lp.full_path, ln.name, '') AS location,  -- 优先使用全路径
             lnd.node_id AS location_node_id,
             nd.ssh_port,
-            nd.vendor,
-            nd.model,
-            nd.serial_number,
             nd.created_by,
             nd.is_active,
             nd.created_at,
@@ -253,9 +252,6 @@ async def get_device_detail(
         except Exception:
             data["location_node_id"] = None
             
-    data["vendor"] = str(data.get("vendor") or "")
-    data["model"] = str(data.get("model") or "")
-    data["serial_number"] = str(data.get("serial_number") or "")
     data["type"] = str(data.get("device_type") or "")
 
     # 3. 获取实时运行时状态
@@ -263,10 +259,7 @@ async def get_device_detail(
     monitor = MonitorManager()
     snap = await monitor.get_runtime_snapshot_async(int(device_id))
     
-    # 4. 合并静态数据与运行时数据
-    # _snapshot_to_status_data 负责将快照转换为前端所需的格式
-    # format_ws_data 负责进一步标准化字段名（如转驼峰等）
-    data.update(format_ws_data(_snapshot_to_status_data(snap)))
+    data.update(format_ws_data(snap))
     
     return data
 
@@ -287,12 +280,11 @@ async def update_device_config(
     user: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
     """更新设备配置"""
-    updated = await device_service.update_device_config(int(payload.device_id), payload.model_dump(exclude_unset=True))
-    monitor = MonitorManager()
-    try:
-        await monitor.refresh_device_config(int(payload.device_id))
-    except Exception:
-        pass
+    updated = await device_service.update_device_config(
+        int(payload.device_id), 
+        payload.model_dump(exclude_unset=True),
+        updated_by=str(user.get("id", ""))
+    )
     return {"code": 200, "data": updated}
 
 
@@ -301,16 +293,26 @@ from app.services.network_resource_service import network_resource_service
 @router.get("/interfaces/{device_id}")
 async def get_device_interfaces(
     device_id: int,
-    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+    user: dict = Depends(PermissionChecker(["sys:device:interface:view"]))
 ):
     """获取设备接口列表"""
     data = await network_resource_service.get_interfaces(int(device_id))
     return {"code": 200, "data": data}
 
+@router.get("/interfaces/detail/{device_id}")
+async def get_device_interfaces_detail(
+    device_id: int,
+    slot: int = Query(0, ge=0),
+    user: dict = Depends(PermissionChecker(["sys:device:interface:view"]))
+):
+    """获取设备接口详细数据（默认插槽0，仅Redis）"""
+    data = await network_resource_service.get_interfaces_detailed(int(device_id), slot_id=int(slot))
+    return {"code": 200, "data": data}
+
 @router.get("/routes/{device_id}")
 async def get_device_routes(
     device_id: int,
-    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+    user: dict = Depends(PermissionChecker(["sys:device:route:view"]))
 ):
     """获取设备路由表"""
     data = await network_resource_service.get_routes(int(device_id))
@@ -319,7 +321,7 @@ async def get_device_routes(
 @router.get("/vlans/{device_id}")
 async def get_device_vlans(
     device_id: int,
-    user: dict = Depends(PermissionChecker(["sys:device:list"]))
+    user: dict = Depends(PermissionChecker(["sys:device:vlan:view"]))
 ):
     """获取设备 VLAN 列表"""
     data = await network_resource_service.get_vlans(int(device_id))
@@ -437,7 +439,7 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
                     else:
                         payload = raw
                     if isinstance(payload, dict):
-                        await websocket.send_json(format_ws_data(_snapshot_to_status_data(payload)))
+                        await websocket.send_json(format_ws_data(payload))
                 await asyncio.sleep(0.01)
         finally:
             try:
@@ -453,10 +455,10 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
 
     try:
         snap = await monitor.sync_device_snapshot(int(device_id))
-        await websocket.send_json(format_ws_data(_snapshot_to_status_data(snap)))
+        await websocket.send_json(format_ws_data(snap))
         while True:
             payload = await q.get()
-            await websocket.send_json(format_ws_data(_snapshot_to_status_data(payload)))
+            await websocket.send_json(format_ws_data(payload))
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for device {device_id}")
     except Exception as e:
@@ -504,7 +506,9 @@ async def websocket_device_list(websocket: WebSocket):
         try:
             while True:
                 payload = await q.get()
-                await send_safe_json({"type": "update", "data": payload})
+                enriched = dict(payload or {})
+                enriched.update(status_fields_from_snapshot(enriched))
+                await send_safe_json({"type": "update", "data": enriched})
         except WebSocketDisconnect:
             raise
         except Exception:
@@ -535,6 +539,11 @@ async def websocket_device_list(websocket: WebSocket):
                     else:
                         payload = raw
                     if isinstance(payload, dict):
+                        if isinstance(payload.get("data"), dict):
+                            enriched = dict(payload["data"])
+                            enriched.update(status_fields_from_snapshot(enriched))
+                            payload = dict(payload)
+                            payload["data"] = enriched
                         await send_safe_json(payload)
                 await asyncio.sleep(0.01)
         finally:
@@ -585,6 +594,88 @@ async def websocket_device_list(websocket: WebSocket):
             redis_task.cancel()
         monitor.unsubscribe_list(q)
 
+
+@router.websocket("/ws/resources/{device_id}")
+async def websocket_device_resources(websocket: WebSocket, device_id: int):
+    await websocket.accept()
+    token = websocket.query_params.get("token")
+    user = await verify_token_ws(websocket, token)
+    if not user:
+        return
+
+    if not user_is_super(user):
+        allowed = False
+        for perm in (
+            "sys:device:list",
+            "sys:dashboard:view",
+            "sys:device:interface:view",
+            "sys:device:route:view",
+            "sys:device:vlan:view",
+        ):
+            if await user_has_permission(user, perm):
+                allowed = True
+                break
+        if not allowed:
+            await websocket.close(code=4003, reason="权限不足")
+            return
+
+    did = int(device_id)
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        await websocket.close(code=1011, reason="Redis不可用")
+        return
+
+    pubsub = redis_client.pubsub()
+    channel = f"ws:devices:resources:{did}"
+    try:
+        await pubsub.subscribe(channel)
+        await websocket.send_json({"type": "ready", "device_id": did})
+        try:
+            interfaces = await network_resource_service.get_interfaces(did)
+            routes = await network_resource_service.get_routes(did)
+            vlans = await network_resource_service.get_vlans(did)
+            interfaces_slot0_detailed = await network_resource_service.get_interfaces_detailed(did, slot_id=0)
+            await websocket.send_json(
+                {
+                    "type": "resources_snapshot",
+                    "device_id": did,
+                    "data": {
+                        "interfaces": interfaces,
+                        "routes": routes,
+                        "vlans": vlans,
+                        "interfaces_slot0_detailed": interfaces_slot0_detailed,
+                    },
+                }
+            )
+        except Exception:
+            pass
+        async for msg in pubsub.listen():
+            if msg and msg.get("type") == "message":
+                raw = msg.get("data")
+                if isinstance(raw, (bytes, bytearray)):
+                    raw = raw.decode("utf-8", errors="ignore")
+                if isinstance(raw, str):
+                    try:
+                        payload = json.loads(raw)
+                    except Exception:
+                        payload = None
+                else:
+                    payload = raw
+                if isinstance(payload, dict):
+                    await websocket.send_json(payload)
+    except WebSocketDisconnect:
+        return
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+        except Exception:
+            pass
+        try:
+            await pubsub.close()
+        except Exception:
+            pass
+
 def _pick_netmiko_device_type(value) -> str:
     s = str(value or "").strip().lower()
     if not s:
@@ -611,6 +702,7 @@ def _pick_netmiko_device_type(value) -> str:
 async def ssh_websocket(websocket: WebSocket, ip: str):
     await websocket.accept()
     token = websocket.query_params.get("token")
+    port_q = websocket.query_params.get("port")
     user = await verify_token_ws(websocket, token)
     if not user:
         return
@@ -625,15 +717,55 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
             await websocket.close(code=4003, reason="权限不足")
             return
 
-    row = await db.fetch_one(
-        """
-        SELECT id, user_name, password, ssh_port, device_type
-        FROM network_devices
-        WHERE ipv4 = $1
-        LIMIT 1
-        """,
-        str(ip),
-    )
+    row = None
+    if port_q:
+        try:
+            port_val = int(port_q)
+        except Exception:
+            port_val = None
+        if port_val:
+            row = await db.fetch_one(
+                """
+                SELECT id, user_name, password, ssh_port, device_type
+                FROM network_devices
+                WHERE ipv4 = $1 AND ssh_port = $2
+                LIMIT 1
+                """,
+                str(ip),
+                int(port_val),
+            )
+    if row is None:
+        count_row = await db.fetch_one(
+            """
+            SELECT COUNT(1) AS c
+            FROM network_devices
+            WHERE ipv4 = $1
+            """,
+            str(ip),
+        )
+        total = int((count_row.get("c") if count_row else 0) or 0)
+        if total == 0:
+            row = None
+        elif total == 1:
+            row = await db.fetch_one(
+                """
+                SELECT id, user_name, password, ssh_port, device_type
+                FROM network_devices
+                WHERE ipv4 = $1
+                LIMIT 1
+                """,
+                str(ip),
+            )
+        else:
+            try:
+                await websocket.send_text(f"系统: 存在多个设备使用IP {ip}，请在连接地址中指定端口，如 /ws/ssh/{ip}?port=22\r\n")
+            except Exception:
+                pass
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+            return
 
     if not row:
         await websocket.send_text(f"系统: 未找到设备 {ip}，请先在设备管理录入\r\n")
@@ -662,16 +794,41 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     await websocket.send_text(f"系统: 正在连接 {ip}...\r\n")
 
+    cfg = None
+    try:
+        cfg = await db.fetch_one(
+            """
+            SELECT connect_timeout, auth_timeout, banner_timeout, global_delay_factor,
+                   connect_max_retries, connect_retry_delay_seconds
+            FROM device_configs
+            WHERE device_id = $1
+            LIMIT 1
+            """,
+            int(device_id),
+        )
+    except Exception:
+        cfg = None
+
+    connect_timeout = float((cfg.get("connect_timeout") if cfg else None) or 30.0)
+    auth_timeout = float((cfg.get("auth_timeout") if cfg else None) or 30.0)
+    banner_timeout = float((cfg.get("banner_timeout") if cfg else None) or 100.0)
+    global_delay_factor = float((cfg.get("global_delay_factor") if cfg else None) or 2.0)
+    connect_max_retries = int((cfg.get("connect_max_retries") if cfg else None) or 3)
+    connect_max_retries = max(1, min(8, connect_max_retries))
+    retry_base_delay = float((cfg.get("connect_retry_delay_seconds") if cfg else None) or 1.0)
+    retry_base_delay = max(0.1, retry_base_delay)
+
     device_params = {
         "device_type": device_type,
         "host": str(ip),
         "username": username,
         "password": password,
         "port": int(port),
-        "timeout": 30,
-        "auth_timeout": 30,
-        "banner_timeout": 100,
-        "global_delay_factor": 2,
+        "timeout": connect_timeout,
+        "conn_timeout": connect_timeout,
+        "auth_timeout": auth_timeout,
+        "banner_timeout": banner_timeout,
+        "global_delay_factor": global_delay_factor,
         "allow_agent": False,
         "use_keys": False,
     }
@@ -680,13 +837,25 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     try:
         last_err: Exception | None = None
         conn = None
-        for _ in range(3):
+        for attempt in range(connect_max_retries):
             try:
                 conn = await asyncio.to_thread(ConnectHandler, **device_params)
                 break
             except Exception as e:
                 last_err = e
-                await asyncio.sleep(1)
+                decision = classify_ssh_failure(
+                    e,
+                    default_base_delay_seconds=retry_base_delay,
+                    default_max_delay_seconds=max(5.0, retry_base_delay * 20.0),
+                )
+                delay = float(decision.next_delay_seconds(attempt + 1) or retry_base_delay)
+                msg = str(decision.reason or "").splitlines()[0] or "连接失败"
+                if attempt == 0:
+                    try:
+                        await websocket.send_text(f"系统: 连接失败: {msg}，正在重试...\r\n")
+                    except Exception:
+                        pass
+                await asyncio.sleep(delay)
         if conn is None:
             raise last_err or Exception("连接失败")
     except Exception as e:
@@ -803,58 +972,26 @@ def _parse_usage(value) -> float:
     except Exception:
         return 0.0
 
-def _snapshot_to_status_data(snapshot: dict) -> dict:
-    fsm_state = str(snapshot.get("fsm_state") or "").strip()
-    data = {
-        "status": fsm_state,
-        "online_status": fsm_state in {"online", "recovering", "degraded", "checking", "collecting"},
-        "fsm_state": fsm_state,
-        "fsm_reason": str(snapshot.get("fsm_reason") or ""),
-        "fsm_updated": str(snapshot.get("fsm_updated") or ""),
-        "state_phase": str(snapshot.get("state_phase") or ""),
-        "state_reason": str(snapshot.get("state_reason") or ""),
-        "state_updated": str(snapshot.get("state_updated") or ""),
-        "cpu_usage": snapshot.get("cpu_usage", 0),
-        "memory_usage": snapshot.get("memory_usage", 0),
-        "disk_usage": snapshot.get("disk_usage", 0),
-        "uptime": str(snapshot.get("uptime") or ""),
-        "last_updated": str(snapshot.get("last_updated") or ""),
-    }
-    # 动态透传其他所有字段（如 os_version, version, serial_number 等）
-    exclude_keys = set(data.keys())
-    for k, v in snapshot.items():
-        if k not in exclude_keys:
-            data[k] = v
-    return data
-
 def format_ws_data(status_data: dict) -> dict:
-    raw_status = status_data.get('status')
-    status = 'offline'
-    if raw_status in {'online', 'recovering', 'degraded', 'checking', 'collecting'}:
-        status = 'online'
-    elif status_data.get('online_status'):
-        status = 'online'
-        
-    # Start with a copy of all data to ensure passthrough
+    base = status_fields_from_snapshot(status_data)
+    connectivity = str(base.get("connectivity") or "offline")
+    fsm_reason = str(base.get("fsm_reason") or status_data.get("offline_reason") or "")
     result = status_data.copy()
-    
-    # Update/Overwrite with standardized camelCase fields expected by frontend
-    result.update({
-        'status': status,
-        'rawStatus': raw_status or '',
-        'fsmState': status_data.get('fsm_state', ''),
-        'fsmReason': status_data.get('fsm_reason', status_data.get('offline_reason', '')),
-        'fsmUpdated': status_data.get('fsm_updated', ''),
-        'statePhase': status_data.get('state_phase', ''),
-        'stateReason': status_data.get('state_reason', ''),
-        'stateUpdated': status_data.get('state_updated', ''),
-        'phase': status_data.get('phase', ''),
-        'cpuUsage': _parse_usage(status_data.get('cpu_usage', 0)),
-        'memoryUsage': _parse_usage(status_data.get('memory_usage', 0)),
-        'diskUsage': _parse_usage(status_data.get('disk_usage', 0)),
-        'uptime': status_data.get('uptime', '未知'),
-        'lastConnect': status_data.get('last_updated', ''),
-        'osVersion': status_data.get('os_version', status_data.get('kernel', 'Unknown')),
-    })
-    
+    result.update(base)
+    result.update(
+        {
+            "status": connectivity,
+            "rawStatus": base.get("fsm_state") or "",
+            "fsmState": base.get("fsm_state") or "",
+            "fsmReason": fsm_reason,
+            "fsmUpdated": base.get("fsm_updated") or "",
+            "displayStatus": base.get("display_status") or "",
+            "cpuUsage": _parse_usage(status_data.get("cpu_usage", 0)),
+            "memoryUsage": _parse_usage(status_data.get("memory_usage", 0)),
+            "diskUsage": _parse_usage(status_data.get("disk_usage", 0)),
+            "uptime": status_data.get("uptime", "未知"),
+            "lastConnect": status_data.get("last_updated", ""),
+            "osVersion": status_data.get("os_version", status_data.get("kernel", "Unknown")),
+        }
+    )
     return result

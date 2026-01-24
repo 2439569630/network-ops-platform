@@ -48,17 +48,6 @@ class SiteMessageRead(models.Model):
         table = "site_message_reads"
         unique_together = (("message_id", "user_id"),)
 
-class UserNotificationConfig(models.Model):
-    user_id = fields.IntField(pk=True)
-    enable_email = fields.BooleanField(default=False)
-    email_config = fields.JSONField(default=dict)
-    enable_pushplus = fields.BooleanField(default=False)
-    pushplus_token = fields.CharField(max_length=255, default="")
-    enable_http = fields.BooleanField(default=False)
-    http_url = fields.CharField(max_length=255, default="")
-
-    class Meta:
-        table = "user_notification_config"
 
 class UserEmailVerification(models.Model):
     id = fields.BigIntField(pk=True)

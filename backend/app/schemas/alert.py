@@ -8,6 +8,7 @@ class AlertRuleBase(BaseModel):
     threshold: float
     severity: str = "warning"
     duration: int = 0
+    cooldown: int = 0
     is_enabled: bool = True
     notification_channels: Optional[List[str]] = None
 
@@ -20,6 +21,7 @@ class AlertRuleUpdate(BaseModel):
     threshold: Optional[float] = None
     severity: Optional[str] = None
     duration: Optional[int] = None
+    cooldown: Optional[int] = None
     is_enabled: Optional[bool] = None
     notification_channels: Optional[List[str]] = None
 
@@ -45,3 +47,7 @@ class AlertLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class AlertLogPagination(BaseModel):
+    total: int
+    items: List[AlertLogOut]

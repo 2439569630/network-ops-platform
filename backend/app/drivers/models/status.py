@@ -18,11 +18,6 @@ class DeviceStatus:
     fsm_reason: str = ""
     fsm_updated: float = 0.0
 
-    # 采集阶段
-    phase: str = "init"
-    phase_reason: str = ""
-    phase_updated: float = 0.0
-
     # 连续失败/成功计数
     consecutive_failures: int = 0
     consecutive_successes: int = 0
@@ -32,8 +27,6 @@ class DeviceStatus:
         now = float(time.time())
         if not self.fsm_updated:
             self.fsm_updated = now
-        if not self.phase_updated:
-            self.phase_updated = now
 
     def set_fsm(self, new_state: str, reason: Optional[str] = None) -> bool:
         """设置状态机状态，若状态未变化则返回False"""
@@ -44,17 +37,6 @@ class DeviceStatus:
         self.fsm_state = state
         self.fsm_reason = r
         self.fsm_updated = float(time.time())
-        return True
-
-    def set_phase(self, phase: str, reason: Optional[str] = None) -> bool:
-        """设置采集阶段，若阶段未变化则返回False"""
-        p = str(phase or "").strip() or "unknown"
-        r = str(reason) if reason else ""
-        if p == self.phase and r == self.phase_reason:
-            return False
-        self.phase = p
-        self.phase_reason = r
-        self.phase_updated = float(time.time())
         return True
 
     def record_success(self) -> bool:
@@ -81,35 +63,27 @@ class DeviceStatus:
     def label(self) -> str:
         """根据状态机与阶段生成中文标签"""
         fsm = str(self.fsm_state or "").strip()
-        phase = str(self.phase or "").strip()
-
-        if fsm == "offline" or phase == "offline":
+        if fsm == "offline":
             return "离线"
-        if phase == "collecting":
-            return "采集中"
-        if phase == "success":
-            return "采集成功"
-        if phase == "failure":
-            return "采集失败"
-        if phase == "loading":
-            if fsm in {"online", "recovering"}:
-                return "在线"
-            if fsm == "degraded":
-                return "异常"
-            if fsm == "checking":
-                return "检测中"
-            if fsm == "offline":
-                return "离线"
-            if fsm in {"", "init"}:
-                return "检测中"
+        if fsm == "online":
+            return "在线"
+        if fsm == "recovering":
+            return "恢复中"
+        if fsm == "degraded":
+            return "异常"
+        if fsm == "checking":
             return "检测中"
+        if fsm == "collecting":
+            return "采集中"
+        if fsm == "reloading":
+            return "重载中"
         if fsm in {"online", "recovering"}:
             return "在线"
         if fsm == "degraded":
             return "异常"
         if fsm == "checking":
             return "检测中"
-        if phase == "init":
+        if fsm in {"", "init"}:
             return "初始化中"
         return "待加载"
 
@@ -119,9 +93,6 @@ class DeviceStatus:
             "fsm_state": str(self.fsm_state or ""),
             "fsm_reason": str(self.fsm_reason or ""),
             "fsm_updated": str(self.fsm_updated or ""),
-            "state_phase": str(self.phase or ""),
-            "state_reason": str(self.phase_reason or ""),
-            "state_updated": str(self.phase_updated or ""),
             "status": self.label(),
         }
 
@@ -152,6 +123,11 @@ class DeviceConfig:
     connect_max_retries: int = 3
     connect_retry_delay_seconds: float = 2.0
     offline_retry_delay_seconds: float = 30.0
+    resource_sync_interval: float = 3600.0
+    interfaces_sync_interval: float = 3600.0
+    interfaces_slot0_sync_interval: float = 3600.0
+    routes_sync_interval: float = 3600.0
+    vlans_sync_interval: float = 3600.0
 
     @staticmethod
     def from_device_info(device_info: Dict[str, Any]) -> "DeviceConfig":

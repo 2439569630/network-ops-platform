@@ -11,6 +11,7 @@ class DeviceAlertRule(models.Model):
     
     severity = fields.CharField(max_length=20, default="warning")  # info, warning, critical
     duration = fields.IntField(default=0)  # 持续时间(秒)
+    cooldown = fields.IntField(default=0)  # 冷却时间(秒)
     
     is_enabled = fields.BooleanField(default=True)
     notification_channels = fields.JSONField(null=True)  # ["email", "webhook"]
@@ -39,3 +40,7 @@ class DeviceAlertLog(models.Model):
     
     class Meta:
         table = "device_alert_logs"
+        indexes = [
+            ("device_id", "triggered_at"),
+            ("rule_id", "resolved_at"),
+        ]

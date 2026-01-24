@@ -1,5 +1,6 @@
 import re
 import logging
+import time
 from typing import Dict, Any
 from .base import BaseDevice
 
@@ -14,6 +15,8 @@ class LinuxServer(BaseDevice):
     def __init__(self, device_info: Dict):
         super().__init__(device_info)
         self.device_type = 'linux'
+        self._next_cpu_mem_collect_at = 0.0
+        self._next_disk_collect_at = 0.0
 
     async def collect_once(self) -> Dict[str, Any]:
         """执行一次性采集"""
@@ -44,23 +47,34 @@ class LinuxServer(BaseDevice):
                      self.static_info['vendor'] = 'Linux'
                      self.static_info['model'] = 'Generic Server'
 
-            logger.info(f"Linux 服务器 {self.ip} 静态信息采集完毕: {self.static_info}")
+            logger.debug(f"Linux 服务器 {self.ip} 静态信息采集完毕: {self.static_info}")
             return self.static_info
         except Exception as e:
             logger.error(f"Linux 服务器 {self.ip} 一次性采集失败: {self._compact_exception_message(e)}")
         return {}
 
     async def collect_status(self) -> Dict[str, Any]:
-        result = {
-            'cpu_usage': 0.0,
-            'memory_usage': 0.0,
-            'disk_usage': 0.0
-        }
+        now = time.monotonic()
+        cpu_cached = float(self.last_metrics.get("cpu_usage") or 0.0)
+        mem_cached = float(self.last_metrics.get("memory_usage") or 0.0)
+        disk_cached = float(self.last_metrics.get("disk_usage") or 0.0)
+        result = {"cpu_usage": cpu_cached, "memory_usage": mem_cached, "disk_usage": disk_cached}
         
         try:
-            result['cpu_usage'] = await self.get_cpu_usage()
-            result['memory_usage'] = await self.get_memory_usage()
-            result['disk_usage'] = await self.get_disk_usage()
+            if now >= float(self._next_cpu_mem_collect_at or 0.0):
+                cpu = await self.get_cpu_usage()
+                mem = await self.get_memory_usage()
+                self.last_metrics["cpu_usage"] = float(cpu or 0.0)
+                self.last_metrics["memory_usage"] = float(mem or 0.0)
+                result["cpu_usage"] = float(cpu or 0.0)
+                result["memory_usage"] = float(mem or 0.0)
+                self._next_cpu_mem_collect_at = now + 1.0
+
+            if now >= float(self._next_disk_collect_at or 0.0):
+                disk = await self.get_disk_usage()
+                self.last_metrics["disk_usage"] = float(disk or 0.0)
+                result["disk_usage"] = float(disk or 0.0)
+                self._next_disk_collect_at = now + 10.0
                     
         except Exception as e:
             logger.error(f"采集 Linux 服务器 {self.ip} 状态失败: {self._compact_exception_message(e)}")

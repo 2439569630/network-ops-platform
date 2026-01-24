@@ -81,7 +81,17 @@ TORTOISE_ORM = {
     "connections": {"default": settings.DATABASE_URL},
     "apps": {
         "models": {
-            "models": ["app.models.orm.user", "app.models.orm.device", "app.models.orm.location", "app.models.orm.rbac", "app.models.orm.repair", "app.models.orm.log", "app.models.orm.config", "aerich.models"],
+            "models": [
+                "app.models.orm.user",
+                "app.models.orm.device",
+                "app.models.orm.location",
+                "app.models.orm.rbac",
+                "app.models.orm.repair",
+                "app.models.orm.log",
+                "app.models.orm.config",
+                "app.models.orm.alert",
+                "aerich.models",
+            ],
             "default_connection": "default",
         },
     },

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from app.core.security import PermissionChecker, user_is_super, user_has_permission
+from app.core.security import PermissionChecker, user_is_super, user_has_permission, verify_token_ws
 from app.services.notification_service import NotificationService
-from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate
+from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate, SystemAlertPayload, SystemAlertRecentResponse
 from app.core.redis import redis_manager
+from app.models.orm.user import User
+from pydantic import BaseModel
 import logging
 import json
 import asyncio
@@ -115,6 +117,19 @@ async def mark_site_message_unread(
     try:
         await NotificationService.mark_site_message_unread(user_id=int(user.get("id")), message_id=int(message_id))
         return {"code": 200, "message": "未读"}
+    except Exception as e:
+        return {"code": 500, "message": f"操作失败: {str(e)}"}
+
+@router.post("/site-messages/read-all", response_model=dict)
+async def mark_all_site_messages_read(
+    user: dict = Depends(PermissionChecker("sys:message:access")),
+):
+    """
+    一键已阅：将所有未读消息标记为已读
+    """
+    try:
+        count = await NotificationService.mark_all_site_messages_read(user_id=int(user.get("id")))
+        return {"code": 200, "message": f"已将 {count} 条消息标记为已读", "data": {"count": count}}
     except Exception as e:
         return {"code": 500, "message": f"操作失败: {str(e)}"}
 
@@ -238,3 +253,138 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
             "X-Accel-Buffering": "no",
         },
     )
+
+class SubscribeToggle(BaseModel):
+    is_enabled: bool
+
+
+@router.get("/system-alerts/recent", response_model=SystemAlertRecentResponse)
+async def get_system_alerts_recent(
+    limit: int = Query(50),
+    user: dict = Depends(PermissionChecker("sys:notify:history")),
+):
+    lim = max(1, min(int(limit or 50), 200))
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        return {"items": []}
+    try:
+        rows = await redis_client.lrange(NotificationService.SYSTEM_ALERTS_RECENT_KEY, 0, lim - 1)
+    except Exception:
+        rows = []
+    items = []
+    for raw in rows:
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="ignore")
+        try:
+            obj = json.loads(raw) if raw else None
+        except Exception:
+            obj = None
+        if isinstance(obj, dict):
+            try:
+                items.append(SystemAlertPayload(**obj).model_dump())
+            except Exception:
+                pass
+    return {"items": items}
+
+
+@router.websocket("/ws/system-alerts")
+async def websocket_system_alerts(websocket: WebSocket):
+    await websocket.accept()
+    token = websocket.query_params.get("token")
+    user = await verify_token_ws(websocket, token)
+    if not user:
+        return
+    if not user_is_super(user):
+        if not await user_has_permission(user, "sys:notify:history"):
+            await websocket.close(code=4003, reason="权限不足")
+            return
+
+    try:
+        redis_client = redis_manager.get_client()
+    except Exception:
+        await websocket.close(code=1011, reason="Redis不可用")
+        return
+
+    pubsub = redis_client.pubsub()
+    try:
+        await pubsub.subscribe(NotificationService.SYSTEM_ALERTS_CHANNEL)
+
+        try:
+            rows = await redis_client.lrange(NotificationService.SYSTEM_ALERTS_RECENT_KEY, 0, 49)
+        except Exception:
+            rows = []
+
+        init_items = []
+        for raw in rows:
+            if isinstance(raw, (bytes, bytearray)):
+                raw = raw.decode("utf-8", errors="ignore")
+            try:
+                obj = json.loads(raw) if raw else None
+            except Exception:
+                obj = None
+            if isinstance(obj, dict):
+                init_items.append(obj)
+        await websocket.send_json({"type": "init", "data": init_items})
+
+        while True:
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg and msg.get("type") == "message":
+                raw = msg.get("data")
+                if isinstance(raw, (bytes, bytearray)):
+                    raw = raw.decode("utf-8", errors="ignore")
+                try:
+                    payload = json.loads(raw) if raw else None
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict):
+                    await websocket.send_json({"type": "alert", "data": payload})
+            await asyncio.sleep(0.01)
+    except WebSocketDisconnect:
+        return
+    finally:
+        try:
+            await pubsub.unsubscribe(NotificationService.SYSTEM_ALERTS_CHANNEL)
+        except Exception:
+            pass
+        try:
+            await pubsub.close()
+        except Exception:
+            pass
+
+@router.get("/subscribers", response_model=dict)
+async def get_subscribers(
+    user: dict = Depends(PermissionChecker("sys:alert:subscribe"))
+):
+    """
+    获取通知订阅用户列表
+    
+    管理员(sys:user:list)可以看到所有用户
+    普通用户(sys:alert:subscribe)只能看到自己
+    """
+    try:
+        user_id = user.get("id")
+        is_admin = user_is_super(user) or await user_has_permission(user, "sys:user:list")
+        
+        query = User.all()
+        if not is_admin:
+            query = query.filter(id=user_id)
+            
+        users = await query.values("id", "username", "nickname", "email", "is_email_notify")
+        return {"code": 200, "data": users}
+    except Exception as e:
+        return {"code": 500, "message": f"获取订阅列表失败: {str(e)}"}
+
+@router.post("/subscribe", response_model=dict)
+async def toggle_subscription(
+    data: SubscribeToggle,
+    user: dict = Depends(PermissionChecker("sys:alert:subscribe"))
+):
+    """切换通知订阅状态"""
+    try:
+        user_obj = await User.get(id=user.get("id"))
+        user_obj.is_email_notify = data.is_enabled
+        await user_obj.save()
+        return {"code": 200, "message": "设置成功", "data": {"is_email_notify": user_obj.is_email_notify}}
+    except Exception as e:
+        return {"code": 500, "message": f"设置失败: {str(e)}"}

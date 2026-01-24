@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     MONITOR_INTERVAL: int = 60
     # 在线状态检查间隔（秒）
     ONLINE_CHECK_INTERVAL: int = 10
+    # 设备列表热更新轮询间隔（秒），用于兜底同步数据库变更
+    DEVICE_LOADER_INTERVAL: int = 300
+    # 禁用设备列表热更新轮询（1=禁用）
+    DISABLE_DEVICE_LOADER: int = 0
+
+    ALERT_LOG_RETENTION_DAYS: int = 90
+    NOTIFICATION_HISTORY_RETENTION_DAYS: int = 90
     
     @property
     def DATABASE_URL(self) -> str:

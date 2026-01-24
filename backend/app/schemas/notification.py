@@ -47,3 +47,18 @@ class SiteMessageRow(BaseModel):
     created_at: datetime
     is_read: bool
     read_at: Optional[datetime] = None
+
+
+class SystemAlertPayload(BaseModel):
+    time: str
+    level: str
+    source: str
+    type: str
+    description: str
+    device_id: Optional[int] = None
+    device_name: Optional[str] = None
+    ipv4: Optional[str] = None
+
+
+class SystemAlertRecentResponse(BaseModel):
+    items: List[SystemAlertPayload]

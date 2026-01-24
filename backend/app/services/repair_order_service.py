@@ -79,18 +79,60 @@ class RepairOrderService:
         """
         创建工单
         """
+        # Auto-detect location if device_id is provided but location_id is not
+        from app.models.orm.location import LocationNodeDevice, LocationNodeUser
+        
+        location_id = data.location_id
+        if not location_id and data.device_id:
+            loc_dev = await LocationNodeDevice.filter(device_id=data.device_id).first()
+            if loc_dev:
+                location_id = loc_dev.node_id
+                
+        # Auto-assign if location has bound users (administrators)
+        assignee_id = None
+        auto_assigned_reason = ""
+        
+        if location_id:
+            # Check if any user is bound to this location
+            # We pick the first one as the responsible admin
+            loc_user = await LocationNodeUser.filter(node_id=location_id).first()
+            if loc_user:
+                assignee_id = loc_user.user_id
+                auto_assigned_reason = "自动派单给区域管理员"
+        
         order = await RepairOrder.create(
             title=data.title,
             description=data.description,
             submitter_id=submitter_id,
             device_id=data.device_id,
-            location_id=data.location_id,
+            location_id=location_id, # Use detected or provided location_id
+            assignee_id=assignee_id,
             priority=data.priority,
             status='pending'
         )
         
         # Log creation
-        await RepairOrderService.log_action(order.id, submitter_id, "create", "", "pending", "创建工单")
+        log_msg = "创建工单"
+        if assignee_id:
+            log_msg += f" ({auto_assigned_reason})"
+            
+        await RepairOrderService.log_action(order.id, submitter_id, "create", "", "pending", log_msg)
+        
+        # 自动派单通知
+        if assignee_id:
+            from app.services.notification_service import NotificationService
+            import logging
+            try:
+                await NotificationService.notify_repair_order_assigned(
+                    order_id=order.id,
+                    title=order.title,
+                    assignee_id=assignee_id,
+                    priority=order.priority,
+                    reason="自动派单 (区域管理员)"
+                )
+            except Exception as e:
+                logging.getLogger(__name__).error(f"发送自动派单通知失败: {e}")
+
         return order.id
 
     @staticmethod
@@ -281,7 +323,13 @@ class RepairOrderService:
         return order
 
     @staticmethod
-    async def update_order(order_id: int, data: RepairOrderUpdate, operator_id: int, skip_log: bool = False) -> bool:
+    async def update_order(
+        order_id: int, 
+        data: RepairOrderUpdate, 
+        operator_id: int, 
+        skip_log: bool = False,
+        assign_reason: str = None
+    ) -> bool:
         """
         更新工单信息 (状态、指派人、优先级等)
         """
@@ -292,6 +340,7 @@ class RepairOrderService:
             return False
             
         updates = {}
+        new_assignee_id = None
         
         if data.status:
             if not skip_log and current.status != data.status:
@@ -307,6 +356,10 @@ class RepairOrderService:
             if not skip_log:
                 await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给用户ID: {data.assignee_id}")
             updates['assignee_id'] = data.assignee_id
+            
+            # Detect assignment change
+            if current.assignee_id != data.assignee_id:
+                new_assignee_id = data.assignee_id
 
         if data.priority:
             updates['priority'] = data.priority
@@ -318,6 +371,27 @@ class RepairOrderService:
             return True
             
         await RepairOrder.filter(id=order_id).update(**updates)
+
+        # 发送派单通知
+        if new_assignee_id:
+            from app.services.notification_service import NotificationService
+            import logging
+            try:
+                # Use updated data if present, else current
+                # Note: RepairOrderUpdate fields are optional
+                t = data.title if getattr(data, 'title', None) else current.title
+                p = data.priority if getattr(data, 'priority', None) else current.priority
+                
+                await NotificationService.notify_repair_order_assigned(
+                    order_id=order_id,
+                    title=str(t),
+                    assignee_id=new_assignee_id,
+                    priority=str(p),
+                    reason=assign_reason or "工单指派"
+                )
+            except Exception as e:
+                logging.getLogger(__name__).error(f"发送派单通知失败: {e}")
+
         return True
 
     @staticmethod

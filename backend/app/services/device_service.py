@@ -9,7 +9,9 @@ from fastapi import HTTPException
 from app.core.database import db
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse
 from app.workers.monitor.manager import MonitorManager
+from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
+from app.services.device_event_service import DeviceEventService
 
 # ORM Imports
 from app.models.orm.device import NetworkDevice
@@ -157,7 +159,6 @@ class DeviceService:
                     "ipv4": str(d.ipv4) if d.ipv4 else "",
                     "ipv6": str(d.ipv6) if d.ipv6 else "",
                     "mac": str(d.mac) if d.mac else "",
-                    "online_status": d.online_status,
                     "device_type": d.device_type,
                     "location": loc_name,
                     "ssh_port": d.ssh_port,
@@ -175,6 +176,7 @@ class DeviceService:
             try:
                 device_id = int(row["id"])
                 snap = await monitor.get_runtime_snapshot_async(device_id)
+                base = status_fields_from_snapshot(snap)
                 data.append(
                     {
                         "id": device_id,
@@ -184,15 +186,20 @@ class DeviceService:
                         "ipv6": row["ipv6"],
                         "mac": row["mac"],
                         "status": str(snap.get("status") or "待加载"),
+                        "display_status": str(base.get("display_status") or snap.get("status") or "待加载"),
+                        "connectivity": str(base.get("connectivity") or "offline"),
+                        "online_status": bool(base.get("online_status")),
+                        "fsm_state": str(base.get("fsm_state") or ""),
+                        "fsm_reason": str(base.get("fsm_reason") or ""),
+                        "fsm_updated": str(base.get("fsm_updated") or ""),
                         "type": row["device_type"],
                         "location": row["location"],
                         "ssh_port": row["ssh_port"],
                         "cpu_usage": str(snap.get("cpu_usage") or "0%"),
                         "memory_usage": str(snap.get("memory_usage") or "0%"),
                         "disk_usage": str(snap.get("disk_usage") or "0%"),
-                        "state_phase": str(snap.get("state_phase") or ""),
-                        "state_reason": str(snap.get("state_reason") or ""),
-                        "state_updated": str(snap.get("state_updated") or ""),
+                        "uptime": str(snap.get("uptime") or "未知"),
+                        "os_version": str(snap.get("os_version") or snap.get("kernel") or "Unknown"),
                         "created_by": str(row.get("created_by") or ""),
                         "created_by_name": str(row.get("created_by_name") or ""),
                         "ops_admin_name": str(row.get("created_by_name") or ""),
@@ -205,13 +212,13 @@ class DeviceService:
         logger.info(f"Returning {len(data)} devices")
         return data
 
-    async def add_device(self, device: DeviceCreate, user_id: int):
+    async def add_device(self, device: DeviceCreate, user_id: int) -> int:
         """
         添加新设备
         """
-        # Check if IP exists
-        if await NetworkDevice.filter(ipv4=device.ipv4).exists():
-            raise ValueError("该IP地址已存在")
+        # 唯一性检查：IP + 端口组合必须唯一
+        if await NetworkDevice.filter(ipv4=device.ipv4, ssh_port=device.ssh_port).exists():
+            raise ValueError("该IP+端口已存在")
 
         ipv6 = device.ipv6 if device.ipv6 and device.ipv6.strip() else None
         mac = device.mac if device.mac and device.mac.strip() else None
@@ -255,19 +262,21 @@ class DeviceService:
                 "ssh_port": device.ssh_port,
             },
         )
-
-        # Trigger monitor
-        try:
-            monitor = MonitorManager()
-            await monitor.load_devices()
-        except Exception as e:
-            logger.error(f"触发监控加载失败: {e}")
+        await DeviceEventService.publish_device_event("add", int(new_device.id))
+        return int(new_device.id)
 
     async def get_device_config(self, device_id: int) -> dict:
         did = int(device_id)
         entry = await DeviceConfigEntry.get_or_none(device_id=did)
         if not entry:
-            return {"device_id": did}
+            return {
+                "device_id": did,
+                "resource_sync_interval": 3600.0,
+                "interfaces_sync_interval": 3600.0,
+                "interfaces_slot0_sync_interval": 3600.0,
+                "routes_sync_interval": 3600.0,
+                "vlans_sync_interval": 3600.0,
+            }
         return {
             "device_id": did,
             "interval": entry.interval,
@@ -281,11 +290,16 @@ class DeviceService:
             "connect_max_retries": entry.connect_max_retries,
             "connect_retry_delay_seconds": entry.connect_retry_delay_seconds,
             "offline_retry_delay_seconds": entry.offline_retry_delay_seconds,
+            "resource_sync_interval": entry.resource_sync_interval,
+            "interfaces_sync_interval": getattr(entry, "interfaces_sync_interval", 3600.0),
+            "interfaces_slot0_sync_interval": getattr(entry, "interfaces_slot0_sync_interval", 3600.0),
+            "routes_sync_interval": getattr(entry, "routes_sync_interval", 3600.0),
+            "vlans_sync_interval": getattr(entry, "vlans_sync_interval", 3600.0),
             "created_at": entry.created_at,
             "updated_at": entry.updated_at,
         }
 
-    async def update_device_config(self, device_id: int, patch: dict) -> dict:
+    async def update_device_config(self, device_id: int, patch: dict, updated_by: Optional[str] = None) -> dict:
         """
         更新设备配置
         """
@@ -303,17 +317,102 @@ class DeviceService:
             "connect_max_retries",
             "connect_retry_delay_seconds",
             "offline_retry_delay_seconds",
+            "resource_sync_interval",
+            "interfaces_sync_interval",
+            "interfaces_slot0_sync_interval",
+            "routes_sync_interval",
+            "vlans_sync_interval",
         }
         for k in allowed:
             if k in patch:
                 clean[k] = patch.get(k)
+
+        if "resource_sync_interval" in clean:
+            has_split = any(
+                x in clean
+                for x in (
+                    "interfaces_sync_interval",
+                    "interfaces_slot0_sync_interval",
+                    "routes_sync_interval",
+                    "vlans_sync_interval",
+                )
+            )
+            if not has_split:
+                clean["interfaces_sync_interval"] = clean["resource_sync_interval"]
+                clean["interfaces_slot0_sync_interval"] = clean["resource_sync_interval"]
+                clean["routes_sync_interval"] = clean["resource_sync_interval"]
+                clean["vlans_sync_interval"] = clean["resource_sync_interval"]
+        
         entry = await DeviceConfigEntry.get_or_none(device_id=did)
+        
+        # Only keep old values for fields that are being updated to ensure symmetry
+        old_values = {}
+        if entry:
+            for k in clean.keys():
+                old_values[k] = getattr(entry, k)
+        else:
+            old_values = None
+
         if not entry:
             entry = await DeviceConfigEntry.create(device_id=did, **clean)
         else:
             for k, v in clean.items():
                 setattr(entry, k, v)
             await entry.save()
+        
+        # Translate field names for better audit log
+        field_names = {
+            "interval": "采集间隔",
+            "monitor_interval": "监控间隔",
+            "offline_fail_threshold": "离线阈值",
+            "recovery_success_threshold": "恢复阈值",
+            "connect_timeout": "连接超时",
+            "auth_timeout": "认证超时",
+            "banner_timeout": "Banner超时",
+            "global_delay_factor": "全局延迟因子",
+            "connect_max_retries": "连接最大重试",
+            "connect_retry_delay_seconds": "连接重试间隔",
+            "offline_retry_delay_seconds": "离线重试间隔",
+            "resource_sync_interval": "深度巡检间隔",
+            "interfaces_sync_interval": "接口同步间隔",
+            "interfaces_slot0_sync_interval": "插槽0接口详情同步间隔",
+            "routes_sync_interval": "路由同步间隔",
+            "vlans_sync_interval": "VLAN同步间隔",
+        }
+        
+        changes_list = []
+        for k, v in clean.items():
+            old_v = old_values.get(k) if old_values else None
+            # Compare values. If old_values is None (creation), everything is a change.
+            # If old_values exists, check if value changed.
+            # Convert both to string to be safe against int vs str mismatch if any, 
+            # though usually they are consistent types.
+            is_changed = True
+            if old_values is not None:
+                # Use str comparison for simplicity, or direct equality
+                if str(old_v) == str(v):
+                    is_changed = False
+            
+            if is_changed:
+                field_name = field_names.get(k, k)
+                changes_list.append(f"{field_name}({old_v}→{v})")
+
+        if not changes_list:
+            desc = "更新监控参数配置: 无变更"
+        else:
+            desc = f"更新监控参数配置: {', '.join(changes_list)}"
+
+        await self._log_device_change(
+            device_id=did,
+            change_type="update_config",
+            change_description=desc,
+            changed_by=str(updated_by or ""),
+            old_values=old_values,
+            new_values=clean,
+        )
+
+        await DeviceEventService.publish_device_event("config_update", did)
+
         return await self.get_device_config(did)
 
     async def delete_device(self, device_id: Optional[int] = None, ip: Optional[str] = None, deleted_by: Optional[str] = None):
@@ -324,7 +423,12 @@ class DeviceService:
         if device_id:
             device = await NetworkDevice.get_or_none(id=device_id)
         elif ip:
-            device = await NetworkDevice.get_or_none(ipv4=ip)
+            # 如仅按IP匹配，需处理多匹配的情况
+            matches = await NetworkDevice.filter(ipv4=ip).all()
+            if len(matches) == 1:
+                device = matches[0]
+            elif len(matches) > 1:
+                raise ValueError("存在多个设备使用该IP，请提供设备ID进行删除")
         
         if not device:
             raise ValueError("必须提供有效的设备ID或IP地址")
@@ -353,12 +457,7 @@ class DeviceService:
             old_values=old_values,
             new_values={"deleted_at": str(device.deleted_at), "is_active": False},
         )
-             
-        try:
-            monitor = MonitorManager()
-            await monitor.load_devices()
-        except Exception as e:
-            logger.error(f"触发监控加载失败: {e}")
+        await DeviceEventService.publish_device_event("delete", int(device.id))
 
     async def get_deleted_devices(self, user_id: Optional[int] = None, is_super: bool = False) -> List[dict]:
         """
@@ -431,11 +530,7 @@ class DeviceService:
             old_values=old_values,
             new_values={"deleted_at": None, "is_active": True},
         )
-        try:
-            monitor = MonitorManager()
-            await monitor.load_devices()
-        except Exception as e:
-            logger.error(f"触发监控加载失败: {e}")
+        await DeviceEventService.publish_device_event("add", int(device.id))
 
     async def purge_device(self, device_id: int) -> None:
         """
@@ -460,11 +555,7 @@ class DeviceService:
             old_values=old_values,
             new_values=None,
         )
-        try:
-            monitor = MonitorManager()
-            await monitor.load_devices()
-        except Exception as e:
-            logger.error(f"触发监控加载失败: {e}")
+        await DeviceEventService.publish_device_event("delete", int(device.id))
 
     async def update_device(self, device_id: int, patch: DeviceUpdate, updated_by: Optional[str] = None) -> None:
         device = await NetworkDevice.get_or_none(id=device_id)
@@ -525,12 +616,7 @@ class DeviceService:
             old_values=old_values,
             new_values=new_values,
         )
-
-        try:
-            monitor = MonitorManager()
-            await monitor.load_devices()
-        except Exception as e:
-            logger.error(f"触发监控加载失败: {e}")
+        await DeviceEventService.publish_device_event("update", int(device.id))
 
     async def test_connect(self, device: DeviceCreate):
         """

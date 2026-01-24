@@ -18,6 +18,7 @@ class BaseDevice:
         # 设备唯一标识与基础连接信息
         self.device_id = device_info['id']
         self.ip = str(device_info['ipv4'])
+        self.device_name = str(device_info.get('device_name', 'Unknown'))
         self.config = DeviceConfig.from_device_info(device_info)
         self.username = self.config.username
         self.password = self.config.password
@@ -25,9 +26,16 @@ class BaseDevice:
         # 默认设备类型，子类可以覆盖
         self.device_type = 'linux' 
         # 默认采集间隔 (秒)，子类可以覆盖
-        self.interval = float(self.config.interval or 60)
+        try:
+            self.interval = float(getattr(self.config, "interval", 60.0))
+        except Exception:
+            self.interval = 60.0
         # 在线监测间隔 (秒)，用于快速检测设备状态
-        self.monitor_interval = float(self.config.monitor_interval or 10)
+        try:
+            self.monitor_interval = float(getattr(self.config, "monitor_interval", 10.0))
+        except Exception:
+            self.monitor_interval = 10.0
+        self.schedule_rev = 0
         
         self.connection = None
         self.connected = False
@@ -60,17 +68,66 @@ class BaseDevice:
         }
         self.last_metrics_updated = 0.0
         self.last_heartbeat = 0.0
+        self.last_connect_error: Exception | None = None
+
+        self.last_interfaces: list[dict[str, Any]] | None = None
+        self.last_interfaces_updated = 0.0
+        self.last_interfaces_detailed_by_slot: dict[int, list[dict[str, Any]]] = {}
+        self.last_interfaces_detailed_updated_by_slot: dict[int, float] = {}
+        self._active_inspection_id: str | None = None
+        self._active_inspection_commands: list[str] = []
+        self._active_inspection_max_commands: int = 0
 
     @staticmethod
     def _compact_exception_message(e: Exception) -> str:
-        # 将异常信息压缩为单行，便于日志与前端展示（避免超长堆栈污染）
         try:
             s = str(e) if e is not None else ""
         except Exception:
-            return ""
+            s = ""
         s = s.replace("\r\n", "\n").replace("\r", "\n")
         first = s.split("\n", 1)[0].strip()
-        return first
+        name = type(e).__name__ if e is not None else ""
+        if first:
+            return f"{name}: {first}" if name and not first.startswith(name) else first
+        return name or ""
+
+    @staticmethod
+    def _normalize_command_for_log(cmd: str, max_len: int = 120) -> str:
+        try:
+            s = str(cmd or "")
+        except Exception:
+            s = ""
+        s = s.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
+        if max_len > 0 and len(s) > max_len:
+            return s[: max(1, max_len - 1)] + "…"
+        return s
+
+    def begin_inspection(self, inspect_id: str, max_commands: int = 8) -> None:
+        self._active_inspection_id = str(inspect_id or "").strip() or None
+        self._active_inspection_commands = []
+        try:
+            self._active_inspection_max_commands = max(0, int(max_commands))
+        except Exception:
+            self._active_inspection_max_commands = 0
+
+    def end_inspection(self) -> list[str]:
+        cmds = list(self._active_inspection_commands or [])
+        self._active_inspection_id = None
+        self._active_inspection_commands = []
+        self._active_inspection_max_commands = 0
+        return cmds
+
+    def _record_inspection_command(self, cmd: str) -> None:
+        if not self._active_inspection_id:
+            return
+        max_n = int(self._active_inspection_max_commands or 0)
+        if max_n <= 0:
+            return
+        if len(self._active_inspection_commands) >= max_n:
+            return
+        c = self._normalize_command_for_log(cmd, max_len=120)
+        if c:
+            self._active_inspection_commands.append(c)
 
     @property
     def fsm_state(self) -> str:
@@ -128,33 +185,6 @@ class BaseDevice:
     def consecutive_successes(self, value: int) -> None:
         self.status.consecutive_successes = int(value or 0)
 
-    @property
-    def state_phase(self) -> str:
-        return str(self.status.phase or "")
-
-    @state_phase.setter
-    def state_phase(self, value: str) -> None:
-        self.status.set_phase(str(value or "").strip() or "unknown", self.status.phase_reason)
-
-    @property
-    def state_reason(self) -> str:
-        return str(self.status.phase_reason or "")
-
-    @state_reason.setter
-    def state_reason(self, value: str) -> None:
-        self.status.set_phase(self.status.phase, str(value or ""))
-
-    @property
-    def state_updated(self) -> float:
-        return float(self.status.phase_updated or 0.0)
-
-    @state_updated.setter
-    def state_updated(self, value: float) -> None:
-        self.status.phase_updated = float(value or 0.0)
-
-    def set_state_phase(self, phase: str, reason: Optional[str] = None) -> bool:
-        return self.status.set_phase(phase, reason)
-
     def record_success(self) -> bool:
         return bool(self.status.record_success())
 
@@ -166,10 +196,20 @@ class BaseDevice:
         self.username = self.config.username
         self.password = self.config.password
         self.port = self.config.port
-        self.interval = float(self.config.interval or self.interval or 60)
-        self.monitor_interval = float(self.config.monitor_interval or self.monitor_interval or 10)
+        try:
+            self.interval = float(self.config.interval)
+        except Exception:
+            pass
+        try:
+            self.monitor_interval = float(self.config.monitor_interval)
+        except Exception:
+            pass
         self.offline_fail_threshold = int(self.config.offline_fail_threshold)
         self.recovery_success_threshold = int(self.config.recovery_success_threshold)
+        try:
+            self.schedule_rev = int(getattr(self, "schedule_rev", 0) or 0) + 1
+        except Exception:
+            self.schedule_rev = 1
 
     async def connect(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
         """建立 SSH 连接"""
@@ -223,15 +263,23 @@ class BaseDevice:
                             return False
                         self.connection = conn
                         self.connected = True
-                        logger.info(f"已连接到设备 {self.ip}")
+                        self.last_connect_error = None
+                        logger.info(f"已连接到设备 {self.device_name}({self.ip})")
                         return True
                     except Exception as e:
+                        self.last_connect_error = e
                         msg = self._compact_exception_message(e)
                         if attempt < max_retries - 1:
-                            logger.warning(
-                                f"设备 {self.ip} 连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试..."
+                            level = logging.WARNING if attempt == 0 else logging.DEBUG
+                            logger.log(
+                                level,
+                                f"设备 {self.device_name}({self.ip}) 连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...",
                             )
-                            await _emit_progress("loading", f"连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...")
+                            if attempt == 0:
+                                await _emit_progress(
+                                    "loading",
+                                    f"连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...",
+                                )
                             steps = int(retry_delay / 0.1) if retry_delay else 0
                             for _ in range(max(1, steps) if retry_delay else 1):
                                 if self._shutdown or self._connect_abort.is_set():
@@ -246,8 +294,9 @@ class BaseDevice:
                 raise
             except Exception as e:
                 # 简化错误日志，只保留关键信息
-                error_msg = str(e).split('\n')[0] # 只取第一行错误信息
-                logger.error(f"连接设备 {self.ip} 失败: {error_msg}")
+                error_msg = self._compact_exception_message(e) or "连接失败"
+                self.last_connect_error = e
+                logger.error(f"连接设备 {self.device_name}({self.ip}) 失败: {error_msg}")
                 await _emit_progress("failure", f"连接失败: {error_msg}")
                 self.connected = False
                 return False
@@ -267,6 +316,7 @@ class BaseDevice:
             'password': self.password,
             'port': self.port,
             'timeout': float(getattr(self.config, "connect_timeout", 30.0) or 30.0),
+            'conn_timeout': float(getattr(self.config, "connect_timeout", 30.0) or 30.0),
             'auth_timeout': float(getattr(self.config, "auth_timeout", 30.0) or 30.0),
             'global_delay_factor': float(getattr(self.config, "global_delay_factor", 2.0) or 2.0),
             # Netmiko keepalive settings (应用层 Keepalive，我们禁用它，改用 Transport 层)
@@ -334,6 +384,10 @@ class BaseDevice:
 
     async def send_command(self, cmd: str) -> str:
         """发送命令并返回结果"""
+        try:
+            self._record_inspection_command(cmd)
+        except Exception:
+            pass
         # 尝试自动重连
         if not await self.connect():
              # 如果重连失败，抛出异常或返回空

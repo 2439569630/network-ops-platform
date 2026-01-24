@@ -64,12 +64,34 @@ async def lifespan(app: FastAPI):
                 "app.models.orm.location",
                 "app.models.orm.config",
                 "app.models.orm.alert",
-                "app.models.orm.interface",
-                "app.models.orm.vlan",
             ]},
         )
         await Tortoise.generate_schemas()
         logger.info("Tortoise ORM 初始化成功")
+
+        try:
+            await db.execute(
+                'ALTER TABLE IF EXISTS "device_alert_rules" '
+                'ADD COLUMN IF NOT EXISTS "cooldown" INT NOT NULL DEFAULT 0;'
+            )
+        except Exception as e:
+            logger.error(f"告警规则表结构初始化失败: {e}")
+
+        try:
+            await db.execute(
+                'ALTER TABLE IF EXISTS "device_configs" '
+                'ADD COLUMN IF NOT EXISTS "interfaces_sync_interval" DOUBLE PRECISION NOT NULL DEFAULT 3600.0;'
+            )
+            await db.execute(
+                'ALTER TABLE IF EXISTS "device_configs" '
+                'ADD COLUMN IF NOT EXISTS "routes_sync_interval" DOUBLE PRECISION NOT NULL DEFAULT 3600.0;'
+            )
+            await db.execute(
+                'ALTER TABLE IF EXISTS "device_configs" '
+                'ADD COLUMN IF NOT EXISTS "vlans_sync_interval" DOUBLE PRECISION NOT NULL DEFAULT 3600.0;'
+            )
+        except Exception as e:
+            logger.error(f"设备深度巡检配置表结构初始化失败: {e}")
 
         # 同步系统权限
         try:
