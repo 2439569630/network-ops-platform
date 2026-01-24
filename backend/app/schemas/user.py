@@ -7,6 +7,7 @@ class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     nickname: Optional[str] = None
     email: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 class UserCreate(UserBase):
     """用户创建模型"""

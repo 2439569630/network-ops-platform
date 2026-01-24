@@ -13,11 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from typing import List, Optional, Any
 from app.schemas.user import UserCreate, UserResponse, RoleUpdate, UserUpdate, UserStatusUpdate
+from app.services.avatar_service import AvatarService
 from app.services.user_service import UserService
 from app.api import deps
 from app.core.security import PermissionChecker, user_is_super, get_disabled_permission_codes_cached, get_password_hash
 from app.core.redis import redis_manager
 from app.core.database import db
+from app.models.orm.user import User
+from app.utils.remote_image_api import RemoteImageApiError
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -232,6 +235,31 @@ async def update_profile(
         return {"code": 400, "message": str(e)}
     except Exception as e:
         return {"code": 500, "message": f"更新失败: {str(e)}"}
+
+
+@router.post("/avatar/upload", response_model=dict)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(deps.get_current_user),
+):
+    try:
+        result = await AvatarService.upload_avatar(file)
+        avatar_url = str(result.url or "").strip()
+        if not avatar_url:
+            return {"code": 500, "message": "头像上传失败: 返回链接为空"}
+        await User.filter(id=int(current_user.get("id"))).update(avatar_url=avatar_url)
+        return {"code": 200, "data": {"avatar_url": avatar_url}}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except RemoteImageApiError as e:
+        http_status = getattr(e, "status_code", None)
+        if http_status == 429:
+            return {"code": 429, "message": str(e)}
+        if http_status in (401, 403):
+            return {"code": 401, "message": str(e)}
+        return {"code": 500, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"上传失败: {str(e)}"}
 
 @router.get("/profile/summary", response_model=dict)
 async def get_profile_summary(current_user: dict = Depends(deps.get_current_user)):

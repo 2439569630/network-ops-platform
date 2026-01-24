@@ -7,6 +7,7 @@ class User(models.Model):
     password = fields.CharField(max_length=128)
     nickname = fields.CharField(max_length=50, null=True)
     email = fields.CharField(max_length=255, null=True)
+    avatar_url = fields.CharField(max_length=1024, null=True)
     is_email_notify = fields.BooleanField(default=False)
     is_approved = fields.BooleanField(default=True)
     permissions = fields.JSONField(default=list)

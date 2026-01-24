@@ -57,3 +57,20 @@ class WorkLog(models.Model):
 
     class Meta:
         table = "work_logs"
+
+
+class RepairImage(models.Model):
+    id = fields.BigIntField(pk=True)
+    order_id = fields.IntField(null=True)
+    work_log_id = fields.BigIntField(null=True)
+    uploader_id = fields.IntField()
+    storage_provider = fields.CharField(max_length=32, default="local")
+    object_key = fields.CharField(max_length=512)
+    url = fields.TextField(null=True)
+    mime_type = fields.CharField(max_length=128, null=True)
+    size = fields.IntField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "repair_images"

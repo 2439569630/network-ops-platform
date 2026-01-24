@@ -24,7 +24,7 @@ class SystemConfig:
             for s in settings:
                 if s.key != 'trap_autostart':
                     cls._config[s.key] = s.value or ""
-            logger.info(f"系统配置加载完成: {cls._config}")
+            logger.info(f"系统配置加载完成: keys={len(cls._config)}")
         except Exception as e:
             logger.error(f"加载系统配置失败: {e}")
 

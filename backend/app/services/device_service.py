@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 from app.core.database import db
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse
+from app.core.redis import redis_manager
 from app.workers.monitor.manager import MonitorManager
 from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
@@ -171,6 +172,22 @@ class DeviceService:
             return []
 
         monitor = MonitorManager()
+        monitor_alive = False
+        monitor_heartbeat_age_seconds = 0.0
+        try:
+            redis_client = redis_manager.get_client()
+            raw = await redis_client.get(getattr(MonitorManager, "_LEADER_HEARTBEAT_KEY", "monitor:leader:heartbeat"))
+            if isinstance(raw, (bytes, bytearray)):
+                raw = raw.decode("utf-8", errors="ignore")
+            payload = json.loads(raw) if raw else None
+            ts = float(payload.get("ts") or 0) if isinstance(payload, dict) else 0.0
+            if ts > 0:
+                monitor_heartbeat_age_seconds = float(time.time() - ts)
+                ttl = float(getattr(MonitorManager, "_LEADER_LOCK_TTL_SECONDS", 90) or 90)
+                monitor_alive = monitor_heartbeat_age_seconds <= max(5.0, ttl)
+        except Exception:
+            monitor_alive = False
+            monitor_heartbeat_age_seconds = 0.0
         data: list[dict] = []
         for row in result:
             try:
@@ -185,13 +202,24 @@ class DeviceService:
                         "ipv4": row["ipv4"],
                         "ipv6": row["ipv6"],
                         "mac": row["mac"],
-                        "status": str(snap.get("status") or "待加载"),
-                        "display_status": str(base.get("display_status") or snap.get("status") or "待加载"),
+                        "status": str(snap.get("status") or "无运行态"),
+                        "display_status": str(base.get("display_status") or snap.get("status") or "无运行态"),
                         "connectivity": str(base.get("connectivity") or "offline"),
                         "online_status": bool(base.get("online_status")),
                         "fsm_state": str(base.get("fsm_state") or ""),
                         "fsm_reason": str(base.get("fsm_reason") or ""),
                         "fsm_updated": str(base.get("fsm_updated") or ""),
+                        "snapshot_source": str(snap.get("snapshot_source") or ""),
+                        "snapshot_generated_at": str(snap.get("snapshot_generated_at") or ""),
+                        "age_seconds": float(snap.get("age_seconds") or 0.0),
+                        "stale": bool(snap.get("stale")),
+                        "next_retry_at": str(snap.get("next_retry_at") or ""),
+                        "next_retry_at_epoch": float(snap.get("next_retry_at_epoch") or 0.0),
+                        "retry_in_seconds": int(snap.get("retry_in_seconds") or 0),
+                        "retry_attempt": int(snap.get("retry_attempt") or 0),
+                        "retry_phase": str(snap.get("retry_phase") or ""),
+                        "monitor_alive": bool(monitor_alive),
+                        "monitor_heartbeat_age_seconds": float(monitor_heartbeat_age_seconds),
                         "type": row["device_type"],
                         "location": row["location"],
                         "ssh_port": row["ssh_port"],

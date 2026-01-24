@@ -6,7 +6,7 @@ from app.core.database import db
 from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, OrderReviewCreate
 
 # ORM Imports
-from app.models.orm.repair import RepairOrder, OrderLog, OrderReview, WorkLog
+from app.models.orm.repair import RepairOrder, OrderLog, OrderReview, WorkLog, RepairImage
 from app.models.orm.user import User
 from app.models.orm.device import NetworkDevice
 from app.models.orm.location import LocationNode
@@ -419,13 +419,38 @@ class RepairOrderService:
         )
 
     @staticmethod
-    async def add_work_log(order_id: int, operator_id: int, content: str, images: List[str] = []) -> WorkLog:
-        return await WorkLog.create(
+    async def add_work_log(order_id: int, operator_id: int, content: str, images: Optional[list] = None) -> WorkLog:
+        normalized = []
+        for item in (images or []):
+            if item is None:
+                continue
+            if isinstance(item, int):
+                normalized.append(int(item))
+                continue
+            if isinstance(item, str):
+                s = item.strip()
+                if not s:
+                    continue
+                if s.isdigit():
+                    normalized.append(int(s))
+                    continue
+                normalized.append(s)
+                continue
+            try:
+                normalized.append(int(item))
+            except Exception:
+                continue
+
+        log = await WorkLog.create(
             order_id=order_id,
             operator_id=operator_id,
             content=content,
-            images=images
+            images=normalized
         )
+        image_ids = [x for x in normalized if isinstance(x, int)]
+        if image_ids:
+            await RepairImage.filter(id__in=image_ids).update(order_id=order_id, work_log_id=log.id)
+        return log
 
     @staticmethod
     async def get_work_logs(order_id: int) -> List[dict]:
@@ -439,13 +464,54 @@ class RepairOrderService:
         op_ids = {l.operator_id for l in logs}
         operators = await User.filter(id__in=list(op_ids)).all()
         op_map = {u.id: u.username for u in operators}
-        
-        return [{
-            "id": l.id,
-            "order_id": l.order_id,
-            "operator_id": l.operator_id,
-            "operator_name": op_map.get(l.operator_id),
-            "content": l.content,
-            "images": l.images,
-            "created_at": l.created_at
-        } for l in logs]
+
+        image_ids = []
+        for l in logs:
+            for it in (l.images or []):
+                if isinstance(it, int):
+                    image_ids.append(int(it))
+                elif isinstance(it, str) and it.strip().isdigit():
+                    image_ids.append(int(it.strip()))
+        image_ids = list({i for i in image_ids if i > 0})
+        images_map = {}
+        if image_ids:
+            imgs = await RepairImage.filter(id__in=image_ids).all()
+            for img in imgs:
+                url = str(img.url or "").strip()
+                if url:
+                    images_map[int(img.id)] = url
+                else:
+                    images_map[int(img.id)] = f"/api/v1/repair-images/{int(img.id)}/content"
+
+        out = []
+        for l in logs:
+            resolved = []
+            for it in (l.images or []):
+                if it is None:
+                    continue
+                if isinstance(it, int):
+                    u = images_map.get(int(it))
+                    if u:
+                        resolved.append(u)
+                    continue
+                if isinstance(it, str):
+                    s = it.strip()
+                    if not s:
+                        continue
+                    if s.isdigit():
+                        u = images_map.get(int(s))
+                        if u:
+                            resolved.append(u)
+                        continue
+                    resolved.append(s)
+                    continue
+            out.append({
+                "id": l.id,
+                "order_id": l.order_id,
+                "operator_id": l.operator_id,
+                "operator_name": op_map.get(l.operator_id),
+                "content": l.content,
+                "images": resolved,
+                "created_at": l.created_at
+            })
+        return out

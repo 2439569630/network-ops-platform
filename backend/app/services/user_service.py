@@ -40,6 +40,7 @@ class UserService:
                 "username": u.username,
                 "nickname": u.nickname,
                 "email": u.email,
+                "avatar_url": getattr(u, "avatar_url", None),
                 "is_approved": u.is_approved,
                 "permissions": u.permissions if isinstance(u.permissions, list) else [],
                 "created_at": u.created_at
@@ -57,6 +58,7 @@ class UserService:
                 "username": user.username,
                 "nickname": user.nickname,
                 "email": user.email,
+                "avatar_url": getattr(user, "avatar_url", None),
                 "is_approved": user.is_approved,
                 "permissions": user.permissions if isinstance(user.permissions, list) else [],
                 "created_at": user.created_at
@@ -183,7 +185,7 @@ class UserService:
             
         if data.email is not None:
             raise ValueError("邮箱需通过验证邮件绑定")
-            
+
         if updates:
             await User.filter(id=user_id).update(**updates)
 

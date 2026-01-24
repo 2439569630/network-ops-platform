@@ -28,13 +28,18 @@ class DeviceUpdate(BaseModel):
 class DeviceResponse(DeviceBase):
     """设备响应模型"""
     id: int
-    status: str = '待加载'
-    display_status: str = '待加载'
+    status: str = '无运行态'
+    display_status: str = '无运行态'
     connectivity: str = 'offline'
     online_status: bool = False
     fsm_state: str = ''
     fsm_reason: str = ''
     fsm_updated: str = ''
+    next_retry_at: str = ''
+    next_retry_at_epoch: float = 0.0
+    retry_in_seconds: int = 0
+    retry_attempt: int = 0
+    retry_phase: str = ''
     cpu_usage: str = '0%'
     memory_usage: str = '0%'
     disk_usage: str = '0%'

@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     DEVICE_LOADER_INTERVAL: int = 300
     # 禁用设备列表热更新轮询（1=禁用）
     DISABLE_DEVICE_LOADER: int = 0
+    # 运行态快照在 Redis 的 TTL（秒），0 表示不设置过期
+    RUNTIME_SNAPSHOT_TTL_SECONDS: int = 86400
+    # 运行态快照超过多少秒视为过期（用于前端展示陈旧状态）
+    RUNTIME_SNAPSHOT_STALE_AFTER_SECONDS: int = 0
 
     ALERT_LOG_RETENTION_DAYS: int = 90
     NOTIFICATION_HISTORY_RETENTION_DAYS: int = 90

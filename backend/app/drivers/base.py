@@ -211,7 +211,13 @@ class BaseDevice:
         except Exception:
             self.schedule_rev = 1
 
-    async def connect(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
+    async def connect(
+        self,
+        progress_cb: Optional[Callable[[str, str], Any]] = None,
+        purpose: str = "startup",
+        max_retries: Optional[int] = None,
+        retry_delay_seconds: Optional[float] = None,
+    ) -> bool:
         """建立 SSH 连接"""
         async def _emit_progress(phase: str, reason: str) -> None:
             # 连接过程中的阶段回调：用于外部实时更新 UI/状态机
@@ -238,13 +244,32 @@ class BaseDevice:
             self._connect_abort.clear()
             try:
                 loop = asyncio.get_event_loop()
-                max_retries = int(getattr(self.config, "connect_max_retries", 3) or 3)
-                if max_retries <= 0:
-                    max_retries = 1
-                retry_delay = float(getattr(self.config, "connect_retry_delay_seconds", 2.0) or 2.0)
+                p = str(purpose or "").strip().lower()
+                if p not in {"startup", "steady"}:
+                    p = "startup"
+                max_retries_val = max_retries
+                if max_retries_val is None:
+                    max_retries_val = int(getattr(self.config, "connect_max_retries", 3) or 3)
+                try:
+                    max_retries_val = int(max_retries_val)
+                except Exception:
+                    max_retries_val = 1
+                if max_retries_val <= 0:
+                    max_retries_val = 1
+                retry_delay = retry_delay_seconds
+                if retry_delay is None:
+                    retry_delay = float(getattr(self.config, "connect_retry_delay_seconds", 2.0) or 2.0)
+                try:
+                    retry_delay = float(retry_delay)
+                except Exception:
+                    retry_delay = 0.0
                 if retry_delay < 0:
-                    retry_delay = 0
-                for attempt in range(max_retries):
+                    retry_delay = 0.0
+
+                if p == "steady":
+                    max_retries_val = 1
+                    retry_delay = 0.0
+                for attempt in range(max_retries_val):
                     if self._shutdown or self._connect_abort.is_set():
                         self.connected = False
                         return False
@@ -269,16 +294,16 @@ class BaseDevice:
                     except Exception as e:
                         self.last_connect_error = e
                         msg = self._compact_exception_message(e)
-                        if attempt < max_retries - 1:
+                        if attempt < max_retries_val - 1:
                             level = logging.WARNING if attempt == 0 else logging.DEBUG
                             logger.log(
                                 level,
-                                f"设备 {self.device_name}({self.ip}) 连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...",
+                                f"设备 {self.device_name}({self.ip}) 连接尝试 {attempt + 1}/{max_retries_val} 失败: {msg}，正在重试...",
                             )
                             if attempt == 0:
                                 await _emit_progress(
                                     "loading",
-                                    f"连接尝试 {attempt + 1}/{max_retries} 失败: {msg}，正在重试...",
+                                    f"连接尝试 {attempt + 1}/{max_retries_val} 失败: {msg}，正在重试...",
                                 )
                             steps = int(retry_delay / 0.1) if retry_delay else 0
                             for _ in range(max(1, steps) if retry_delay else 1):
@@ -361,7 +386,7 @@ class BaseDevice:
     async def check_online(self, progress_cb: Optional[Callable[[str, str], Any]] = None) -> bool:
         """快速检测在线状态（不采集数据）"""
         if not self.connected:
-            return await self.connect(progress_cb=progress_cb)
+            return await self.connect(progress_cb=progress_cb, purpose="steady")
         
         # check_connection 理论上很快，但为避免底层实现偶发阻塞，这里仍放线程池
         loop = asyncio.get_event_loop()
@@ -389,7 +414,7 @@ class BaseDevice:
         except Exception:
             pass
         # 尝试自动重连
-        if not await self.connect():
+        if not await self.connect(purpose="steady"):
              # 如果重连失败，抛出异常或返回空
              # 这里抛出异常，让上层捕获并处理离线状态
             raise ConnectionError(f"无法连接到 {self.ip}")

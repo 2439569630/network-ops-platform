@@ -11,7 +11,7 @@ class TestDeviceStatusContract(unittest.TestCase):
             self.assertEqual(out["connectivity"], "online", state)
             self.assertTrue(out["online_status"], state)
 
-        offline_states = {"offline", "init", "", None}
+        offline_states = {"offline", "init", "backoff", "retrying", "", None}
         for state in offline_states:
             out = status_fields_from_snapshot({"fsm_state": state})
             self.assertEqual(out["connectivity"], "offline", str(state))
@@ -19,6 +19,12 @@ class TestDeviceStatusContract(unittest.TestCase):
     def test_display_status_fallback(self):
         out = status_fields_from_snapshot({"fsm_state": "offline"})
         self.assertEqual(out["display_status"], "离线")
+
+        out = status_fields_from_snapshot({"fsm_state": "backoff"})
+        self.assertEqual(out["display_status"], "等待重试")
+
+        out = status_fields_from_snapshot({"fsm_state": "retrying"})
+        self.assertEqual(out["display_status"], "重试中")
 
         out = status_fields_from_snapshot({"fsm_state": "online"})
         self.assertEqual(out["display_status"], "在线")
@@ -34,4 +40,3 @@ class TestDeviceStatusContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -435,7 +435,7 @@ class AlertHandler:
                 message=message,
                 severity=rule.severity
             )
-            await NotificationService.notify_device_alert(device_id, message, rule.severity)
+            await NotificationService.notify_device_alert(device_id, message, rule.severity, rule_id=rule.id)
         except Exception as e:
             logger.error(f"记录告警失败: {e}")
 
@@ -468,7 +468,7 @@ class AlertHandler:
                 msg = "设备已恢复在线"
 
             if send_notify:
-                await NotificationService.notify_device_alert(device_id, msg, "info")
+                await NotificationService.notify_device_alert(device_id, msg, "info", rule_id=rule.id)
 
             if release_lock:
                 await self._release_firing_lock(device_id, rule.id, token=str(lock_token or ""))

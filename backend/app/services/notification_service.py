@@ -1,5 +1,6 @@
 
 import json
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
@@ -12,7 +13,10 @@ from app.schemas.notification import NotificationConfig, TestNotification
 # ORM Imports
 from app.models.orm.notification import DeviceNotification, SiteMessage, SiteMessageRead
 from app.models.orm.device import NetworkDevice
+from app.models.orm.location import LocationNodeDevice, LocationNodeRole, LocationNodeUser
+from app.models.orm.rbac import UserRole
 from app.models.orm.user import User
+from app.models.orm.alert import AlertSubscription
 from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,205 @@ class NotificationService:
     _user_notification_config_table_ready = False
     SITE_MESSAGE_EMAIL_MAX_RECIPIENTS = 500
     SITE_MESSAGE_EMAIL_CONCURRENCY = 10
+
+    @staticmethod
+    def _parse_user_id(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        s = str(value).strip()
+        if not s:
+            return None
+        try:
+            v = int(s)
+        except Exception:
+            return None
+        return v if v > 0 else None
+
+    @staticmethod
+    async def _notify_device_creator_site_message(
+        *,
+        dev: NetworkDevice,
+        title: str,
+        content: str,
+        source: str,
+    ) -> None:
+        user_id = NotificationService._parse_user_id(getattr(dev, "created_by", None))
+        if user_id is None:
+            return
+        await NotificationService.create_site_message(
+            sender_id=None,
+            sender_name=None,
+            source=source,
+            title=title,
+            content=content,
+            target_user_id=user_id,
+            is_global=False,
+        )
+
+    @staticmethod
+    async def _get_location_recipient_user_ids(*, device_id: int) -> set[int]:
+        node = await LocationNodeDevice.filter(device_id=int(device_id)).first()
+        if not node:
+            return set()
+
+        node_id = int(node.node_id)
+        direct_user_ids = await LocationNodeUser.filter(node_id=node_id).values_list("user_id", flat=True)
+        role_ids = await LocationNodeRole.filter(node_id=node_id).values_list("role_id", flat=True)
+        role_user_ids: List[int] = []
+        if role_ids:
+            role_user_ids = await UserRole.filter(role_id__in=list(role_ids)).values_list("user_id", flat=True)
+
+        result: set[int] = set()
+        for uid in list(direct_user_ids or []) + list(role_user_ids or []):
+            try:
+                v = int(uid)
+            except Exception:
+                continue
+            if v > 0:
+                result.add(v)
+        return result
+
+    @staticmethod
+    async def _notify_site_message_to_users(
+        *,
+        user_ids: set[int],
+        title: str,
+        content: str,
+        source: str,
+    ) -> None:
+        if not user_ids:
+            return
+        for uid in sorted(user_ids):
+            await NotificationService.create_site_message(
+                sender_id=None,
+                sender_name=None,
+                source=source,
+                title=title,
+                content=content,
+                target_user_id=int(uid),
+                is_global=False,
+            )
+
+    @staticmethod
+    async def _get_device_location_node_id(*, device_id: int) -> Optional[int]:
+        node = await LocationNodeDevice.filter(device_id=int(device_id)).first()
+        if not node:
+            return None
+        try:
+            v = int(node.node_id)
+        except Exception:
+            return None
+        return v if v > 0 else None
+
+    @staticmethod
+    def _severity_matches(subscription_severities: Any, severity: str) -> bool:
+        sev = str(severity or "").strip().lower()
+        if not sev:
+            return True
+        if subscription_severities is None:
+            return True
+        try:
+            allowed = {str(x).strip().lower() for x in (subscription_severities or []) if str(x).strip()}
+        except Exception:
+            return True
+        return True if not allowed else sev in allowed
+
+    @staticmethod
+    async def _get_subscription_channel_recipients(
+        *,
+        device_id: int,
+        location_node_id: Optional[int],
+        rule_id: Optional[int],
+        severity: str,
+    ) -> Dict[str, set[int]]:
+        channel_users: Dict[str, set[int]] = {"site": set(), "email": set()}
+        subs: List[AlertSubscription] = []
+        subs.extend(await AlertSubscription.filter(scope_type="device", scope_id=int(device_id), is_enabled=True).all())
+        if location_node_id is not None:
+            subs.extend(await AlertSubscription.filter(scope_type="location", scope_id=int(location_node_id), is_enabled=True).all())
+        if rule_id is not None:
+            subs.extend(await AlertSubscription.filter(scope_type="rule", scope_id=int(rule_id), is_enabled=True).all())
+
+        for s in subs:
+            if not NotificationService._severity_matches(getattr(s, "severities", None), severity):
+                continue
+            try:
+                uid = int(getattr(s, "subscriber_user_id", 0))
+            except Exception:
+                continue
+            if uid <= 0:
+                continue
+            ch = getattr(s, "channels", None)
+            try:
+                channels = {str(x).strip().lower() for x in (ch or []) if str(x).strip()}
+            except Exception:
+                channels = set()
+            if "site" in channels:
+                channel_users["site"].add(uid)
+            if "email" in channels:
+                channel_users["email"].add(uid)
+
+        return channel_users
+
+    @staticmethod
+    async def _send_alert_emails(*, user_ids: set[int], subject: str, content: str) -> Dict[str, Any]:
+        if not user_ids:
+            return {"sent": 0, "skipped": 0, "errors": 0}
+
+        email_enabled = SystemConfig.get("email_enabled")
+        if email_enabled != "1" and email_enabled != "true":
+            return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": "global_disabled"}
+
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username, password]):
+            await SystemConfig.load()
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username, password]):
+            return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": "config_missing"}
+
+        users = await User.filter(id__in=list(user_ids)).all()
+        user_map = {int(u.id): u for u in users}
+
+        sem = asyncio.Semaphore(int(NotificationService.SITE_MESSAGE_EMAIL_CONCURRENCY))
+        stats = {"sent": 0, "skipped": 0, "errors": 0}
+
+        async def _send_one(uid: int):
+            u = user_map.get(int(uid))
+            if not u or not getattr(u, "email", None):
+                stats["skipped"] += 1
+                return
+            if not bool(getattr(u, "is_email_notify", False)):
+                stats["skipped"] += 1
+                return
+            async with sem:
+                ok, msg = await send_email(
+                    host,
+                    port,
+                    username,
+                    password,
+                    str(u.email),
+                    subject,
+                    content,
+                    nickname=str(nickname or "运维系统").strip() or None,
+                )
+            if ok:
+                stats["sent"] += 1
+            else:
+                stats["errors"] += 1
+                logger.error(f"告警邮件发送失败: user_id={uid}; msg={msg}")
+
+        await asyncio.gather(*[_send_one(uid) for uid in sorted(user_ids)])
+        return stats
 
     @staticmethod
     async def get_history(can_view_all: bool, user_id: int) -> List[dict]:
@@ -452,6 +655,7 @@ class NotificationService:
     async def notify_device_offline(device_id: int, reason: Optional[str] = None) -> Dict[str, Any]:
         device_name = None
         ipv4 = None
+        dev = None
         try:
             dev = await NetworkDevice.filter(id=device_id).first()
             if dev:
@@ -467,7 +671,7 @@ class NotificationService:
         if reason:
             message = f"{message}: {reason}"
 
-        return await NotificationService.notify(
+        payload = await NotificationService.notify(
             level="error",
             source=display_name,
             type="device_offline",
@@ -479,14 +683,52 @@ class NotificationService:
             publish_realtime=True,
             cache_realtime=True,
         )
+        try:
+            location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
+            subs = await NotificationService._get_subscription_channel_recipients(
+                device_id=device_id,
+                location_node_id=location_node_id,
+                rule_id=None,
+                severity="critical",
+            )
+            recipients: set[int] = set()
+            if dev is not None:
+                creator_id = NotificationService._parse_user_id(getattr(dev, "created_by", None))
+                if creator_id is not None:
+                    recipients.add(creator_id)
+            recipients |= await NotificationService._get_location_recipient_user_ids(device_id=device_id)
+            recipients |= subs.get("site", set())
+            await NotificationService._notify_site_message_to_users(
+                user_ids=recipients,
+                title=f"设备离线：{display_name}",
+                content=message,
+                source="设备告警",
+            )
+            email_user_ids = subs.get("email", set())
+            if email_user_ids:
+                await NotificationService._send_alert_emails(
+                    user_ids=email_user_ids,
+                    subject=f"【设备离线】{display_name} ({display_ip})",
+                    content=f"{message}\n\n时间: {payload.get('time')}",
+                )
+        except Exception as e:
+            logger.error(f"发送设备离线站内信失败: {e}")
+
+        return payload
 
     @staticmethod
-    async def notify_device_alert(device_id: int, message: str, severity: str = "warning") -> Dict[str, Any]:
+    async def notify_device_alert(
+        device_id: int,
+        message: str,
+        severity: str = "warning",
+        rule_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         发送设备告警通知
         """
         device_name = None
         ipv4 = None
+        dev = None
         try:
             dev = await NetworkDevice.filter(id=device_id).first()
             if dev:
@@ -505,7 +747,7 @@ class NotificationService:
         }
         level = level_map.get(severity, "warning")
 
-        return await NotificationService.notify(
+        payload = await NotificationService.notify(
             level=level,
             source=display_name,
             type="device_alert",
@@ -517,6 +759,40 @@ class NotificationService:
             publish_realtime=True,
             cache_realtime=True,
         )
+        try:
+            sev = str(severity or "").strip().lower()
+            sev_cn = {"critical": "严重", "warning": "警告", "info": "提示"}.get(sev, sev or "告警")
+            location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
+            subs = await NotificationService._get_subscription_channel_recipients(
+                device_id=device_id,
+                location_node_id=location_node_id,
+                rule_id=rule_id,
+                severity=sev,
+            )
+            recipients: set[int] = set()
+            if dev is not None:
+                creator_id = NotificationService._parse_user_id(getattr(dev, "created_by", None))
+                if creator_id is not None:
+                    recipients.add(creator_id)
+            recipients |= await NotificationService._get_location_recipient_user_ids(device_id=device_id)
+            recipients |= subs.get("site", set())
+            await NotificationService._notify_site_message_to_users(
+                user_ids=recipients,
+                title=f"{sev_cn}告警：{display_name}",
+                content=message,
+                source="设备告警",
+            )
+            email_user_ids = subs.get("email", set())
+            if email_user_ids:
+                await NotificationService._send_alert_emails(
+                    user_ids=email_user_ids,
+                    subject=f"【{sev_cn}告警】{display_name} ({display_ip})",
+                    content=f"{message}\n\n设备: {display_name} ({display_ip})\n级别: {sev_cn}\n时间: {payload.get('time')}",
+                )
+        except Exception as e:
+            logger.error(f"发送设备告警站内信失败: {e}")
+
+        return payload
 
     @staticmethod
     async def notify_repair_order_submitted(

@@ -46,6 +46,10 @@ class PermissionUpdate(BaseModel):
     description: Optional[str] = None
 
 
+class PermissionRestore(BaseModel):
+    code: str
+
+
 class PermissionOut(PermissionBase):
     """权限响应模型"""
     id: int

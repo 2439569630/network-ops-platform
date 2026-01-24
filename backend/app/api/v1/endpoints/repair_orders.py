@@ -199,7 +199,7 @@ async def accept_order(
 async def add_work_log(
     id: int,
     content: str = Body(..., embed=True),
-    images: List[str] = Body([], embed=True),
+    images: list = Body([], embed=True),
     current_user: dict = Depends(PermissionChecker(["sys:repair:accept"]))
 ):
     """

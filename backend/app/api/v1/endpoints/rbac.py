@@ -6,6 +6,7 @@ from app.schemas.rbac import (
     RoleUpdate,
     PermissionCreate,
     PermissionUpdate,
+    PermissionRestore,
     RolePermissionsSet,
     DisabledPermissionsSet,
     UserRolesSet,
@@ -148,17 +149,20 @@ async def set_disabled_permissions(
         return {"code": 500, "message": f"更新失败: {str(e)}"}
 
 
-@router.post("/permissions/sync", response_model=dict)
-async def sync_system_permissions(current_user: dict = Depends(deps.get_current_user)):
-    """同步系统权限"""
+@router.post("/permissions/restore", response_model=dict)
+async def restore_system_permission(
+    data: PermissionRestore,
+    current_user: dict = Depends(deps.get_current_user),
+):
     if not check_super_admin(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
-        result = await RbacService.sync_system_permissions()
-        data = await RbacService.list_permission_directory(include_custom=True)
-        return {"code": 200, "message": "同步成功", "data": {"result": result, "directory": data}}
+        ok = await RbacService.restore_system_permission(data.code)
+        if not ok:
+            return {"code": 400, "message": "仅支持系统权限恢复"}
+        return {"code": 200, "message": "恢复成功"}
     except Exception as e:
-        return {"code": 500, "message": f"同步失败: {str(e)}"}
+        return {"code": 500, "message": f"恢复失败: {str(e)}"}
 
 
 @router.post("/permissions", response_model=dict)

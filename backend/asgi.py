@@ -20,9 +20,12 @@ from app.core.database import db
 from app.core.redis import redis_manager
 from app.core.logger import setup_logger
 from app.core.security import UnicornException, unicorn_exception_handler
+from app.core.system_config import SystemConfig
 from app.services.notification_service import NotificationService
 from app.services.device_service import device_service
 from app.services.rbac_service import RbacService
+from app.utils.remote_image_api import RemoteImageApiClient
+from app.core.max_body_size_middleware import MaxBodySizeMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,17 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"系统权限同步失败: {e}")
 
+        try:
+            await SystemConfig.load()
+            base_url = str(SystemConfig.get("repair_image_api_base_url", "") or "").strip() or "http://45.192.104.13:40027/api/v1"
+            token = await RemoteImageApiClient(base_url=base_url).get_token()
+            if token:
+                logger.info("外部图片服务 token 预热成功")
+            else:
+                logger.warning("外部图片服务 token 未配置（缺少邮箱/密码）")
+        except Exception as e:
+            logger.error(f"外部图片服务 token 预热失败: {e}")
+
     except Exception as e:
         logger.error(f"Tortoise ORM 初始化失败: {e}")
 
@@ -161,6 +175,14 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    MaxBodySizeMiddleware,
+    limits={
+        "/api/v1/users/avatar/upload": 8 * 1024 * 1024,
+        "/api/v1/repair-images/upload": 30 * 1024 * 1024,
+    },
 )
 
 if settings.BACKEND_CORS_ORIGINS:

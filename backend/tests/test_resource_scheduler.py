@@ -60,7 +60,7 @@ class DummyHuaweiDevice:
     def record_failure(self, reason: str | None = None):
         return self.status.record_failure(reason)
 
-    async def connect(self, progress_cb=None) -> bool:
+    async def connect(self, progress_cb=None, purpose: str | None = None) -> bool:
         self.connected = True
         return True
 

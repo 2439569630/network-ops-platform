@@ -15,6 +15,7 @@ class DeviceAlertRule(models.Model):
     
     is_enabled = fields.BooleanField(default=True)
     notification_channels = fields.JSONField(null=True)  # ["email", "webhook"]
+    created_by = fields.IntField(null=True)
     
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
@@ -44,3 +45,19 @@ class DeviceAlertLog(models.Model):
             ("device_id", "triggered_at"),
             ("rule_id", "resolved_at"),
         ]
+
+
+class AlertSubscription(models.Model):
+    id = fields.BigIntField(pk=True)
+    subscriber_user_id = fields.IntField()
+    scope_type = fields.CharField(max_length=20)
+    scope_id = fields.BigIntField()
+    channels = fields.JSONField(default=list)
+    severities = fields.JSONField(null=True)
+    is_enabled = fields.BooleanField(default=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "alert_subscriptions"
+        unique_together = (("subscriber_user_id", "scope_type", "scope_id"),)

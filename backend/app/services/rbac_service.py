@@ -34,6 +34,9 @@ class RbacService:
         "sys:repair:handle": ["sys:repair:view", "sys:repair:accept"],
         "sys:repair:list_all": ["sys:repair:view"],
         "sys:repair:manage": ["sys:repair:view", "sys:repair:handle", "sys:repair:accept", "sys:repair:list_all"],
+        "sys:repair:image:add": ["sys:repair:image:view"],
+        "sys:repair:image:edit": ["sys:repair:image:view"],
+        "sys:repair:image:del": ["sys:repair:image:view"],
     }
 
     # 系统预定义权限列表
@@ -75,6 +78,10 @@ class RbacService:
         {"name": "接单", "code": "sys:repair:accept", "description": "允许接收待处理工单"},
         {"name": "处理工单", "code": "sys:repair:handle", "description": "允许完成或处理工单"},
         {"name": "管理工单", "code": "sys:repair:manage", "description": "允许派单、取消他人工单、强制修改状态等高级操作"},
+        {"name": "查看工单图片", "code": "sys:repair:image:view", "description": "允许查看工单图片信息或访问图片"},
+        {"name": "上传工单图片", "code": "sys:repair:image:add", "description": "允许上传工单图片"},
+        {"name": "编辑工单图片", "code": "sys:repair:image:edit", "description": "允许修改工单图片关联或元信息"},
+        {"name": "删除工单图片", "code": "sys:repair:image:del", "description": "允许删除工单图片"},
     ]
 
     @staticmethod
@@ -159,19 +166,43 @@ class RbacService:
 
     @staticmethod
     async def sync_system_permissions() -> dict:
-        existing_codes = set(await RbacService.get_all_permission_codes())
-        missing = [p for p in RbacService.SYSTEM_PERMISSIONS if p["code"] not in existing_codes]
+        existing_codes = await Permission.all().values_list("code", flat=True)
+        existing_set = {str(c).strip() for c in existing_codes if c}
 
+        to_create: List[Permission] = []
         for p in RbacService.SYSTEM_PERMISSIONS:
-            await Permission.update_or_create(
-                code=p["code"],
-                defaults={
-                    "name": p["name"],
-                    "description": p.get("description") or ""
-                }
+            code = str(p.get("code") or "").strip()
+            if not code or code in existing_set:
+                continue
+            to_create.append(
+                Permission(
+                    name=p.get("name") or code,
+                    code=code,
+                    description=p.get("description") or ""
+                )
             )
 
-        return {"total": len(RbacService.SYSTEM_PERMISSIONS), "missing_inserted": len(missing)}
+        if to_create:
+            await Permission.bulk_create(to_create)
+
+        return {"total": len(RbacService.SYSTEM_PERMISSIONS), "missing_inserted": len(to_create)}
+
+    @staticmethod
+    async def restore_system_permission(code: Optional[str]) -> bool:
+        c = str(code or "").strip()
+        if not c:
+            return False
+        default = next((p for p in RbacService.SYSTEM_PERMISSIONS if str(p.get("code") or "").strip() == c), None)
+        if not default:
+            return False
+        await Permission.update_or_create(
+            code=c,
+            defaults={
+                "name": default.get("name") or c,
+                "description": default.get("description") or ""
+            }
+        )
+        return True
 
     @staticmethod
     async def list_roles() -> List[dict]:
