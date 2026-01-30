@@ -16,9 +16,14 @@
                         <span>系统概览</span>
                     </el-menu-item>
 
-                    <el-menu-item index="message" @click="goto('/user/message')">
+                    <el-menu-item index="message" @click="goto('/user/message')" v-if="hasPerm('sys:message:access')">
                          <el-icon><Message /></el-icon>
-                         <el-badge :is-dot="msgStore.siteMessageUnreadCount > 0" class="menu-badge-text">
+                         <el-badge
+                            :value="msgStore.siteMessageUnreadCount"
+                            :max="99"
+                            :hidden="msgStore.siteMessageUnreadCount <= 0"
+                            class="menu-badge-text"
+                         >
                             <span>消息中心</span>
                          </el-badge>
                     </el-menu-item>
@@ -30,7 +35,7 @@
                     </el-menu-item>
 
                     <!-- 3. 业务管理 (设备与位置) -->
-                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:manage'])">
+                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:manage', 'sys:config:push'])">
                          <template #title>
                             <el-icon><OfficeBuilding /></el-icon>
                             <span>业务管理</span>
@@ -42,6 +47,10 @@
                         <el-menu-item index="device" @click="goto('/user/device')" v-if="hasPerm('sys:device:list')">
                             <el-icon><Monitor /></el-icon>
                             <span>设备管理</span>
+                        </el-menu-item>
+                        <el-menu-item index="config-push" @click="goto('/user/config-push')" v-if="hasPerm('sys:config:push')">
+                            <el-icon><Connection /></el-icon>
+                            <span>配置下发</span>
                         </el-menu-item>
                     </el-sub-menu>
                     
@@ -134,6 +143,7 @@ const activeMenu = computed(() => {
         // 建议未来拆分路由。暂时默认高亮设备管理
         return 'device'; 
     }
+    if (path.includes('/user/config-push')) return 'config-push';
 
     // 监控运维 (暂时只有SNMP，且路由复用了device)
     // if (path.includes('/user/monitor')) return 'snmp';
@@ -257,7 +267,7 @@ const goto = (path) => {
     align-items: center;
 }
 
-:deep(.menu-badge-text .el-badge__content.is-dot) {
+:deep(.menu-badge-text .el-badge__content) {
     top: 12px;
     right: -6px;
 }

@@ -688,9 +688,17 @@ const fetchRelatedDevices = async () => {
 const handleSSH = (device) => {
     if (!canSsh.value) return;
     if (device?.ipv4) {
+        let port = 22
+        try {
+            port = parseInt(String(device.ssh_port || device.port || 22), 10)
+        } catch (e) {
+            port = 22
+        }
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) port = 22
         router.push({
             name: 'ssh-connection',
-            params: { ip: device.ipv4 }
+            params: { ip: device.ipv4 },
+            query: { port: String(port) }
         });
     }
 };

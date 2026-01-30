@@ -46,13 +46,13 @@ const homeRoutes = [
                 path: 'message',
                 name: 'message',
                 component: () => import('@/components/MessageCenter/MessageCenter.vue'),
-                meta: { title: '消息中心' }
+                meta: { title: '消息中心', perms: ['sys:message:access'] }
             },
             {
                 path: 'message/site/:id',
                 name: 'site-message-detail',
                 component: () => import('@/components/MessageCenter/SiteMessageDetail.vue'),
-                meta: { title: '站内消息' }
+                meta: { title: '站内消息', perms: ['sys:message:access'] }
             },
             {
                 path: 'message/publish',
@@ -101,6 +101,12 @@ const homeRoutes = [
                 name: 'global-config',
                 component: () => import('@/components/System/GlobalConfig.vue'),
                 meta: { title: '系统设置', roleCodes: ['admin', 'superadmin'] }
+            },
+            {
+                path: 'config-push',
+                name: 'config-push',
+                component: () => import('@/components/ConfigPush/index.vue'),
+                meta: { title: '配置下发', perms: ['sys:config:push'] }
             },
             {
                 path: 'notification-subscribers',

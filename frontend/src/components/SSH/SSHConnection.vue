@@ -5,7 +5,7 @@
         <div class="card-header">
           <div class="header-left">
             <el-icon class="icon"><Monitor /></el-icon>
-            <span class="title">SSH 远程连接 - {{ ip }}</span>
+            <span class="title">SSH 远程连接 - {{ address }}</span>
           </div>
           <div class="header-actions">
              <el-tag :type="statusType" class="status-tag" effect="dark">{{ statusText }}</el-tag>
@@ -42,6 +42,7 @@ import axios from '@/axios/axios';
 const route = useRoute();
 const router = useRouter();
 const ip = ref(route.params.ip || 'Unknown');
+const port = ref(route.query.port || route.query.ssh_port || 22);
 
 const isConnected = ref(false);
 const terminalContent = ref('');
@@ -54,6 +55,17 @@ let reconnectAttempted = false;
 
 const statusType = computed(() => isConnected.value ? 'success' : 'info');
 const statusText = computed(() => isConnected.value ? '已连接' : '未连接');
+const address = computed(() => {
+    const host = String(ip.value || '').trim() || 'Unknown';
+    let p = 22;
+    try {
+        p = parseInt(String(port.value || '').trim(), 10);
+    } catch (e) {
+        p = 22;
+    }
+    if (!Number.isFinite(p) || p <= 0 || p > 65535) p = 22;
+    return `${host}:${p}`;
+});
 
 const handleConnect = (options = {}) => {
     if (ws) {
@@ -75,8 +87,15 @@ const handleConnect = (options = {}) => {
     const wsHost = window.location.hostname;
     const wsPort = window.location.port ? `:${window.location.port}` : '';
 
-    // 将 token 作为 query 参数传递
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${ip.value}?token=${encodeURIComponent(token)}`;
+    let p = 22;
+    try {
+        p = parseInt(String(port.value || '').trim(), 10);
+    } catch (e) {
+        p = 22;
+    }
+    if (!Number.isFinite(p) || p <= 0 || p > 65535) p = 22;
+
+    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${encodeURIComponent(String(ip.value || '').trim())}?token=${encodeURIComponent(token)}&port=${encodeURIComponent(String(p))}`;
     
     console.log('Connecting to SSH WebSocket:', wsUrl);
 

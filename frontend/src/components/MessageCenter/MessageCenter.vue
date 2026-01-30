@@ -63,9 +63,10 @@
                     <div class="site-card-avatar">
                       <el-avatar 
                         :size="40" 
-                        :icon="getAvatarConfig(m).icon" 
+                        :src="m.sender_avatar_url || undefined"
+                        :icon="m.sender_avatar_url ? undefined : getAvatarConfig(m).icon" 
                         class="sender-avatar" 
-                        :style="{ backgroundColor: getAvatarConfig(m).bg, color: getAvatarConfig(m).color }"
+                        :style="m.sender_avatar_url ? {} : { backgroundColor: getAvatarConfig(m).bg, color: getAvatarConfig(m).color }"
                       />
                       <div class="unread-dot" v-if="!m.is_read"></div>
                     </div>
@@ -137,7 +138,11 @@
                 </template>
               </el-table-column>
               <el-table-column prop="device_name" label="设备" width="180" show-overflow-tooltip />
-              <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip />
+              <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ formatCenterMessage(scope.row.message) }}
+                </template>
+              </el-table-column>
             </el-table>
           </div>
         </div>
@@ -315,9 +320,127 @@ const matchesKeyword = (row, keyword, keys) => {
 };
 
 const buildSiteMessageSnippet = (content) => {
-    const raw = String(content ?? '').replace(/\s+/g, ' ').trim();
+    const raw = String(formatCenterMessage(content) ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return '';
     return raw.length > 60 ? `${raw.slice(0, 60)}...` : raw;
+};
+
+const humanizeMetricKey = (key) => {
+    const raw = String(key || '').trim();
+    if (!raw) return '';
+
+    const tokenUpperMap = {
+        cpu: 'CPU',
+        ip: 'IP',
+        ssh: 'SSH',
+        snmp: 'SNMP',
+        mac: 'MAC',
+        vlan: 'VLAN',
+        qos: 'QoS',
+        poe: 'PoE',
+        rx: 'RX',
+        tx: 'TX',
+        oid: 'OID',
+    };
+
+    const [base, suffix] = raw.split(':', 2);
+    const words = String(base || '')
+        .split('_')
+        .map((w) => String(w || '').trim())
+        .filter(Boolean)
+        .map((w) => tokenUpperMap[w.toLowerCase()] || (w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+        .join(' ');
+
+    if (suffix) return `${words}（${suffix}）`;
+    return words;
+};
+
+const formatMetric = (metric) => {
+    const m = String(metric || '').trim();
+    if (!m) return '';
+
+    if (m.startsWith('if_phy_down:')) {
+        const iface = m.split(':', 2)[1] || '';
+        return iface ? `接口物理 Down（${iface}）` : '接口物理 Down';
+    }
+    if (m.startsWith('if_protocol_down:')) {
+        const iface = m.split(':', 2)[1] || '';
+        return iface ? `接口协议 Down（${iface}）` : '接口协议 Down';
+    }
+
+    const map = {
+        cpu_usage: 'CPU 使用率',
+        memory_usage: '内存使用率',
+        disk_usage: '磁盘使用率',
+        temperature: '温度',
+        online_status: '在线状态',
+        if_phy_down_count: '接口物理 Down 数',
+        if_protocol_down_count: '接口协议 Down 数',
+    };
+    return map[m] || humanizeMetricKey(m) || m;
+};
+
+const formatOfflineReason = (reason) => {
+    const raw = String(reason || '').trim();
+    if (!raw) return '';
+    const low = raw.toLowerCase();
+
+    if (low.includes('timed out') || low.includes('timeout') || low.includes('read timeout') || low.includes('netmikotimeoutexception')) {
+        return '连接超时';
+    }
+    if (
+        low.includes('netmikoauthenticationexception') ||
+        low.includes('authentication failed') ||
+        low.includes('bad authentication type') ||
+        low.includes('not allowed')
+    ) {
+        return '认证失败';
+    }
+    if (
+        low.includes('connection refused') ||
+        low.includes('no route to host') ||
+        low.includes('name or service not known') ||
+        low.includes('nodename nor servname') ||
+        low.includes('unreachable')
+    ) {
+        return '不可达';
+    }
+    if (
+        low.includes('connection reset by peer') ||
+        low.includes('broken pipe') ||
+        low.includes('socket is closed') ||
+        low.includes('eoferror') ||
+        low.includes('bad file descriptor')
+    ) {
+        return '连接中断';
+    }
+
+    const stripped = raw.replace(/^[A-Za-z_][A-Za-z0-9_]*?(Exception|Error):\s*/u, '').trim();
+    return stripped || raw;
+};
+
+const formatCenterMessage = (message) => {
+    const raw = String(message ?? '').trim();
+    if (!raw) return '';
+
+    if (raw.startsWith('触发告警:')) {
+        return raw.replace(/^触发告警:\s*([^\s]+)\s*/u, (_m, metric) => `触发告警: ${formatMetric(metric)} `).trim();
+    }
+    if (raw.startsWith('告警恢复:')) {
+        return raw.replace(/^告警恢复:\s*([^\s]+)\s*/u, (_m, metric) => `告警恢复: ${formatMetric(metric)} `).trim();
+    }
+    if (raw.startsWith('设备离线:')) {
+        const reason = raw.slice('设备离线:'.length).trim();
+        const label = formatOfflineReason(reason);
+        return label ? `设备离线: ${label}` : '设备离线';
+    }
+
+    const low = raw.toLowerCase();
+    if (low.includes('netmikotimeoutexception')) return '连接超时';
+    if (low.includes('netmikoauthenticationexception')) return '认证失败';
+
+    const stripped = raw.replace(/\b[A-Za-z_][A-Za-z0-9_]*?(Exception|Error):\s*/gu, '').trim();
+    return stripped || raw;
 };
 
 const filteredAlerts = computed(() => {

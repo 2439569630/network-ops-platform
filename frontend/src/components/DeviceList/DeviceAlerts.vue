@@ -81,7 +81,11 @@
             {{ getMetricLabel(row.metric) }}
           </template>
         </el-table-column>
-        <el-table-column prop="message" label="内容" min-width="200" />
+        <el-table-column prop="message" label="内容" min-width="200">
+          <template #default="{ row }">
+            {{ formatAlertMessage(row.message) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="severity" label="级别" width="100">
           <template #default="{ row }">
             <el-tag :type="getSeverityType(row.severity)" size="small">
@@ -126,13 +130,13 @@
             allow-create
             default-first-option
           >
-            <el-option label="CPU使用率" value="cpu_usage" />
+            <el-option label="CPU 使用率" value="cpu_usage" />
             <el-option label="内存使用率" value="memory_usage" />
             <el-option label="磁盘使用率" value="disk_usage" />
             <el-option label="温度" value="temperature" />
             <el-option label="在线状态" value="online_status" />
-            <el-option label="接口物理Down数" value="if_phy_down_count" />
-            <el-option label="接口协议Down数" value="if_protocol_down_count" />
+            <el-option label="接口物理 Down 数" value="if_phy_down_count" />
+            <el-option label="接口协议 Down 数" value="if_protocol_down_count" />
           </el-select>
         </el-form-item>
         
@@ -177,7 +181,7 @@
           <el-input-number v-model="form.duration" :min="0" style="width: 100%" placeholder="0表示即时触发">
             <template #append>秒</template>
           </el-input-number>
-          <div class="form-tip">持续满足条件多少秒后触发告警，0表示即时触发</div>
+          <div class="form-tip">持续满足条件多少秒后触发告警，0表示即时触发；online_status 表示设备持续离线多少秒后告警</div>
         </el-form-item>
 
         <el-form-item label="告警级别" prop="severity">
@@ -292,18 +296,62 @@ const rules = {
   severity: [{ required: true, message: '请选择告警级别', trigger: 'change' }],
 }
 
-const getMetricLabel = (val) => {
-  const map = { 
-    cpu_usage: 'CPU使用率', 
-    memory_usage: '内存使用率', 
+const humanizeMetricKey = (key) => {
+  const raw = String(key || '').trim()
+  if (!raw) return ''
+
+  const tokenUpperMap = {
+    cpu: 'CPU',
+    ip: 'IP',
+    ssh: 'SSH',
+    snmp: 'SNMP',
+    mac: 'MAC',
+    vlan: 'VLAN',
+    qos: 'QoS',
+    poe: 'PoE',
+    rx: 'RX',
+    tx: 'TX',
+    oid: 'OID',
+  }
+
+  const [base, suffix] = raw.split(':', 2)
+  const words = String(base || '')
+    .split('_')
+    .map((w) => String(w || '').trim())
+    .filter(Boolean)
+    .map((w) => tokenUpperMap[w.toLowerCase()] || (w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ')
+
+  if (suffix) return `${words}（${suffix}）`
+  return words
+}
+
+const formatMetric = (metric) => {
+  const m = String(metric || '').trim()
+  if (!m) return '-'
+
+  if (m.startsWith('if_phy_down:')) {
+    const iface = m.split(':', 2)[1] || ''
+    return iface ? `接口物理 Down（${iface}）` : '接口物理 Down'
+  }
+  if (m.startsWith('if_protocol_down:')) {
+    const iface = m.split(':', 2)[1] || ''
+    return iface ? `接口协议 Down（${iface}）` : '接口协议 Down'
+  }
+
+  const map = {
+    cpu_usage: 'CPU 使用率',
+    memory_usage: '内存使用率',
     disk_usage: '磁盘使用率',
     temperature: '温度',
     online_status: '在线状态',
-    if_phy_down_count: '接口物理Down数',
-    if_protocol_down_count: '接口协议Down数',
+    if_phy_down_count: '接口物理 Down 数',
+    if_protocol_down_count: '接口协议 Down 数',
   }
-  return map[val] || val
+  return map[m] || humanizeMetricKey(m) || m
 }
+
+const getMetricLabel = (val) => formatMetric(val)
 
 const getOperatorLabel = (val) => {
   const map = { '>': '>', '>=': '≥', '<': '<', '<=': '≤', '=': '=' }
@@ -327,6 +375,68 @@ const isPercentMetric = (metric) => {
 const formatTime = (time) => {
   if (!time) return '-'
   return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
+}
+
+const formatOfflineReason = (reason) => {
+  const raw = String(reason || '').trim()
+  if (!raw) return ''
+  const low = raw.toLowerCase()
+
+  if (low.includes('timed out') || low.includes('timeout') || low.includes('read timeout') || low.includes('netmikotimeoutexception')) {
+    return '连接超时'
+  }
+  if (
+    low.includes('netmikoauthenticationexception') ||
+    low.includes('authentication failed') ||
+    low.includes('bad authentication type') ||
+    low.includes('not allowed')
+  ) {
+    return '认证失败'
+  }
+  if (
+    low.includes('connection refused') ||
+    low.includes('no route to host') ||
+    low.includes('name or service not known') ||
+    low.includes('nodename nor servname') ||
+    low.includes('unreachable')
+  ) {
+    return '不可达'
+  }
+  if (
+    low.includes('connection reset by peer') ||
+    low.includes('broken pipe') ||
+    low.includes('socket is closed') ||
+    low.includes('eoferror') ||
+    low.includes('bad file descriptor')
+  ) {
+    return '连接中断'
+  }
+
+  const stripped = raw.replace(/^[A-Za-z_][A-Za-z0-9_]*?(Exception|Error):\s*/u, '').trim()
+  return stripped || raw
+}
+
+const formatAlertMessage = (message) => {
+  const raw = String(message || '').trim()
+  if (!raw) return '-'
+
+  const firingPrefix = '触发告警:'
+  const resolvePrefix = '告警恢复:'
+  const offlinePrefix = '设备离线:'
+
+  if (raw.startsWith(firingPrefix)) {
+    return raw.replace(/^触发告警:\s*([^\s]+)\s*/u, (_m, metric) => `触发告警: ${formatMetric(metric)} `).trim()
+  }
+  if (raw.startsWith(resolvePrefix)) {
+    return raw.replace(/^告警恢复:\s*([^\s]+)\s*/u, (_m, metric) => `告警恢复: ${formatMetric(metric)} `).trim()
+  }
+  if (raw.startsWith(offlinePrefix)) {
+    const reason = raw.slice(offlinePrefix.length).trim()
+    const label = formatOfflineReason(reason)
+    return label ? `设备离线: ${label}` : '设备离线'
+  }
+
+  return raw
 }
 
 const fetchRules = async () => {
@@ -471,9 +581,23 @@ const deleteSubscription = async () => {
 
 const applyTemplate = async (name) => {
   if (!props.deviceId) return
+  let offlineDuration = 0
+  if (String(name) === 'basic') {
+    try {
+      const res = await axios.get(`/api/v1/user/device/config/${props.deviceId}`)
+      const cfg = res?.data?.data || {}
+      const interval = Number(cfg.interval ?? 60)
+      const thr = Number(cfg.offline_fail_threshold ?? 3)
+      if (Number.isFinite(interval) && Number.isFinite(thr) && interval > 0 && thr > 0) {
+        offlineDuration = Math.round(interval * thr)
+      }
+    } catch (e) {
+      offlineDuration = 0
+    }
+  }
   const templates = {
     basic: [
-      { metric: 'online_status', operator: '=', threshold: 0, severity: 'critical', duration: 0, is_enabled: true },
+      { metric: 'online_status', operator: '=', threshold: 0, severity: 'critical', duration: offlineDuration, is_enabled: true },
       { metric: 'cpu_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
       { metric: 'memory_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
       { metric: 'disk_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },

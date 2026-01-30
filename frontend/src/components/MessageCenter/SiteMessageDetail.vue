@@ -29,6 +29,13 @@
 
             <div class="smd-meta-row">
               <div class="meta-info">
+                <el-avatar
+                  :size="28"
+                  :src="message.sender_avatar_url || undefined"
+                  :icon="message.sender_avatar_url ? undefined : avatarConfig.icon"
+                  class="meta-avatar"
+                  :style="message.sender_avatar_url ? {} : { backgroundColor: avatarConfig.bg, color: avatarConfig.color }"
+                />
                 <span class="sender-name">{{ message.sender_name || message.source || '系统消息' }}</span>
                 <span class="meta-dot">·</span>
                 <span class="send-time">{{ formatDateTime(message.created_at) }}</span>
@@ -42,7 +49,7 @@
           <el-divider class="smd-divider" />
 
           <div class="smd-paper__content">
-            <div class="content-text">{{ message.content }}</div>
+            <div class="content-text">{{ formatCenterMessage(message.content) }}</div>
           </div>
         </template>
 
@@ -60,7 +67,7 @@ import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
-import { ArrowLeft, Check, RefreshLeft } from '@element-plus/icons-vue';
+import { ArrowLeft, BellFilled, Check, RefreshLeft, UserFilled } from '@element-plus/icons-vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -70,6 +77,19 @@ const messageId = computed(() => Number(route.params.id));
 const loading = ref(false);
 const marking = ref(false);
 const message = ref(null);
+
+const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
+
+const getAvatarConfig = (row) => {
+  const source = normalizeText(row?.source);
+  const sender = normalizeText(row?.sender_name);
+  if (source.includes('系统') || source.includes('system') || (!sender && !source)) {
+    return { icon: BellFilled, color: '#409eff', bg: '#ecf5ff' };
+  }
+  return { icon: UserFilled, color: '#909399', bg: '#f4f4f5' };
+};
+
+const avatarConfig = computed(() => getAvatarConfig(message.value));
 
 const formatDateTime = (value) => {
   if (!value) return '';
@@ -84,11 +104,138 @@ const formatDateTime = (value) => {
   });
 };
 
+const humanizeMetricKey = (key) => {
+  const raw = String(key || '').trim();
+  if (!raw) return '';
+
+  const tokenUpperMap = {
+    cpu: 'CPU',
+    ip: 'IP',
+    ssh: 'SSH',
+    snmp: 'SNMP',
+    mac: 'MAC',
+    vlan: 'VLAN',
+    qos: 'QoS',
+    poe: 'PoE',
+    rx: 'RX',
+    tx: 'TX',
+    oid: 'OID',
+  };
+
+  const [base, suffix] = raw.split(':', 2);
+  const words = String(base || '')
+    .split('_')
+    .map((w) => String(w || '').trim())
+    .filter(Boolean)
+    .map((w) => tokenUpperMap[w.toLowerCase()] || (w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ');
+
+  if (suffix) return `${words}（${suffix}）`;
+  return words;
+};
+
+const formatMetric = (metric) => {
+  const m = String(metric || '').trim();
+  if (!m) return '';
+
+  if (m.startsWith('if_phy_down:')) {
+    const iface = m.split(':', 2)[1] || '';
+    return iface ? `接口物理 Down（${iface}）` : '接口物理 Down';
+  }
+  if (m.startsWith('if_protocol_down:')) {
+    const iface = m.split(':', 2)[1] || '';
+    return iface ? `接口协议 Down（${iface}）` : '接口协议 Down';
+  }
+
+  const map = {
+    cpu_usage: 'CPU 使用率',
+    memory_usage: '内存使用率',
+    disk_usage: '磁盘使用率',
+    temperature: '温度',
+    online_status: '在线状态',
+    if_phy_down_count: '接口物理 Down 数',
+    if_protocol_down_count: '接口协议 Down 数',
+  };
+  return map[m] || humanizeMetricKey(m) || m;
+};
+
+const formatOfflineReason = (reason) => {
+  const raw = String(reason || '').trim();
+  if (!raw) return '';
+  const low = raw.toLowerCase();
+
+  if (low.includes('timed out') || low.includes('timeout') || low.includes('read timeout') || low.includes('netmikotimeoutexception')) {
+    return '连接超时';
+  }
+  if (
+    low.includes('netmikoauthenticationexception') ||
+    low.includes('authentication failed') ||
+    low.includes('bad authentication type') ||
+    low.includes('not allowed')
+  ) {
+    return '认证失败';
+  }
+  if (
+    low.includes('connection refused') ||
+    low.includes('no route to host') ||
+    low.includes('name or service not known') ||
+    low.includes('nodename nor servname') ||
+    low.includes('unreachable')
+  ) {
+    return '不可达';
+  }
+  if (
+    low.includes('connection reset by peer') ||
+    low.includes('broken pipe') ||
+    low.includes('socket is closed') ||
+    low.includes('eoferror') ||
+    low.includes('bad file descriptor')
+  ) {
+    return '连接中断';
+  }
+
+  const stripped = raw.replace(/^[A-Za-z_][A-Za-z0-9_]*?(Exception|Error):\s*/u, '').trim();
+  return stripped || raw;
+};
+
+const formatCenterMessage = (messageText) => {
+  const raw = String(messageText ?? '').trim();
+  if (!raw) return '';
+
+  if (raw.startsWith('触发告警:')) {
+    return raw.replace(/^触发告警:\s*([^\s]+)\s*/u, (_m, metric) => `触发告警: ${formatMetric(metric)} `).trim();
+  }
+  if (raw.startsWith('告警恢复:')) {
+    return raw.replace(/^告警恢复:\s*([^\s]+)\s*/u, (_m, metric) => `告警恢复: ${formatMetric(metric)} `).trim();
+  }
+  if (raw.startsWith('设备离线:')) {
+    const reason = raw.slice('设备离线:'.length).trim();
+    const label = formatOfflineReason(reason);
+    return label ? `设备离线: ${label}` : '设备离线';
+  }
+
+  const low = raw.toLowerCase();
+  if (low.includes('netmikotimeoutexception')) return '连接超时';
+  if (low.includes('netmikoauthenticationexception')) return '认证失败';
+
+  const stripped = raw.replace(/\b[A-Za-z_][A-Za-z0-9_]*?(Exception|Error):\s*/gu, '').trim();
+  return stripped || raw;
+};
+
 const fetchDetail = async () => {
   const cached = store.getSiteMessageById(messageId.value);
   if (cached) {
     message.value = cached;
     loading.value = false;
+    if (cached?.sender_id && !cached?.sender_avatar_url) {
+      try {
+        const res = await axios.get(`/api/v1/notifications/site-messages/${encodeURIComponent(messageId.value)}`);
+        if (res?.data?.code === 200 && res?.data?.data) {
+          store.upsertSiteMessage(res.data.data);
+          message.value = store.getSiteMessageById(messageId.value) || message.value;
+        }
+      } catch (e) {}
+    }
     if (message.value && !message.value.is_read) await markRead({ silent: true });
     await store.fetchSiteMessageUnreadCount();
     return;
@@ -256,6 +403,10 @@ watch(
   gap: 8px;
   color: #909399;
   font-size: 14px;
+}
+
+.meta-avatar {
+  flex-shrink: 0;
 }
 
 .sender-name {

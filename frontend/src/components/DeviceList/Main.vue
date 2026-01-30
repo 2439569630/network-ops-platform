@@ -185,9 +185,17 @@ const handleTabClick = (tab) => {
 const connectSSH = (item) => {
     if (!canSsh.value) return
     if (item.ipv4) {
+        let port = 22
+        try {
+            port = parseInt(String(item.ssh_port || item.port || 22), 10)
+        } catch (e) {
+            port = 22
+        }
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) port = 22
         router.push({
             name: 'ssh-connection',
-            params: { ip: item.ipv4 }
+            params: { ip: item.ipv4 },
+            query: { port: String(port) }
         });
     }
 };

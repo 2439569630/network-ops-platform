@@ -62,9 +62,9 @@ export const useDeviceStore = defineStore('device', () => {
                 search: searchQuery.value
             }
             ws.value.send(JSON.stringify(command))
-            loading.value = true
+            if (!data.value || data.value.length === 0) loading.value = true
         } else if (wsStatus.value !== 'connecting') {
-            loading.value = true
+            if (!data.value || data.value.length === 0) loading.value = true
             startRealtime()
         }
     }
@@ -137,7 +137,7 @@ export const useDeviceStore = defineStore('device', () => {
                 console.log('Device List WebSocket connected')
                 wsStatus.value = 'connected'
                 reconnectAttempts = 0
-                loading.value = true // 连接成功后设为 loading 等待数据
+                if (!data.value || data.value.length === 0) loading.value = true
                 sendGetListCommand()
             }
 

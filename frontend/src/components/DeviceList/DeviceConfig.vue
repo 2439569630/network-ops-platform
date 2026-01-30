@@ -18,22 +18,14 @@
         v-loading="loading"
         class="config-form"
       >
-        <div class="section-title">频率设置</div>
+        <div class="section-title">循环任务</div>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="数据采集间隔" prop="interval">
-              <el-input-number v-model="form.interval" :min="-1" :max="3600" :step="0.1" style="width: 100%">
+            <el-form-item label="指标巡检周期" prop="metrics_interval">
+              <el-input-number v-model="form.metrics_interval" :min="-1" :max="3600" :step="1" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
-              <div class="form-tip">完整采集设备指标（CPU/内存等）的周期；0 表示不限制，-1 表示停止任务</div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="在线检测间隔" prop="monitor_interval">
-              <el-input-number v-model="form.monitor_interval" :min="-1" :max="300" :step="0.1" style="width: 100%">
-                <template #append>秒</template>
-              </el-input-number>
-              <div class="form-tip">快速检测设备在线状态（Ping/TCP）的周期；0 表示不限制，-1 表示停止任务</div>
+              <div class="form-tip">CPU/内存/磁盘/在线状态等指标巡检；0 表示使用默认，-1 表示停止任务</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -56,12 +48,6 @@
               </el-input-number>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="全局延迟系数" prop="global_delay_factor">
-              <el-input-number v-model="form.global_delay_factor" :min="0.1" :max="10" :step="0.1" style="width: 100%" />
-              <div class="form-tip">针对慢速设备的网络延迟倍数，默认 1.0</div>
-            </el-form-item>
-          </el-col>
         </el-row>
 
         <el-divider />
@@ -73,7 +59,7 @@
               <el-input-number v-model="form.interfaces_sync_interval" :min="-1" :max="86400" :step="0.1" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
-              <div class="form-tip">接口状态快检（up/down 等）；0 表示不限制，-1 表示停止任务</div>
+              <div class="form-tip">接口状态快检（up/down 等）；0 表示使用默认，-1 表示停止任务</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -81,7 +67,7 @@
               <el-input-number v-model="form.interfaces_slot0_sync_interval" :min="-1" :max="86400" :step="0.1" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
-              <div class="form-tip">深度查询插槽0接口详情；0 表示不限制，-1 表示停止任务</div>
+              <div class="form-tip">深度查询插槽0接口详情；0 表示使用默认，-1 表示停止任务</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -89,7 +75,7 @@
               <el-input-number v-model="form.routes_sync_interval" :min="-1" :max="86400" :step="0.1" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
-              <div class="form-tip">定期同步路由表资源；0 表示不限制，-1 表示停止任务</div>
+              <div class="form-tip">定期同步路由表资源；0 表示使用默认，-1 表示停止任务</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -97,7 +83,7 @@
               <el-input-number v-model="form.vlans_sync_interval" :min="-1" :max="86400" :step="0.1" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
-              <div class="form-tip">定期同步 VLAN 资源；0 表示不限制，-1 表示停止任务</div>
+              <div class="form-tip">定期同步 VLAN 资源；0 表示使用默认，-1 表示停止任务</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -111,7 +97,7 @@
               <el-input-number v-model="form.offline_fail_threshold" :min="1" :max="10" style="width: 100%">
                 <template #append>次</template>
               </el-input-number>
-              <div class="form-tip">连续失败多少次后标记为离线</div>
+              <div class="form-tip">状态机阈值：连续失败/采集无数据达到次数后判定离线；认证失败/不可达/超时等场景可能直接离线</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -119,7 +105,7 @@
               <el-input-number v-model="form.recovery_success_threshold" :min="1" :max="10" style="width: 100%">
                 <template #append>次</template>
               </el-input-number>
-              <div class="form-tip">连续成功多少次后标记为在线</div>
+              <div class="form-tip">状态机阈值：离线后连续采集成功达到次数后恢复在线</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -138,6 +124,22 @@
               <el-input-number v-model="form.connect_retry_delay_seconds" :min="0" :max="60" style="width: 100%">
                 <template #append>秒</template>
               </el-input-number>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="静默重试阈值" prop="offline_retry_silent_after_attempts">
+              <el-input-number v-model="form.offline_retry_silent_after_attempts" :min="0" :max="999" style="width: 100%" />
+              <div class="form-tip">达到次数后进入静默重试；0 表示关闭静默</div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="静默最小间隔" prop="offline_retry_silent_min_interval_seconds">
+              <el-input-number v-model="form.offline_retry_silent_min_interval_seconds" :min="0" :max="86400" :step="1" style="width: 100%">
+                <template #append>秒</template>
+              </el-input-number>
+              <div class="form-tip">静默期间的最小重试间隔（避免频繁重连）</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -163,17 +165,17 @@ const saving = ref(false)
 const formRef = ref(null)
 
 const form = reactive({
-  interval: 60,
-  monitor_interval: 10,
+  metrics_interval: 60,
   connect_timeout: 10,
   auth_timeout: 10,
   banner_timeout: 15,
-  global_delay_factor: 1.0,
   offline_fail_threshold: 3,
   recovery_success_threshold: 2,
   connect_max_retries: 3,
   connect_retry_delay_seconds: 1.0,
   offline_retry_delay_seconds: 30.0,
+  offline_retry_silent_after_attempts: 0,
+  offline_retry_silent_min_interval_seconds: 300.0,
   resource_sync_interval: 3600.0,
   interfaces_sync_interval: 3600.0,
   interfaces_slot0_sync_interval: 3600.0,

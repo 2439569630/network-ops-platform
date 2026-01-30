@@ -25,7 +25,6 @@
             <template #header>
               <div :class="$style.auditHeader">
                 <div :class="$style.sectionHeader">状态</div>
-                <el-button size="small" type="primary" plain @click="handleBoost" :loading="boostLoading">加快巡检</el-button>
               </div>
             </template>
 
@@ -411,21 +410,6 @@ const closeWs = () => {
   ws = null
 }
 
-const boostMonitor = async () => {
-  if (!deviceId.value) return
-  await axios.post('/api/v1/user/device/monitor/boost', {
-    device_id: deviceId.value,
-    ttl_seconds: 600,
-    interval: 1,
-    monitor_interval: 1,
-  })
-}
-
-const restoreMonitor = async () => {
-  if (!deviceId.value) return
-  await axios.post('/api/v1/user/device/monitor/restore', { device_id: deviceId.value })
-}
-
 const auditLoading = ref(false)
 const auditLogs = ref([])
 const auditTotal = ref(0)
@@ -438,20 +422,6 @@ const sshAuditLogs = ref([])
 const sshAuditTotal = ref(0)
 const sshAuditPage = ref(1)
 const sshAuditPageSize = ref(50)
-
-const boostLoading = ref(false)
-
-const handleBoost = async () => {
-  boostLoading.value = true
-  try {
-    await boostMonitor()
-    ElMessage.success('已开启加快巡检')
-  } catch (e) {
-    ElMessage.error('加快巡检请求失败')
-  } finally {
-    boostLoading.value = false
-  }
-}
 
 const formatDateTime = (val) => {
   if (!val) return '-'
