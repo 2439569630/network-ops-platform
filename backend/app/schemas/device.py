@@ -35,11 +35,6 @@ class DeviceResponse(DeviceBase):
     fsm_state: str = ''
     fsm_reason: str = ''
     fsm_updated: str = ''
-    next_retry_at: str = ''
-    next_retry_at_epoch: float = 0.0
-    retry_in_seconds: int = 0
-    retry_attempt: int = 0
-    retry_phase: str = ''
     cpu_usage: str = '0%'
     memory_usage: str = '0%'
     disk_usage: str = '0%'
@@ -69,8 +64,7 @@ class DeviceDelete(BaseModel):
 class DeviceConfigUpdate(BaseModel):
     """设备配置更新模型"""
     device_id: int
-    interval: Optional[float] = None
-    monitor_interval: Optional[float] = None
+    metrics_interval: Optional[float] = None
     offline_fail_threshold: Optional[int] = None
     recovery_success_threshold: Optional[int] = None
     connect_timeout: Optional[float] = None
@@ -80,6 +74,8 @@ class DeviceConfigUpdate(BaseModel):
     connect_max_retries: Optional[int] = None
     connect_retry_delay_seconds: Optional[float] = None
     offline_retry_delay_seconds: Optional[float] = None
+    offline_retry_silent_after_attempts: Optional[int] = None
+    offline_retry_silent_min_interval_seconds: Optional[float] = None
     resource_sync_interval: Optional[float] = None
     interfaces_sync_interval: Optional[float] = None
     interfaces_slot0_sync_interval: Optional[float] = None

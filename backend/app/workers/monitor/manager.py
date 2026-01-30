@@ -26,6 +26,19 @@ from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
 
+def normalize_period_seconds(value: Any, *, default_seconds: float, min_seconds: float = 1.0) -> float:
+    if value is None:
+        return float(default_seconds)
+    try:
+        v = float(value)
+    except Exception:
+        return float(default_seconds)
+    if v == -1:
+        return 0.0
+    if v <= 0:
+        return float(default_seconds)
+    return max(float(min_seconds), float(v))
+
 class MonitorManager:
     """
     监控管理器
@@ -61,12 +74,6 @@ class MonitorManager:
             cls._instance.loader_task: Optional[asyncio.Task] = None
             # 预留的“主”后台任务（当前未使用）
             cls._instance.prime_task: Optional[asyncio.Task] = None
-            # 设备加速刷新定时器后台任务
-            cls._instance.boost_task: Optional[asyncio.Task] = None
-            # 加速前的原始采集间隔快照：device_id -> {"interval": x, "monitor_interval": y}
-            cls._instance._boost_original: Dict[int, dict] = {}
-            # 当前生效的加速覆盖配置：device_id -> {"expire_at": ts, ...}
-            cls._instance._boost_overrides: Dict[int, dict] = {}
             cls._instance._last_loaded_device_ids: Optional[Set[int]] = None
             # WebSocket 广播订阅队列集合：设备列表频道
             cls._instance._ws_list_subscribers: Set[asyncio.Queue] = set()
@@ -466,7 +473,7 @@ class MonitorManager:
     async def _subscribe_alert_updates(self):
         """订阅 Redis 告警规则更新频道"""
         try:
-            redis_client = redis_manager.get_client()
+            redis_client = redis_manager.get_pubsub_client()
             pubsub = redis_client.pubsub()
             await pubsub.subscribe(ALERT_RULES_UPDATE_CHANNEL)
             logger.info(f"已订阅告警规则更新频道: {ALERT_RULES_UPDATE_CHANNEL}")
@@ -493,7 +500,7 @@ class MonitorManager:
         while self.running:
             pubsub = None
             try:
-                redis_client = redis_manager.get_client()
+                redis_client = redis_manager.get_pubsub_client()
                 pubsub = redis_client.pubsub()
                 await pubsub.subscribe(DEVICE_UPDATE_CHANNEL)
                 logger.info(f"已订阅设备变更频道: {DEVICE_UPDATE_CHANNEL}")
@@ -588,11 +595,9 @@ class MonitorManager:
             device = create_device(d)
             try:
                 monitor_interval = settings.MONITOR_INTERVAL
-                online_check_interval = settings.ONLINE_CHECK_INTERVAL
                 device.apply_config(
                     device.config.with_overrides(
-                        interval=float(monitor_interval or getattr(device, "interval", 60) or 60),
-                        monitor_interval=float(online_check_interval or getattr(device, "monitor_interval", 10) or 10),
+                        metrics_interval=float(monitor_interval or getattr(device, "interval", 60) or 60),
                     )
                 )
             except Exception:
@@ -624,17 +629,10 @@ class MonitorManager:
             return
 
         overrides: dict[str, Any] = {}
-        interval_val = getattr(row, "interval", None)
-        if interval_val is not None:
+        metrics_interval_val = getattr(row, "metrics_interval", None)
+        if metrics_interval_val is not None:
             try:
-                overrides["interval"] = float(interval_val)
-            except Exception:
-                pass
-
-        monitor_val = getattr(row, "monitor_interval", None)
-        if monitor_val is not None:
-            try:
-                overrides["monitor_interval"] = float(monitor_val)
+                overrides["metrics_interval"] = float(metrics_interval_val)
             except Exception:
                 pass
 
@@ -648,6 +646,8 @@ class MonitorManager:
             "connect_max_retries",
             "connect_retry_delay_seconds",
             "offline_retry_delay_seconds",
+            "offline_retry_silent_after_attempts",
+            "offline_retry_silent_min_interval_seconds",
             "resource_sync_interval",
             "interfaces_sync_interval",
             "interfaces_slot0_sync_interval",
@@ -696,6 +696,10 @@ class MonitorManager:
         if device:
             try:
                 device.status.set_fsm("offline", str(reason or "removed"))
+            except Exception:
+                pass
+            try:
+                self.alert_handler.on_device_normal_state(did, False)
             except Exception:
                 pass
             await self._publish_list_update(did)
@@ -771,12 +775,6 @@ class MonitorManager:
             logger.error(f"启动设备事件处理守护任务失败: {e}", exc_info=True)
         self.alert_sub_task = asyncio.create_task(self._subscribe_alert_updates())
         self.device_sub_task = asyncio.create_task(self._subscribe_device_updates())
-        try:
-            if self.boost_task:
-                self.boost_task.cancel()
-            self.boost_task = asyncio.create_task(self._boost_loop())
-        except Exception as e:
-            logger.error(f"启动加速刷新守护任务失败: {e}", exc_info=True)
 
     async def stop(self):
         """停止监控服务"""
@@ -814,14 +812,6 @@ class MonitorManager:
             except asyncio.CancelledError:
                 pass
             self.prime_task = None
-
-        if self.boost_task:
-            self.boost_task.cancel()
-            try:
-                await self.boost_task
-            except asyncio.CancelledError:
-                pass
-            self.boost_task = None
 
         if self._leader_lock_task:
             self._leader_lock_task.cancel()
@@ -945,20 +935,14 @@ class MonitorManager:
         age = now - ts if ts > 0 else 0.0
         enriched["age_seconds"] = float(age if age > 0 else 0.0)
         enriched["stale"] = bool(ts > 0 and age > self._stale_after_seconds())
-        try:
-            nra = float(enriched.get("next_retry_at_epoch") or 0.0)
-        except Exception:
-            try:
-                nra = float(enriched.get("next_retry_at") or 0.0)
-            except Exception:
-                nra = 0.0
-        if nra <= 0:
-            nra = 0.0
-        enriched["next_retry_at_epoch"] = float(nra)
-        if nra > 0:
-            enriched["retry_in_seconds"] = int(max(0.0, nra - float(time.time())))
-        else:
-            enriched["retry_in_seconds"] = 0
+        for k in (
+            "next_retry_at",
+            "next_retry_at_epoch",
+            "retry_in_seconds",
+            "retry_attempt",
+            "retry_phase",
+        ):
+            enriched.pop(k, None)
         return enriched
 
     def _normalize_static_info(self, info: Any) -> dict:
@@ -1015,11 +999,6 @@ class MonitorManager:
                 "snapshot_generated_at": str(time.time()),
                 "age_seconds": 0.0,
                 "stale": False,
-                "next_retry_at": "",
-                "next_retry_at_epoch": 0.0,
-                "retry_in_seconds": 0,
-                "retry_attempt": 0,
-                "retry_phase": "",
             }
         status = self._build_status_label(device)
         cpu = float(device.last_metrics.get("cpu_usage", 0) or 0)
@@ -1041,10 +1020,6 @@ class MonitorManager:
             "last_updated": str(last_updated or ""),
             "snapshot_source": "memory",
             "snapshot_generated_at": str(time.time()),
-            "next_retry_at": str(getattr(device, "next_retry_at", "") or ""),
-            "next_retry_at_epoch": float(getattr(device, "next_retry_at_epoch", 0.0) or 0.0),
-            "retry_attempt": int(getattr(device, "retry_attempt", 0) or 0),
-            "retry_phase": str(getattr(device, "retry_phase", "") or ""),
         }
         
         # 动态合并 last_metrics 中的其他字段（如 version, os_version 等）
@@ -1104,11 +1079,6 @@ class MonitorManager:
             "snapshot_generated_at": str(snap.get("snapshot_generated_at") or ""),
             "age_seconds": float(snap.get("age_seconds") or 0.0),
             "stale": bool(snap.get("stale")),
-            "next_retry_at": str(snap.get("next_retry_at") or ""),
-            "next_retry_at_epoch": float(snap.get("next_retry_at_epoch") or 0.0),
-            "retry_in_seconds": int(snap.get("retry_in_seconds") or 0),
-            "retry_attempt": int(snap.get("retry_attempt") or 0),
-            "retry_phase": str(snap.get("retry_phase") or ""),
         }
         await self._publish_redis(self._REDIS_LIST_CHANNEL, {"type": "update", "data": payload})
         if not self._ws_list_subscribers:
@@ -1160,94 +1130,6 @@ class MonitorManager:
                 logger.error(f"热更新设备列表失败: {e}")
             
             await asyncio.sleep(interval)
-
-    async def _boost_loop(self):
-        while self.running:
-            try:
-                now = time.time()
-                expired: list[int] = []
-                for device_id, payload in list(self._boost_overrides.items()):
-                    try:
-                        expire_at = float(payload.get("expire_at") or 0)
-                    except Exception:
-                        expire_at = 0
-                    if expire_at and now >= expire_at:
-                        expired.append(int(device_id))
-                        continue
-                    if isinstance(payload, dict):
-                        self._apply_device_intervals(int(device_id), payload)
-                for device_id in expired:
-                    self._boost_overrides.pop(int(device_id), None)
-                    self._restore_device_intervals(int(device_id))
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                pass
-            await asyncio.sleep(1)
-
-    async def boost_device(
-        self,
-        device_id: int,
-        ttl_seconds: int = 60,
-        interval: Optional[float] = None,
-        monitor_interval: Optional[float] = None,
-    ) -> None:
-        did = int(device_id)
-        ttl = int(ttl_seconds or 60)
-        if ttl < 5:
-            ttl = 5
-        if ttl > 600:
-            ttl = 600
-        payload: dict[str, Any] = {"expire_at": float(time.time() + ttl)}
-        if interval is not None:
-            payload["interval"] = float(interval)
-        if monitor_interval is not None:
-            payload["monitor_interval"] = float(monitor_interval)
-        self._boost_overrides[did] = payload
-        self._apply_device_intervals(did, payload)
-
-    async def restore_boost(self, device_id: int) -> None:
-        did = int(device_id)
-        self._boost_overrides.pop(did, None)
-        self._restore_device_intervals(did)
-
-    def _apply_device_intervals(self, device_id: int, payload: dict):
-        device = self.devices.get(int(device_id))
-        if not device:
-            return
-        if device_id not in self._boost_original:
-            self._boost_original[device_id] = {
-                "interval": float(getattr(device, "interval", settings.MONITOR_INTERVAL) or settings.MONITOR_INTERVAL),
-                "monitor_interval": float(getattr(device, "monitor_interval", settings.ONLINE_CHECK_INTERVAL) or settings.ONLINE_CHECK_INTERVAL),
-            }
-
-        try:
-            interval = payload.get("interval")
-            monitor_interval = payload.get("monitor_interval")
-            overrides: dict[str, Any] = {}
-            if interval is not None:
-                overrides["interval"] = float(interval)
-            if monitor_interval is not None:
-                overrides["monitor_interval"] = float(monitor_interval)
-            if overrides:
-                device.apply_config(device.config.with_overrides(**overrides))
-        except Exception:
-            pass
-
-    def _restore_device_intervals(self, device_id: int):
-        device = self.devices.get(int(device_id))
-        original = self._boost_original.pop(int(device_id), None)
-        if not device or not original:
-            return
-        try:
-            device.apply_config(
-                device.config.with_overrides(
-                    interval=float(original.get("interval") or settings.MONITOR_INTERVAL),
-                    monitor_interval=float(original.get("monitor_interval") or settings.ONLINE_CHECK_INTERVAL),
-                )
-            )
-        except Exception:
-            pass
 
     async def load_devices(self):
         """从数据库加载设备，并处理新增和删除逻辑"""
@@ -1303,9 +1185,6 @@ class MonitorManager:
         if devices_data:
             # 从全局配置读取默认的监控采集间隔（秒），用于设备首次加载或配置缺失时兜底
             monitor_interval = settings.MONITOR_INTERVAL
-            # 从全局配置读取默认的在线检测间隔（秒），用于设备首次加载或配置缺失时兜底
-            online_check_interval = settings.ONLINE_CHECK_INTERVAL
-            
             # 遍历本次从数据库拉取到的所有设备字典
             for d in devices_data:
                 device_id = d['id']                      # 取出设备主键
@@ -1319,8 +1198,7 @@ class MonitorManager:
                     # 使用全局默认间隔兜底，注入配置（首次加载保证有值）
                     device.apply_config(
                         device.config.with_overrides(
-                            interval=float(monitor_interval or device.interval or 60),
-                            monitor_interval=float(online_check_interval or device.monitor_interval or 10),
+                            metrics_interval=float(monitor_interval or device.interval or 60),
                         )
                     )
                     
@@ -1339,8 +1217,7 @@ class MonitorManager:
                     if device:
                         device.apply_config(
                             device.config.with_overrides(
-                                interval=float(monitor_interval or device.interval or 60),
-                                monitor_interval=float(online_check_interval or device.monitor_interval or 10),
+                                metrics_interval=float(monitor_interval or device.interval or 60),
                             )
                         )
             # 批量查询 DeviceConfigEntry 表，获取所有已加载设备的个性化配置
@@ -1362,8 +1239,7 @@ class MonitorManager:
                 overrides: dict[str, Any] = {}
                 # 以下字段均为 DeviceConfigEntry 表中可自定义的监控/连接参数
                 for k in (
-                    "interval",                    # 数据采集间隔（秒）
-                    "monitor_interval",            # 在线检测间隔（秒）
+                    "metrics_interval",            # 指标巡检周期（秒）
                     "offline_fail_threshold",      # 连续失败多少次后标记为离线
                     "recovery_success_threshold",  # 连续成功多少次后标记为恢复
                     "connect_timeout",             # 连接超时（秒）
@@ -1373,6 +1249,8 @@ class MonitorManager:
                     "connect_max_retries",           # 最大重连次数
                     "connect_retry_delay_seconds",   # 连接重试间隔（秒）
                     "offline_retry_delay_seconds", # 离线后重试间隔（秒）
+                    "offline_retry_silent_after_attempts",
+                    "offline_retry_silent_min_interval_seconds",
                     "resource_sync_interval",      # 深度巡检/资源同步间隔（秒）
                     "interfaces_sync_interval",
                     "interfaces_slot0_sync_interval",
@@ -1430,8 +1308,7 @@ class MonitorManager:
             overrides: dict[str, Any] = {}
             # 遍历可配置的字段，检查是否有自定义值
             for k in (
-                "interval",                    # 数据采集间隔
-                "monitor_interval",            # 监控检测间隔
+                "metrics_interval",            # 指标巡检周期
                 "offline_fail_threshold",      # 离线判定阈值
                 "recovery_success_threshold",  # 恢复判定阈值
                 "connect_timeout",             # 连接超时
@@ -1441,6 +1318,8 @@ class MonitorManager:
                 "connect_max_retries",         # 最大重连次数
                 "connect_retry_delay_seconds", # 重连等待时间
                 "offline_retry_delay_seconds", # 离线重试等待时间
+                "offline_retry_silent_after_attempts",
+                "offline_retry_silent_min_interval_seconds",
                 "resource_sync_interval",      # 深度巡检/资源同步间隔
                 "interfaces_sync_interval",
                 "interfaces_slot0_sync_interval",
@@ -1506,12 +1385,8 @@ class MonitorManager:
 
         async def _connect_progress(phase: str, reason: str) -> None:
             p = str(phase or "").strip().lower()
-            current_fsm = str(device.fsm_state or "").strip().lower()
             if p in {"loading", "checking"}:
-                if current_fsm in {"retrying", "backoff"}:
-                    await self._update_runtime_status(device_id, "retrying", reason)
-                else:
-                    await self._update_runtime_status(device_id, "checking", reason)
+                await self._update_runtime_status(device_id, "checking", reason)
             elif p in {"failure", "failed"}:
                 await self._update_runtime_status(device_id, "degraded", reason)
 
@@ -1533,6 +1408,21 @@ class MonitorManager:
                 d = 0.0
             if d < 0:
                 d = 0.0
+            try:
+                silent_after = int(getattr(device.config, "offline_retry_silent_after_attempts", 0) or 0)
+            except Exception:
+                silent_after = 0
+            try:
+                silent_min = float(getattr(device.config, "offline_retry_silent_min_interval_seconds", 0.0) or 0.0)
+            except Exception:
+                silent_min = 0.0
+            if silent_after > 0:
+                try:
+                    attempt = int(getattr(device, "retry_attempt", 0) or 0)
+                except Exception:
+                    attempt = 0
+                if attempt >= silent_after and silent_min > 0:
+                    d = max(float(d), float(silent_min))
             offline_retry_at = time.monotonic() + d
             try:
                 epoch = float(time.time()) + d
@@ -1553,7 +1443,7 @@ class MonitorManager:
                 p = float(period or 0.0)
             except Exception:
                 p = 0.0
-            if p < 0:
+            if p <= 0:
                 return
             job_seq += 1
             heapq.heappush(jobs, (time.monotonic() + float(start_at or 0.0), job_seq, str(name), p))
@@ -1606,7 +1496,7 @@ class MonitorManager:
                 }
                 if force_offline:
                     _set_retry_schedule(_next_offline_delay_seconds(e), "offline", reset_attempt=True)
-                    await self._update_runtime_status(device_id, "backoff", decision.reason or reason)
+                    await self._update_runtime_status(device_id, "offline", decision.reason or reason)
                     await self._set_device_offline(device_id, decision.reason or reason)
                 else:
                     await self._update_runtime_status(device_id, device.fsm_state, "collect_exception")
@@ -1627,6 +1517,10 @@ class MonitorManager:
                 changed = device.record_success()
                 if changed:
                     await self._update_fsm_meta(device_id, device.fsm_state, device.fsm_reason)
+                try:
+                    setattr(device, "_offline_postprocess_emitted", False)
+                except Exception:
+                    pass
                 offline_retry_at = 0.0
                 _clear_retry_schedule()
                 await self._save_data_redis(device_id, data, fsm_state=device.fsm_state)
@@ -1647,7 +1541,7 @@ class MonitorManager:
                         f"fields={fields}{extras_text}{cmds_text}"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"巡检完成 inspect_id={inspect_id} job=metrics what={what} cost_ms={cost_ms} ok=1{extras_text}{cmds_text}"
                     )
                 return
@@ -1666,7 +1560,7 @@ class MonitorManager:
                 )
                 device.record_failure("采集过程中断开")
                 _set_retry_schedule(_next_offline_delay_seconds(getattr(device, "last_connect_error", None)), "offline", reset_attempt=True)
-                await self._update_runtime_status(device_id, "backoff", "采集过程中断开")
+                await self._update_runtime_status(device_id, "offline", "采集过程中断开")
                 await self._set_device_offline(device_id, "采集过程中断开")
                 return
 
@@ -1685,7 +1579,7 @@ class MonitorManager:
             if should_offline:
                 await self._set_device_offline(device_id, device.fsm_reason)
                 _set_retry_schedule(_next_offline_delay_seconds(getattr(device, "last_connect_error", None)), "offline", reset_attempt=True)
-                await self._update_runtime_status(device_id, "backoff", str(device.fsm_reason or ""))
+                await self._update_runtime_status(device_id, "offline", str(device.fsm_reason or ""))
                 await self._publish_list_update(device_id)
                 await self._publish_detail_update(device_id)
             await self._update_heartbeat(device_id, fsm_state=device.fsm_state)
@@ -1701,10 +1595,16 @@ class MonitorManager:
             inspect_id = self._next_inspect_id(device_id, n)
             start_at = time.monotonic()
             what = self._job_what(n)
-            logger.info(
-                f"资源同步开始 inspect_id={inspect_id} device={int(device_id)} {device.ip}:{getattr(device, 'port', '')} "
-                f"job={n} what={what} fsm={str(device.fsm_state or '').strip() or 'unknown'}"
-            )
+            if self._is_full_monitor_log():
+                logger.info(
+                    f"资源同步开始 inspect_id={inspect_id} device={int(device_id)} {device.ip}:{getattr(device, 'port', '')} "
+                    f"job={n} what={what} fsm={str(device.fsm_state or '').strip() or 'unknown'}"
+                )
+            else:
+                logger.debug(
+                    f"资源同步开始 inspect_id={inspect_id} device={int(device_id)} {device.ip}:{getattr(device, 'port', '')} "
+                    f"job={n} what={what} fsm={str(device.fsm_state or '').strip() or 'unknown'}"
+                )
             if hasattr(device, "begin_inspection"):
                 try:
                     device.begin_inspection(inspect_id)
@@ -1725,9 +1625,14 @@ class MonitorManager:
                             except Exception:
                                 cmds = []
                         cmds_text = self._format_cmds(cmds)
-                        logger.info(
-                            f"资源同步完成 inspect_id={inspect_id} job=interfaces what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
-                        )
+                        if self._is_full_monitor_log():
+                            logger.info(
+                                f"资源同步完成 inspect_id={inspect_id} job=interfaces what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
+                        else:
+                            logger.debug(
+                                f"资源同步完成 inspect_id={inspect_id} job=interfaces what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
                 elif n == "routes" and hasattr(device, "collect_routes"):
                     items = await device.collect_routes()
                     if items is not None:
@@ -1742,9 +1647,14 @@ class MonitorManager:
                             except Exception:
                                 cmds = []
                         cmds_text = self._format_cmds(cmds)
-                        logger.info(
-                            f"资源同步完成 inspect_id={inspect_id} job=routes what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
-                        )
+                        if self._is_full_monitor_log():
+                            logger.info(
+                                f"资源同步完成 inspect_id={inspect_id} job=routes what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
+                        else:
+                            logger.debug(
+                                f"资源同步完成 inspect_id={inspect_id} job=routes what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
                 elif n == "vlans" and hasattr(device, "collect_vlans"):
                     items = await device.collect_vlans()
                     if items is not None:
@@ -1759,9 +1669,14 @@ class MonitorManager:
                             except Exception:
                                 cmds = []
                         cmds_text = self._format_cmds(cmds)
-                        logger.info(
-                            f"资源同步完成 inspect_id={inspect_id} job=vlans what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
-                        )
+                        if self._is_full_monitor_log():
+                            logger.info(
+                                f"资源同步完成 inspect_id={inspect_id} job=vlans what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
+                        else:
+                            logger.debug(
+                                f"资源同步完成 inspect_id={inspect_id} job=vlans what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
                 elif n == "interfaces_slot0_detailed" and hasattr(device, "collect_interfaces_detailed"):
                     items = await device.collect_interfaces_detailed(slot_id=0)
                     if items is not None:
@@ -1776,10 +1691,16 @@ class MonitorManager:
                             except Exception:
                                 cmds = []
                         cmds_text = self._format_cmds(cmds)
-                        logger.info(
-                            f"资源同步完成 inspect_id={inspect_id} job=interfaces_slot0_detailed what={what} "
-                            f"cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
-                        )
+                        if self._is_full_monitor_log():
+                            logger.info(
+                                f"资源同步完成 inspect_id={inspect_id} job=interfaces_slot0_detailed what={what} "
+                                f"cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
+                        else:
+                            logger.debug(
+                                f"资源同步完成 inspect_id={inspect_id} job=interfaces_slot0_detailed what={what} "
+                                f"cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
+                            )
             except Exception as e:
                 reason = str(e).splitlines()[0] if str(e) else "资源同步异常"
                 cost_ms = int((time.monotonic() - start_at) * 1000)
@@ -1807,7 +1728,7 @@ class MonitorManager:
                 }
                 if force_offline:
                     _set_retry_schedule(_next_offline_delay_seconds(e), "offline", reset_attempt=True)
-                    await self._update_runtime_status(device_id, "backoff", decision.reason or reason)
+                    await self._update_runtime_status(device_id, "offline", decision.reason or reason)
                     await self._set_device_offline(device_id, decision.reason or reason)
                 else:
                     await self._update_runtime_status(device_id, device.fsm_state, "resource_exception")
@@ -1844,7 +1765,7 @@ class MonitorManager:
              )
              device.record_failure(decision.reason or "连接失败")
              _set_retry_schedule(_next_offline_delay_seconds(exc), "startup", reset_attempt=True)
-             await self._update_runtime_status(device_id, "backoff", decision.reason or "连接失败")
+             await self._update_runtime_status(device_id, "offline", decision.reason or "连接失败")
              await self._set_device_offline(device_id, decision.reason or "连接失败")
 
         # 2. 生命周期初始化：首次连接成功后，采集设备静态信息（序列号、型号等）
@@ -1880,23 +1801,43 @@ class MonitorManager:
 
             cfg = getattr(device, "config", None)
             try:
-                interval_cfg = float(getattr(cfg, "interval", 60.0)) if cfg is not None else 60.0
+                default_metrics_interval = float(getattr(settings, "MONITOR_INTERVAL", 60) or 60)
             except Exception:
-                interval_cfg = 60.0
-            _push_job("metrics", float(interval_cfg), start_at=0.0)
+                default_metrics_interval = 60.0
+            metrics_interval = normalize_period_seconds(
+                getattr(cfg, "metrics_interval", None) if cfg is not None else None,
+                default_seconds=float(default_metrics_interval),
+                min_seconds=1.0,
+            )
+            _push_job("metrics", float(metrics_interval), start_at=0.0)
 
             try:
                 if cfg is not None:
                     if hasattr(device, "collect_interfaces"):
-                        _push_job("interfaces", float(getattr(cfg, "interfaces_sync_interval", 0.0)), start_at=0.0)
+                        _push_job(
+                            "interfaces",
+                            normalize_period_seconds(getattr(cfg, "interfaces_sync_interval", None), default_seconds=3600.0),
+                            start_at=0.0,
+                        )
                     if hasattr(device, "collect_routes"):
-                        _push_job("routes", float(getattr(cfg, "routes_sync_interval", 0.0)), start_at=0.0)
+                        _push_job(
+                            "routes",
+                            normalize_period_seconds(getattr(cfg, "routes_sync_interval", None), default_seconds=3600.0),
+                            start_at=0.0,
+                        )
                     if hasattr(device, "collect_vlans"):
-                        _push_job("vlans", float(getattr(cfg, "vlans_sync_interval", 0.0)), start_at=0.0)
+                        _push_job(
+                            "vlans",
+                            normalize_period_seconds(getattr(cfg, "vlans_sync_interval", None), default_seconds=3600.0),
+                            start_at=0.0,
+                        )
                     if hasattr(device, "collect_interfaces_detailed"):
                         _push_job(
                             "interfaces_slot0_detailed",
-                            float(getattr(cfg, "interfaces_slot0_sync_interval", 0.0)),
+                            normalize_period_seconds(
+                                getattr(cfg, "interfaces_slot0_sync_interval", None),
+                                default_seconds=3600.0,
+                            ),
                             start_at=0.0,
                         )
             except Exception:
@@ -1909,18 +1850,20 @@ class MonitorManager:
                 now = time.monotonic()
                 if not getattr(device, "connected", False):
                     if now < float(offline_retry_at or 0.0):
-                        await self._update_runtime_status(device_id, "backoff", str(device.fsm_reason or ""))
-                        await asyncio.sleep(max(0.0, float(offline_retry_at) - now))
+                        await asyncio.sleep(min(30.0, max(0.0, float(offline_retry_at) - now)))
                         continue
                     try:
                         setattr(device, "retry_attempt", int(getattr(device, "retry_attempt", 0) or 0) + 1)
                     except Exception:
                         pass
-                    await self._update_runtime_status(device_id, "retrying", "retry_connect")
                     ok = await device.connect(progress_cb=_connect_progress, purpose="steady")
                     if ok:
                         offline_retry_at = 0.0
                         _clear_retry_schedule()
+                        try:
+                            setattr(device, "_offline_postprocess_emitted", False)
+                        except Exception:
+                            pass
                         await self._update_runtime_status(device_id, "checking", "reconnected")
                         await self._publish_list_update(device_id)
                         await self._publish_detail_update(device_id)
@@ -1933,7 +1876,7 @@ class MonitorManager:
                     )
                     device.record_failure(decision.reason or "连接失败")
                     _set_retry_schedule(_next_offline_delay_seconds(exc), "offline")
-                    await self._update_runtime_status(device_id, "backoff", decision.reason or "连接失败")
+                    await self._update_runtime_status(device_id, "offline", decision.reason or "连接失败")
                     await self._set_device_offline(device_id, decision.reason or "连接失败")
                     continue
 
@@ -2019,24 +1962,40 @@ class MonitorManager:
             if device.status.transition("checking", str(phase or ""))[0]:
                 await self._publish_list_update(device_id)
                 await self._publish_detail_update(device_id)
+                try:
+                    self.alert_handler.on_device_normal_state(int(device_id), False)
+                except Exception:
+                    pass
             return
 
         if s == "collecting":
             if device.status.transition("collecting", str(phase or device.fsm_reason or ""))[0]:
                 await self._publish_list_update(device_id)
                 await self._publish_detail_update(device_id)
+                try:
+                    self.alert_handler.on_device_normal_state(int(device_id), True)
+                except Exception:
+                    pass
             return
 
         if s == "reloading":
             if device.status.transition("reloading", str(phase or device.fsm_reason or ""))[0]:
                 await self._publish_list_update(device_id)
                 await self._publish_detail_update(device_id)
+                try:
+                    self.alert_handler.on_device_normal_state(int(device_id), False)
+                except Exception:
+                    pass
             return
 
         if s in {"online", "recovering", "degraded", "offline", "backoff", "retrying"}:
             if device.status.transition(s, str(phase or device.fsm_reason or ""))[0]:
                 await self._publish_list_update(device_id)
                 await self._publish_detail_update(device_id)
+                try:
+                    self.alert_handler.on_device_normal_state(int(device_id), s == "online")
+                except Exception:
+                    pass
             return
 
         return
@@ -2112,8 +2071,17 @@ class MonitorManager:
             device = self.devices.get(int(device_id))
             if device:
                 cur = str(getattr(device, "fsm_state", "") or "").strip().lower()
-                if cur not in {"backoff", "retrying"}:
-                    device.status.set_fsm("offline", str(reason or ""))
+                device.status.set_fsm("offline", str(reason or ""))
+                try:
+                    emitted = bool(getattr(device, "_offline_postprocess_emitted", False))
+                except Exception:
+                    emitted = False
+                if emitted:
+                    return
+                try:
+                    setattr(device, "_offline_postprocess_emitted", True)
+                except Exception:
+                    pass
             
             # 检查告警 (Offline)
             # 将离线原因传递给告警处理器，以便生成更友好的告警信息

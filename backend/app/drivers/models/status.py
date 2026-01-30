@@ -169,8 +169,7 @@ class DeviceConfig:
     port: int = 22
 
     # 采集与监控间隔（秒）
-    interval: float = 60.0
-    monitor_interval: float = 10.0
+    metrics_interval: float = 60.0
 
     # 状态阈值
     offline_fail_threshold: int = 3
@@ -186,6 +185,8 @@ class DeviceConfig:
     connect_max_retries: int = 3
     connect_retry_delay_seconds: float = 2.0
     offline_retry_delay_seconds: float = 30.0
+    offline_retry_silent_after_attempts: int = 0
+    offline_retry_silent_min_interval_seconds: float = 300.0
     resource_sync_interval: float = 3600.0
     interfaces_sync_interval: float = 3600.0
     interfaces_slot0_sync_interval: float = 3600.0

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     REDIS_HOST: str = Field(default="localhost", alias="REDISHOST")
     REDIS_PASSWORD: Optional[str] = Field(default=None, alias="REDISPASSWORD")
     REDIS_PORT: int = Field(default=6379, alias="REDISPORT")
+    REDIS_MAX_CONNECTIONS: int = Field(default=20, alias="REDIS_MAX_CONNECTIONS")
+    REDIS_PUBSUB_MAX_CONNECTIONS: int = Field(default=200, alias="REDIS_PUBSUB_MAX_CONNECTIONS")
     
     # Security
     SECRET_KEY: str = Field(default="dev-secret", alias="JWT_SECRET_KEY")
@@ -37,8 +39,6 @@ class Settings(BaseSettings):
     # Monitor
     # 监控轮询间隔（秒）
     MONITOR_INTERVAL: int = 60
-    # 在线状态检查间隔（秒）
-    ONLINE_CHECK_INTERVAL: int = 10
     # 设备列表热更新轮询间隔（秒），用于兜底同步数据库变更
     DEVICE_LOADER_INTERVAL: int = 300
     # 禁用设备列表热更新轮询（1=禁用）

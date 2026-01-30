@@ -310,16 +310,19 @@ async def login(data: LoginForm, response: Response, request: Request):
         logger.error(f"Failed to record login log: {e}")
 
     # 发送登录提醒邮件
-    # Check global email switch AND user preference
-    email_enabled = SystemConfig.get("email_enabled")
-    if (email_enabled == "1" or email_enabled == "true") and user.get("is_email_notify") and user.get("email"):
+    enabled, reason = await NotificationService._is_email_globally_enabled()
+    if enabled and user.get("is_email_notify") and user.get("email"):
         # 调试日志
         logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
         asyncio.create_task(_send_login_notification_task(
             str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
         ))
     else:
-        logger.info(f"Skip login notification: global email_enabled={email_enabled}, is_email_notify={user.get('is_email_notify')}, email={user.get('email')}")
+        logger.info(
+            "Skip login notification: "
+            f"global_email_enabled={enabled} reason={reason}, "
+            f"is_email_notify={user.get('is_email_notify')}, email={user.get('email')}"
+        )
 
     # 发送站内信通知 (始终发送，不依赖邮件开关)
     try:
@@ -843,4 +846,3 @@ async def get_my_login_logs(
             "page_size": page_size
         }
     }
-

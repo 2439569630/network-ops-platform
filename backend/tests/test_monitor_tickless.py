@@ -8,13 +8,12 @@ from app.workers.monitor.manager import MonitorManager
 
 
 class DummyDevice:
-    def __init__(self, interval: float, monitor_interval: float):
+    def __init__(self, metrics_interval: float):
         self.device_id = 1
         self.ip = "127.0.0.1"
         self.device_name = "dummy"
         self.config = DeviceConfig(
-            interval=float(interval),
-            monitor_interval=float(monitor_interval),
+            metrics_interval=float(metrics_interval),
             offline_fail_threshold=3,
             recovery_success_threshold=1,
             connect_timeout=0.1,
@@ -24,8 +23,7 @@ class DummyDevice:
             connect_retry_delay_seconds=0.0,
             offline_retry_delay_seconds=0.1,
         )
-        self.interval = float(interval)
-        self.monitor_interval = float(monitor_interval)
+        self.interval = float(metrics_interval)
         self.status = DeviceStatus(
             offline_fail_threshold=3,
             recovery_success_threshold=1,
@@ -86,10 +84,10 @@ class DummyDevice:
 
 
 class TestMonitorTickless(unittest.IsolatedAsyncioTestCase):
-    async def test_interval_one_second_not_blocked_by_monitor_interval(self):
+    async def test_interval_one_second_tickless_runs(self):
         manager = MonitorManager()
         manager.running = True
-        manager._monitor_log_detail = "summary"
+        manager._monitor_log_detail = "full"
 
         async def _noop(*args, **kwargs):
             return None
@@ -100,7 +98,7 @@ class TestMonitorTickless(unittest.IsolatedAsyncioTestCase):
         manager._set_device_offline = _noop  # type: ignore[method-assign]
         manager._save_data_redis = _noop  # type: ignore[method-assign]
 
-        device = DummyDevice(interval=1.0, monitor_interval=10.0)
+        device = DummyDevice(metrics_interval=1.0)
 
         with self.assertLogs("app.workers.monitor.manager", level="INFO") as cm:
             with mock.patch("app.workers.monitor.manager.random.uniform", return_value=0.0):

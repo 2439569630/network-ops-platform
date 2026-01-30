@@ -4,7 +4,7 @@ from datetime import datetime
 
 AlertOperator = Literal[">", ">=", "<", "<=", "="]
 AlertSeverity = Literal["info", "warning", "critical"]
-AlertSubscriptionScope = Literal["device", "location", "rule"]
+AlertSubscriptionScope = Literal["device", "location", "rule"]  
 AlertSubscriptionChannel = Literal["site", "email"]
 
 class AlertRuleBase(BaseModel):
@@ -17,8 +17,11 @@ class AlertRuleBase(BaseModel):
     is_enabled: bool = True
     notification_channels: Optional[List[str]] = None
 
+class AlertRuleCreate(AlertRuleBase):
+    device_id: int
+
     @model_validator(mode="after")
-    def _validate_rule(self):
+    def _validate_create(self):
         m = str(self.metric or "").strip()
         if m == "online_status":
             try:
@@ -28,9 +31,6 @@ class AlertRuleBase(BaseModel):
             if v not in (0.0, 1.0):
                 raise ValueError("online_status 的阈值必须为 0 或 1")
         return self
-
-class AlertRuleCreate(AlertRuleBase):
-    device_id: int
 
 class AlertRuleUpdate(BaseModel):
     metric: Optional[str] = None
@@ -58,6 +58,18 @@ class AlertRuleOut(AlertRuleBase):
     device_id: int
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _normalize_out(self):
+        m = str(self.metric or "").strip()
+        if m == "online_status":
+            try:
+                v = float(self.threshold)
+            except Exception:
+                v = 0.0
+            if v not in (0.0, 1.0):
+                self.threshold = 0.0 if v < 0.5 else 1.0
+        return self
 
     class Config:
         from_attributes = True

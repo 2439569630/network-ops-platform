@@ -72,6 +72,7 @@ def main() -> int:
 
     fastapi_log_path = os.path.join(log_dir, "fastapi.log")
     monitor_log_path = os.path.join(log_dir, "monitor.log")
+    config_push_log_path = os.path.join(log_dir, "config_push.log")
 
     fastapi_host = os.getenv("FASTAPI_HOST", "0.0.0.0")
     fastapi_port = os.getenv("FASTAPI_PORT", "8000")
@@ -113,17 +114,21 @@ def main() -> int:
         fastapi_cmd.extend(["--workers", str(fastapi_workers_int)])
 
     monitor_cmd = [python_exe, os.path.join(project_root, "processes", "monitor_daemon.py")]
+    config_push_cmd = [python_exe, os.path.join(project_root, "processes", "config_push_worker.py")]
 
     fastapi_env = _env_with({"DISABLE_INTERNAL_MONITOR": "1"})
     monitor_env = os.environ.copy()
 
     logger.info(f"Starting FastAPI: {' '.join(fastapi_cmd)}")
     logger.info(f"Starting Monitor daemon: {' '.join(monitor_cmd)}")
+    logger.info(f"Starting ConfigPush worker: {' '.join(config_push_cmd)}")
     logger.info(f"FastAPI logs: {fastapi_log_path}")
     logger.info(f"Monitor logs: {monitor_log_path}")
+    logger.info(f"ConfigPush logs: {config_push_log_path}")
 
     fastapi_log_fp = open(fastapi_log_path, "a", encoding="utf-8", buffering=1)
     monitor_log_fp = open(monitor_log_path, "a", encoding="utf-8", buffering=1)
+    config_push_log_fp = open(config_push_log_path, "a", encoding="utf-8", buffering=1)
 
     try:
         fastapi_proc = subprocess.Popen(
@@ -141,6 +146,14 @@ def main() -> int:
             stdout=monitor_log_fp,
             stderr=monitor_log_fp,
         )
+
+        config_push_proc = subprocess.Popen(
+            config_push_cmd,
+            cwd=project_root,
+            env=monitor_env,
+            stdout=config_push_log_fp,
+            stderr=config_push_log_fp,
+        )
     except Exception:
         try:
             fastapi_log_fp.close()
@@ -148,6 +161,10 @@ def main() -> int:
             pass
         try:
             monitor_log_fp.close()
+        except Exception:
+            pass
+        try:
+            config_push_log_fp.close()
         except Exception:
             pass
         raise
@@ -162,6 +179,7 @@ def main() -> int:
         logger.info(f"Supervisor received signal {signum}, stopping children...")
         _terminate_process(fastapi_proc)
         _terminate_process(monitor_proc)
+        _terminate_process(config_push_proc)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -170,19 +188,23 @@ def main() -> int:
     while True:
         fcode = fastapi_proc.poll()
         mcode = monitor_proc.poll()
-        if fcode is None and mcode is None:
+        ccode = config_push_proc.poll()
+        if fcode is None and mcode is None and ccode is None:
             time.sleep(0.5)
             continue
 
         if not stopping:
-            logger.error(f"Child exited (fastapi={fcode}, monitor={mcode}); stopping the other one...")
+            logger.error(f"Child exited (fastapi={fcode}, monitor={mcode}, config_push={ccode}); stopping the other one...")
             _terminate_process(fastapi_proc)
             _terminate_process(monitor_proc)
+            _terminate_process(config_push_proc)
 
         if fcode is not None and fcode != 0:
             exit_code = int(fcode)
         elif mcode is not None and mcode != 0:
             exit_code = int(mcode)
+        elif ccode is not None and ccode != 0:
+            exit_code = int(ccode)
         break
 
     try:
@@ -191,6 +213,10 @@ def main() -> int:
         pass
     try:
         monitor_log_fp.close()
+    except Exception:
+        pass
+    try:
+        config_push_log_fp.close()
     except Exception:
         pass
 

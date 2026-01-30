@@ -2,6 +2,7 @@ import time
 import logging
 import asyncio
 import uuid
+import heapq
 from collections import defaultdict
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
@@ -29,18 +30,41 @@ class AlertHandler:
         self._devices_with_interface_rules: set[int] = set()
         self._interface_check_interval_seconds = 5.0
         self._interface_task: asyncio.Task | None = None
+        self._normal_since_ts: dict[int, float] = {}
+        self._normal_episode: dict[int, int] = defaultdict(int)
+        self._online_fired_episode: dict[tuple[int, int], int] = {}
+        self._online_due_heap: list[tuple[float, int, int, int]] = []
+        self._online_scheduler_task: asyncio.Task | None = None
+        self._online_scheduler_event: asyncio.Event = asyncio.Event()
 
     def bind_device_registry(self, devices: dict[int, Any]) -> None:
         self._device_registry = devices
 
     def start_background_tasks(self) -> None:
         if self._interface_task is not None and not self._interface_task.done():
+            pass
+        else:
+            self._interface_task = asyncio.create_task(self._interface_rule_loop())
+        if self._online_scheduler_task is not None and not self._online_scheduler_task.done():
             return
-        self._interface_task = asyncio.create_task(self._interface_rule_loop())
+        self._online_scheduler_task = asyncio.create_task(self._online_rule_scheduler_loop())
 
     async def stop_background_tasks(self) -> None:
         task = self._interface_task
         self._interface_task = None
+        if task is None:
+            pass
+        else:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+        task = self._online_scheduler_task
+        self._online_scheduler_task = None
         if task is None:
             return
         task.cancel()
@@ -48,6 +72,70 @@ class AlertHandler:
             await task
         except asyncio.CancelledError:
             return
+        except Exception:
+            return
+
+    def on_device_normal_state(self, device_id: int, is_normal: bool) -> None:
+        did = int(device_id)
+        now = time.time()
+        if is_normal:
+            normal_since = self._normal_since_ts.get(did)
+            if normal_since is None:
+                self._normal_episode[did] = int(self._normal_episode.get(did, 0) or 0) + 1
+                normal_since = now
+                self._normal_since_ts[did] = normal_since
+            episode = int(self._normal_episode.get(did, 0) or 0)
+            rules = (self.alert_rules.get(did) or {}).get("online_status") or []
+            for rule in rules:
+                try:
+                    if not getattr(rule, "is_enabled", True):
+                        continue
+                    if str(getattr(rule, "operator", "") or "").strip() != "=":
+                        continue
+                    if float(getattr(rule, "threshold", 0.0) or 0.0) != 1.0:
+                        continue
+                    duration = int(getattr(rule, "duration", 0) or 0)
+                    due_ts = float(normal_since) + float(max(0, duration))
+                    heapq.heappush(self._online_due_heap, (due_ts, did, int(rule.id), episode))
+                except Exception:
+                    continue
+            self._online_scheduler_event.set()
+            return
+
+        if did in self._normal_since_ts:
+            self._normal_since_ts.pop(did, None)
+            try:
+                device_states = self.alert_states.get(did) or {}
+                rules = (self.alert_rules.get(did) or {}).get("online_status") or []
+                for rule in rules:
+                    try:
+                        if str(getattr(rule, "operator", "") or "").strip() != "=":
+                            continue
+                        if float(getattr(rule, "threshold", 0.0) or 0.0) != 1.0:
+                            continue
+                        rid = int(getattr(rule, "id", 0) or 0)
+                        if not rid:
+                            continue
+                        st = device_states.get(rid) or {}
+                        if st.get("is_firing"):
+                            token = str(st.get("lock_token") or "")
+                            if token and not st.get("external_firing", False):
+                                asyncio.create_task(self._release_firing_lock(did, rid, token))
+                        device_states[rid] = {
+                            "triggered_at": 0,
+                            "is_firing": False,
+                            "external_firing": False,
+                            "muted": False,
+                            "last_fired_at": float(st.get("last_fired_at", 0) or 0),
+                            "lock_token": "",
+                            "lock_ttl": 0,
+                        }
+                    except Exception:
+                        continue
+                self.alert_states[did] = device_states
+            except Exception:
+                pass
+            self._online_scheduler_event.set()
 
     def _compute_firing_lock_ttl_seconds(self, *, cooldown_seconds: int) -> int:
         cd = max(0, int(cooldown_seconds or 0))
@@ -147,10 +235,122 @@ class AlertHandler:
                 self._devices_with_interface_rules.add(int(device_id))
             else:
                 self._devices_with_interface_rules.discard(int(device_id))
+            try:
+                did = int(device_id)
+                if did in self._normal_since_ts:
+                    self.on_device_normal_state(did, True)
+            except Exception:
+                pass
                         
             logger.info(f"刷新设备 {device_id} 告警规则成功，当前规则数: {len(rules)}")
         except Exception as e:
             logger.error(f"刷新设备 {device_id} 告警规则失败: {e}")
+
+    async def _online_rule_scheduler_loop(self) -> None:
+        while True:
+            try:
+                while True:
+                    if not self._online_due_heap:
+                        self._online_scheduler_event.clear()
+                        await self._online_scheduler_event.wait()
+                        continue
+                    due_ts, did, rid, episode = self._online_due_heap[0]
+                    now = time.time()
+                    delay = max(0.0, float(due_ts) - float(now))
+                    self._online_scheduler_event.clear()
+                    try:
+                        await asyncio.wait_for(self._online_scheduler_event.wait(), timeout=delay)
+                        continue
+                    except asyncio.TimeoutError:
+                        break
+
+                now = time.time()
+                while self._online_due_heap and float(self._online_due_heap[0][0]) <= float(now):
+                    due_ts, did, rid, episode = heapq.heappop(self._online_due_heap)
+                    normal_since = self._normal_since_ts.get(int(did))
+                    if normal_since is None:
+                        continue
+                    if int(self._normal_episode.get(int(did), 0) or 0) != int(episode):
+                        continue
+                    if int(self._online_fired_episode.get((int(did), int(rid)), -1) or -1) == int(episode):
+                        continue
+                    rule = None
+                    rules = (self.alert_rules.get(int(did)) or {}).get("online_status") or []
+                    for r in rules:
+                        try:
+                            if int(getattr(r, "id", 0) or 0) == int(rid):
+                                rule = r
+                                break
+                        except Exception:
+                            continue
+                    if rule is None:
+                        continue
+                    try:
+                        if not getattr(rule, "is_enabled", True):
+                            continue
+                        if str(getattr(rule, "operator", "") or "").strip() != "=":
+                            continue
+                        if float(getattr(rule, "threshold", 0.0) or 0.0) != 1.0:
+                            continue
+                        duration = int(getattr(rule, "duration", 0) or 0)
+                        if float(time.time()) - float(normal_since) + 1e-6 < float(max(0, duration)):
+                            continue
+                        await self._fire_online_rule(int(did), rule, int(duration))
+                        self._online_fired_episode[(int(did), int(rid))] = int(episode)
+                    except Exception:
+                        continue
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.error(f"在线状态告警调度循环异常: {e}")
+                await asyncio.sleep(1.0)
+
+    async def _fire_online_rule(self, device_id: int, rule: DeviceAlertRule, duration_seconds: int) -> None:
+        did = int(device_id)
+        now = time.time()
+        device_states = self.alert_states.setdefault(did, {})
+        rule_state = device_states.get(
+            int(rule.id),
+            {
+                "triggered_at": 0,
+                "is_firing": False,
+                "external_firing": False,
+                "muted": False,
+                "last_fired_at": 0,
+            },
+        )
+        if rule_state.get("is_firing"):
+            device_states[int(rule.id)] = rule_state
+            return
+        cooldown = int(getattr(rule, "cooldown", 0) or 0)
+        last_fired_at = float(rule_state.get("last_fired_at", 0) or 0)
+        if cooldown > 0 and last_fired_at > 0 and (now - last_fired_at) < cooldown:
+            device_states[int(rule.id)] = rule_state
+            return
+
+        ttl = self._compute_firing_lock_ttl_seconds(cooldown_seconds=cooldown)
+        token = await self._try_acquire_firing_lock(did, int(rule.id), ttl)
+        if not token:
+            rule_state["is_firing"] = True
+            rule_state["external_firing"] = True
+            rule_state["muted"] = True
+            rule_state["lock_token"] = ""
+            rule_state["lock_ttl"] = 0
+            device_states[int(rule.id)] = rule_state
+            return
+
+        rule_state["is_firing"] = True
+        rule_state["external_firing"] = False
+        rule_state["muted"] = False
+        rule_state["last_fired_at"] = now
+        rule_state["lock_token"] = token
+        rule_state["lock_ttl"] = ttl
+        device_states[int(rule.id)] = rule_state
+
+        msg = "设备已恢复在线"
+        if int(duration_seconds or 0) > 0:
+            msg = f"设备已在线超过{int(duration_seconds)}秒"
+        asyncio.create_task(self._log_alert(did, rule, 1.0, msg))
 
     async def _interface_rule_loop(self) -> None:
         while True:
@@ -408,6 +608,8 @@ class AlertHandler:
                         msg = "设备离线"
                         if reason:
                             msg += f": {reason}"
+                    if chosen_rule.metric == "online_status" and current_val == 1 and float(getattr(chosen_rule, "threshold", 0.0) or 0.0) == 1.0:
+                        msg = "设备已恢复在线"
 
                     asyncio.create_task(self._log_alert(device_id, chosen_rule, current_val, msg))
 
@@ -435,6 +637,24 @@ class AlertHandler:
                 message=message,
                 severity=rule.severity
             )
+            try:
+                sev = str(getattr(rule, "severity", "") or "").strip().lower()
+                location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
+                subs = await NotificationService._get_subscription_channel_recipients(
+                    device_id=device_id,
+                    location_node_id=location_node_id,
+                    rule_id=int(getattr(rule, "id", 0) or 0) or None,
+                    severity=sev,
+                )
+                enabled, reason = await NotificationService._is_email_globally_enabled()
+                logger.warning(
+                    "告警通知摘要: "
+                    f"device_id={device_id}; rule_id={getattr(rule, 'id', None)}; severity={sev}; metric={getattr(rule, 'metric', None)}; "
+                    f"email_global_enabled={enabled}; email_reason={reason}; "
+                    f"sub_site={len(subs.get('site', set()))}; sub_email={len(subs.get('email', set()))}"
+                )
+            except Exception as e:
+                logger.warning(f"告警通知摘要获取失败: device_id={device_id}; rule_id={getattr(rule, 'id', None)}; err={e}")
             await NotificationService.notify_device_alert(device_id, message, rule.severity, rule_id=rule.id)
         except Exception as e:
             logger.error(f"记录告警失败: {e}")
@@ -465,10 +685,20 @@ class AlertHandler:
             
             msg = f"告警恢复: {rule.metric}"
             if rule.metric == "online_status":
-                msg = "设备已恢复在线"
+                try:
+                    thr = float(getattr(rule, "threshold", 0.0) or 0.0)
+                except Exception:
+                    thr = 0.0
+                msg = "设备已恢复在线" if thr == 0.0 else "设备已离开在线状态"
 
             if send_notify:
-                await NotificationService.notify_device_alert(device_id, msg, "info", rule_id=rule.id)
+                await NotificationService.notify_device_alert(
+                    device_id,
+                    msg,
+                    "info",
+                    rule_id=rule.id,
+                    subscription_severity=str(getattr(rule, "severity", "") or "").strip().lower() or None,
+                )
 
             if release_lock:
                 await self._release_firing_lock(device_id, rule.id, token=str(lock_token or ""))

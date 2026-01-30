@@ -11,8 +11,7 @@ class DummyHuaweiDevice:
     def __init__(
         self,
         *,
-        interval: float = 0.0,
-        monitor_interval: float = 0.0,
+        metrics_interval: float = 0.0,
         interfaces_sync_interval: float = 3.0,
         routes_sync_interval: float = 0.0,
         vlans_sync_interval: float = 0.0,
@@ -22,15 +21,13 @@ class DummyHuaweiDevice:
         self.ip = "127.0.0.1"
         self.device_name = "dummy-huawei"
         self.config = DeviceConfig(
-            interval=float(interval),
-            monitor_interval=float(monitor_interval),
+            metrics_interval=float(metrics_interval),
             interfaces_sync_interval=float(interfaces_sync_interval),
             routes_sync_interval=float(routes_sync_interval),
             vlans_sync_interval=float(vlans_sync_interval),
             interfaces_slot0_sync_interval=float(interfaces_slot0_sync_interval),
         )
-        self.interval = float(interval)
-        self.monitor_interval = float(monitor_interval)
+        self.interval = float(metrics_interval)
         self.status = DeviceStatus(offline_fail_threshold=3, recovery_success_threshold=1)
         self.connected = True
         self.last_connect_error = None
@@ -96,7 +93,7 @@ class TestResourceScheduler(unittest.IsolatedAsyncioTestCase):
         manager._set_device_offline = _noop  # type: ignore[method-assign]
         manager._save_data_redis = _noop  # type: ignore[method-assign]
 
-        device = DummyHuaweiDevice(interval=10.0, interfaces_sync_interval=3.0)
+        device = DummyHuaweiDevice(metrics_interval=10.0, interfaces_sync_interval=3.0)
 
         fake_now = 0.0
         real_sleep = asyncio.sleep
@@ -128,7 +125,7 @@ class TestResourceScheduler(unittest.IsolatedAsyncioTestCase):
 
         self.assertGreaterEqual(device.interfaces_calls, 4)
 
-    async def test_interfaces_job_zero_runs_continuously(self):
+    async def test_interfaces_job_zero_uses_default(self):
         manager = MonitorManager()
         manager.running = True
 
@@ -172,7 +169,7 @@ class TestResourceScheduler(unittest.IsolatedAsyncioTestCase):
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        self.assertGreater(device.interfaces_calls, 10)
+        self.assertEqual(device.interfaces_calls, 1)
 
     async def test_interfaces_job_minus_one_stops(self):
         manager = MonitorManager()
@@ -229,7 +226,7 @@ class TestResourceScheduler(unittest.IsolatedAsyncioTestCase):
         manager._set_device_offline = _noop  # type: ignore[method-assign]
         manager._save_data_redis = _noop  # type: ignore[method-assign]
 
-        device = DummyHuaweiDevice(interval=-1.0, interfaces_sync_interval=-1.0)
+        device = DummyHuaweiDevice(metrics_interval=-1.0, interfaces_sync_interval=-1.0)
 
         fake_now = 0.0
         real_sleep = asyncio.sleep

@@ -213,11 +213,6 @@ class DeviceService:
                         "snapshot_generated_at": str(snap.get("snapshot_generated_at") or ""),
                         "age_seconds": float(snap.get("age_seconds") or 0.0),
                         "stale": bool(snap.get("stale")),
-                        "next_retry_at": str(snap.get("next_retry_at") or ""),
-                        "next_retry_at_epoch": float(snap.get("next_retry_at_epoch") or 0.0),
-                        "retry_in_seconds": int(snap.get("retry_in_seconds") or 0),
-                        "retry_attempt": int(snap.get("retry_attempt") or 0),
-                        "retry_phase": str(snap.get("retry_phase") or ""),
                         "monitor_alive": bool(monitor_alive),
                         "monitor_heartbeat_age_seconds": float(monitor_heartbeat_age_seconds),
                         "type": row["device_type"],
@@ -299,6 +294,7 @@ class DeviceService:
         if not entry:
             return {
                 "device_id": did,
+                "metrics_interval": None,
                 "resource_sync_interval": 3600.0,
                 "interfaces_sync_interval": 3600.0,
                 "interfaces_slot0_sync_interval": 3600.0,
@@ -307,8 +303,7 @@ class DeviceService:
             }
         return {
             "device_id": did,
-            "interval": entry.interval,
-            "monitor_interval": entry.monitor_interval,
+            "metrics_interval": getattr(entry, "metrics_interval", None),
             "offline_fail_threshold": entry.offline_fail_threshold,
             "recovery_success_threshold": entry.recovery_success_threshold,
             "connect_timeout": entry.connect_timeout,
@@ -318,6 +313,8 @@ class DeviceService:
             "connect_max_retries": entry.connect_max_retries,
             "connect_retry_delay_seconds": entry.connect_retry_delay_seconds,
             "offline_retry_delay_seconds": entry.offline_retry_delay_seconds,
+            "offline_retry_silent_after_attempts": getattr(entry, "offline_retry_silent_after_attempts", None),
+            "offline_retry_silent_min_interval_seconds": getattr(entry, "offline_retry_silent_min_interval_seconds", None),
             "resource_sync_interval": entry.resource_sync_interval,
             "interfaces_sync_interval": getattr(entry, "interfaces_sync_interval", 3600.0),
             "interfaces_slot0_sync_interval": getattr(entry, "interfaces_slot0_sync_interval", 3600.0),
@@ -333,9 +330,35 @@ class DeviceService:
         """
         did = int(device_id)
         clean: dict = {}
+
+        def _normalize_period_seconds(value):
+            if value is None:
+                return None
+            try:
+                v = float(value)
+            except Exception:
+                return None
+            if v == -1:
+                return -1.0
+            if v <= 0:
+                return None
+            return max(1.0, v)
+
+        def _normalize_period_seconds_with_default(value, default_seconds: float):
+            if value is None:
+                return float(default_seconds)
+            try:
+                v = float(value)
+            except Exception:
+                return float(default_seconds)
+            if v == -1:
+                return -1.0
+            if v <= 0:
+                return float(default_seconds)
+            return max(1.0, v)
+
         allowed = {
-            "interval",
-            "monitor_interval",
+            "metrics_interval",
             "offline_fail_threshold",
             "recovery_success_threshold",
             "connect_timeout",
@@ -345,6 +368,8 @@ class DeviceService:
             "connect_max_retries",
             "connect_retry_delay_seconds",
             "offline_retry_delay_seconds",
+            "offline_retry_silent_after_attempts",
+            "offline_retry_silent_min_interval_seconds",
             "resource_sync_interval",
             "interfaces_sync_interval",
             "interfaces_slot0_sync_interval",
@@ -354,6 +379,19 @@ class DeviceService:
         for k in allowed:
             if k in patch:
                 clean[k] = patch.get(k)
+
+        if "metrics_interval" in clean:
+            clean["metrics_interval"] = _normalize_period_seconds(clean.get("metrics_interval"))
+
+        for k in (
+            "resource_sync_interval",
+            "interfaces_sync_interval",
+            "interfaces_slot0_sync_interval",
+            "routes_sync_interval",
+            "vlans_sync_interval",
+        ):
+            if k in clean:
+                clean[k] = _normalize_period_seconds_with_default(clean.get(k), 3600.0)
 
         if "resource_sync_interval" in clean:
             has_split = any(
@@ -390,8 +428,7 @@ class DeviceService:
         
         # Translate field names for better audit log
         field_names = {
-            "interval": "采集间隔",
-            "monitor_interval": "监控间隔",
+            "metrics_interval": "指标巡检周期",
             "offline_fail_threshold": "离线阈值",
             "recovery_success_threshold": "恢复阈值",
             "connect_timeout": "连接超时",
@@ -401,6 +438,8 @@ class DeviceService:
             "connect_max_retries": "连接最大重试",
             "connect_retry_delay_seconds": "连接重试间隔",
             "offline_retry_delay_seconds": "离线重试间隔",
+            "offline_retry_silent_after_attempts": "静默重试阈值",
+            "offline_retry_silent_min_interval_seconds": "静默重试最小间隔",
             "resource_sync_interval": "深度巡检间隔",
             "interfaces_sync_interval": "接口同步间隔",
             "interfaces_slot0_sync_interval": "插槽0接口详情同步间隔",

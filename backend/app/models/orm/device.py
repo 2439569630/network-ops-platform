@@ -31,8 +31,7 @@ class DeviceConfigEntry(models.Model):
     """设备监控配置模型"""
     device_id = fields.IntField(pk=True)
 
-    interval = fields.FloatField(null=True)
-    monitor_interval = fields.FloatField(null=True)
+    metrics_interval = fields.FloatField(null=True)
 
     offline_fail_threshold = fields.IntField(null=True)
     recovery_success_threshold = fields.IntField(null=True)
@@ -45,6 +44,8 @@ class DeviceConfigEntry(models.Model):
     connect_max_retries = fields.IntField(null=True)
     connect_retry_delay_seconds = fields.FloatField(null=True)
     offline_retry_delay_seconds = fields.FloatField(null=True)
+    offline_retry_silent_after_attempts = fields.IntField(null=True)
+    offline_retry_silent_min_interval_seconds = fields.FloatField(null=True)
     
     resource_sync_interval = fields.FloatField(default=3600.0)
     interfaces_sync_interval = fields.FloatField(default=3600.0)

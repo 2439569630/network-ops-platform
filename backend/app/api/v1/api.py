@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     rbac,
     locations,
     alerts,
+    config_push,
 )
 
 api_router = APIRouter()
@@ -34,3 +35,4 @@ api_router.include_router(repair_orders.router, prefix="/repair-orders", tags=["
 api_router.include_router(repair_images.router, prefix="/repair-images", tags=["Repair Images"])
 api_router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])
 api_router.include_router(locations.router, prefix="/locations", tags=["Locations"])
+api_router.include_router(config_push.router, prefix="/config-push", tags=["Config Push"])

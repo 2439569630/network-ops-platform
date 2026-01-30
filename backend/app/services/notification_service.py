@@ -3,9 +3,10 @@ import json
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from app.core.database import db
 from app.core.redis import redis_manager
+from app.core.security import get_disabled_permission_codes_cached
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email, send_pushplus, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
@@ -32,6 +33,22 @@ class NotificationService:
     _user_notification_config_table_ready = False
     SITE_MESSAGE_EMAIL_MAX_RECIPIENTS = 500
     SITE_MESSAGE_EMAIL_CONCURRENCY = 10
+
+    @staticmethod
+    async def _is_email_globally_enabled() -> Tuple[bool, Optional[str]]:
+        try:
+            disabled = await get_disabled_permission_codes_cached()
+        except Exception:
+            disabled = []
+        disabled_set = {str(x).strip() for x in (disabled or []) if str(x).strip()}
+        if "sys:notify:email" in disabled_set:
+            return False, "permission_disabled"
+
+        raw = SystemConfig.get("email_enabled")
+        s = str(raw or "").strip().lower()
+        if s in {"0", "false", "no", "off"}:
+            return False, "config_disabled"
+        return True, None
 
     @staticmethod
     def _parse_user_id(value: Optional[str]) -> Optional[int]:
@@ -177,9 +194,10 @@ class NotificationService:
         if not user_ids:
             return {"sent": 0, "skipped": 0, "errors": 0}
 
-        email_enabled = SystemConfig.get("email_enabled")
-        if email_enabled != "1" and email_enabled != "true":
-            return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": "global_disabled"}
+        enabled, reason = await NotificationService._is_email_globally_enabled()
+        if not enabled:
+            logger.warning(f"跳过告警邮件发送: reason={reason}; recipients={len(user_ids)}")
+            return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": reason or "global_disabled"}
 
         host = SystemConfig.get("email_host")
         port = SystemConfig.get("email_port")
@@ -196,21 +214,39 @@ class NotificationService:
             nickname = SystemConfig.get("email_nickname")
 
         if not all([host, port, username, password]):
+            missing: list[str] = []
+            if not host:
+                missing.append("email_host")
+            if not port:
+                missing.append("email_port")
+            if not username:
+                missing.append("email_username")
+            if not password:
+                missing.append("email_password")
+            logger.warning(f"跳过告警邮件发送: SMTP 配置不完整; missing={missing}; recipients={len(user_ids)}")
             return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": "config_missing"}
 
         users = await User.filter(id__in=list(user_ids)).all()
         user_map = {int(u.id): u for u in users}
 
         sem = asyncio.Semaphore(int(NotificationService.SITE_MESSAGE_EMAIL_CONCURRENCY))
-        stats = {"sent": 0, "skipped": 0, "errors": 0}
+        stats: Dict[str, Any] = {
+            "sent": 0,
+            "skipped": 0,
+            "errors": 0,
+            "skipped_no_email": 0,
+            "skipped_user_disabled": 0,
+        }
 
         async def _send_one(uid: int):
             u = user_map.get(int(uid))
             if not u or not getattr(u, "email", None):
                 stats["skipped"] += 1
+                stats["skipped_no_email"] += 1
                 return
             if not bool(getattr(u, "is_email_notify", False)):
                 stats["skipped"] += 1
+                stats["skipped_user_disabled"] += 1
                 return
             async with sem:
                 ok, msg = await send_email(
@@ -227,9 +263,15 @@ class NotificationService:
                 stats["sent"] += 1
             else:
                 stats["errors"] += 1
-                logger.error(f"告警邮件发送失败: user_id={uid}; msg={msg}")
+                logger.error(f"告警邮件发送失败: user_id={uid}; host={host}; port={port}; msg={msg}")
 
         await asyncio.gather(*[_send_one(uid) for uid in sorted(user_ids)])
+        if stats.get("sent", 0) == 0 and stats.get("errors", 0) == 0:
+            logger.warning(
+                "告警邮件未发送: 所有收件人都被过滤; "
+                f"recipients={len(user_ids)}; skipped_no_email={stats.get('skipped_no_email')}; "
+                f"skipped_user_disabled={stats.get('skipped_user_disabled')}"
+            )
         return stats
 
     @staticmethod
@@ -328,6 +370,22 @@ class NotificationService:
             query = query.filter(id__not_in=list(read_msg_ids))
             
         messages = await query.order_by("-created_at").offset(off).limit(lim)
+
+        sender_ids: set[int] = set()
+        for m in messages:
+            if m.sender_id is None:
+                continue
+            try:
+                sid = int(m.sender_id)
+            except Exception:
+                continue
+            if sid > 0:
+                sender_ids.add(sid)
+
+        sender_avatar_map: Dict[int, Optional[str]] = {}
+        if sender_ids:
+            sender_rows = await User.filter(id__in=list(sender_ids)).values("id", "avatar_url")
+            sender_avatar_map = {int(r["id"]): r.get("avatar_url") for r in sender_rows if r.get("id") is not None}
         
         result = []
         for m in messages:
@@ -342,10 +400,18 @@ class NotificationService:
                 is_read = True
                 read_at = read_entry.read_at
             
+            sender_avatar_url = None
+            if m.sender_id is not None:
+                try:
+                    sender_avatar_url = sender_avatar_map.get(int(m.sender_id))
+                except Exception:
+                    sender_avatar_url = None
+
             result.append({
                 "id": m.id,
                 "sender_id": m.sender_id,
                 "sender_name": m.sender_name,
+                "sender_avatar_url": sender_avatar_url,
                 "source": m.source,
                 "title": m.title,
                 "content": m.content,
@@ -368,11 +434,21 @@ class NotificationService:
             return None
             
         read_entry = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).first()
+
+        sender_avatar_url = None
+        if m.sender_id is not None:
+            try:
+                sid = int(m.sender_id)
+            except Exception:
+                sid = None
+            if sid and sid > 0:
+                sender_avatar_url = await User.filter(id=sid).values_list("avatar_url", flat=True).first()
         
         return {
             "id": m.id,
             "sender_id": m.sender_id,
             "sender_name": m.sender_name,
+            "sender_avatar_url": sender_avatar_url,
             "source": m.source,
             "title": m.title,
             "content": m.content,
@@ -419,12 +495,22 @@ class NotificationService:
             target_user_id=tg,
             created_at=datetime.now(timezone.utc),
         )
+
+        sender_avatar_url = None
+        if sender_id is not None:
+            try:
+                sid = int(sender_id)
+            except Exception:
+                sid = None
+            if sid and sid > 0:
+                sender_avatar_url = await User.filter(id=sid).values_list("avatar_url", flat=True).first()
         
         # Result dict
         result = {
             "id": msg.id,
             "sender_id": msg.sender_id,
             "sender_name": msg.sender_name,
+            "sender_avatar_url": sender_avatar_url,
             "source": msg.source,
             "title": msg.title,
             "content": msg.content,
@@ -684,6 +770,7 @@ class NotificationService:
             cache_realtime=True,
         )
         try:
+            enabled, global_reason = await NotificationService._is_email_globally_enabled()
             location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
             subs = await NotificationService._get_subscription_channel_recipients(
                 device_id=device_id,
@@ -705,14 +792,20 @@ class NotificationService:
                 source="设备告警",
             )
             email_user_ids = subs.get("email", set())
-            if email_user_ids:
+            if not email_user_ids:
+                logger.warning(
+                    "跳过设备离线邮件发送: 没有邮箱订阅者; "
+                    f"device_id={device_id}; email_global_enabled={enabled}; email_reason={global_reason}; "
+                    f"site_recipients={len(recipients)}"
+                )
+            else:
                 await NotificationService._send_alert_emails(
                     user_ids=email_user_ids,
                     subject=f"【设备离线】{display_name} ({display_ip})",
                     content=f"{message}\n\n时间: {payload.get('time')}",
                 )
         except Exception as e:
-            logger.error(f"发送设备离线站内信失败: {e}")
+            logger.error(f"发送设备离线通知失败: device_id={device_id}; err={e}")
 
         return payload
 
@@ -722,6 +815,7 @@ class NotificationService:
         message: str,
         severity: str = "warning",
         rule_id: Optional[int] = None,
+        subscription_severity: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         发送设备告警通知
@@ -760,15 +854,17 @@ class NotificationService:
             cache_realtime=True,
         )
         try:
-            sev = str(severity or "").strip().lower()
-            sev_cn = {"critical": "严重", "warning": "警告", "info": "提示"}.get(sev, sev or "告警")
+            notify_sev = str(severity or "").strip().lower()
+            match_sev = str(subscription_severity or severity or "").strip().lower()
+            sev_cn = {"critical": "严重", "warning": "警告", "info": "提示"}.get(notify_sev, notify_sev or "告警")
             location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
             subs = await NotificationService._get_subscription_channel_recipients(
                 device_id=device_id,
                 location_node_id=location_node_id,
                 rule_id=rule_id,
-                severity=sev,
+                severity=match_sev,
             )
+
             recipients: set[int] = set()
             if dev is not None:
                 creator_id = NotificationService._parse_user_id(getattr(dev, "created_by", None))
@@ -776,21 +872,36 @@ class NotificationService:
                     recipients.add(creator_id)
             recipients |= await NotificationService._get_location_recipient_user_ids(device_id=device_id)
             recipients |= subs.get("site", set())
+        except Exception as e:
+            logger.error(f"设备告警通知后处理失败: device_id={device_id}; rule_id={rule_id}; severity={severity}; err={e}")
+            return payload
+
+        try:
             await NotificationService._notify_site_message_to_users(
                 user_ids=recipients,
                 title=f"{sev_cn}告警：{display_name}",
                 content=message,
                 source="设备告警",
             )
+        except Exception as e:
+            logger.error(f"发送设备告警站内信失败: device_id={device_id}; rule_id={rule_id}; severity={sev}; err={e}")
+
+        try:
             email_user_ids = subs.get("email", set())
-            if email_user_ids:
+            if not email_user_ids:
+                logger.warning(
+                    "跳过设备告警邮件发送: 没有邮箱订阅者; "
+                    f"device_id={device_id}; rule_id={rule_id}; severity={notify_sev}; match_severity={match_sev}; "
+                    f"site_recipients={len(recipients)}"
+                )
+            else:
                 await NotificationService._send_alert_emails(
                     user_ids=email_user_ids,
                     subject=f"【{sev_cn}告警】{display_name} ({display_ip})",
                     content=f"{message}\n\n设备: {display_name} ({display_ip})\n级别: {sev_cn}\n时间: {payload.get('time')}",
                 )
         except Exception as e:
-            logger.error(f"发送设备告警站内信失败: {e}")
+            logger.error(f"发送设备告警邮件失败: device_id={device_id}; rule_id={rule_id}; severity={notify_sev}; match_severity={match_sev}; err={e}")
 
         return payload
 

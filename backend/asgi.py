@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
                 "app.models.orm.rbac",
                 "app.models.orm.location",
                 "app.models.orm.config",
+                "app.models.orm.config_push",
                 "app.models.orm.alert",
             ]},
         )

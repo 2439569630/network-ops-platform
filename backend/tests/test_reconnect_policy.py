@@ -44,7 +44,7 @@ class TestReconnectPolicy(unittest.IsolatedAsyncioTestCase):
 
 
 class TestRetrySnapshotFields(unittest.TestCase):
-    def test_snapshot_contains_retry_fields(self):
+    def test_snapshot_does_not_contain_retry_fields(self):
         monitor = MonitorManager()
         monitor.devices.clear()
         monitor.tasks.clear()
@@ -57,12 +57,11 @@ class TestRetrySnapshotFields(unittest.TestCase):
         monitor.devices[1] = d
 
         snap = monitor.get_runtime_snapshot(1)
-        self.assertIn("next_retry_at", snap)
-        self.assertIn("next_retry_at_epoch", snap)
-        self.assertIn("retry_in_seconds", snap)
-        self.assertIn("retry_attempt", snap)
-        self.assertIn("retry_phase", snap)
-        self.assertGreaterEqual(int(snap.get("retry_in_seconds") or 0), 1)
+        self.assertNotIn("next_retry_at", snap)
+        self.assertNotIn("next_retry_at_epoch", snap)
+        self.assertNotIn("retry_in_seconds", snap)
+        self.assertNotIn("retry_attempt", snap)
+        self.assertNotIn("retry_phase", snap)
 
 
 if __name__ == "__main__":

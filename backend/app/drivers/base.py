@@ -27,14 +27,9 @@ class BaseDevice:
         self.device_type = 'linux' 
         # 默认采集间隔 (秒)，子类可以覆盖
         try:
-            self.interval = float(getattr(self.config, "interval", 60.0))
+            self.interval = float(getattr(self.config, "metrics_interval", 60.0))
         except Exception:
             self.interval = 60.0
-        # 在线监测间隔 (秒)，用于快速检测设备状态
-        try:
-            self.monitor_interval = float(getattr(self.config, "monitor_interval", 10.0))
-        except Exception:
-            self.monitor_interval = 10.0
         self.schedule_rev = 0
         
         self.connection = None
@@ -197,11 +192,7 @@ class BaseDevice:
         self.password = self.config.password
         self.port = self.config.port
         try:
-            self.interval = float(self.config.interval)
-        except Exception:
-            pass
-        try:
-            self.monitor_interval = float(self.config.monitor_interval)
+            self.interval = float(self.config.metrics_interval)
         except Exception:
             pass
         self.offline_fail_threshold = int(self.config.offline_fail_threshold)

@@ -194,7 +194,7 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
     user_id = int(user.get("id"))
 
     async def event_stream():
-        redis_client = redis_manager.get_client()
+        redis_client = redis_manager.get_pubsub_client()
         pubsub = redis_client.pubsub()
         channels = [
             NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL,
@@ -301,7 +301,7 @@ async def websocket_system_alerts(websocket: WebSocket):
             return
 
     try:
-        redis_client = redis_manager.get_client()
+        redis_client = redis_manager.get_pubsub_client()
     except Exception:
         await websocket.close(code=1011, reason="Redis不可用")
         return

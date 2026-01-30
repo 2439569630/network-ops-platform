@@ -20,17 +20,6 @@ router = APIRouter()
 ssh_router = APIRouter()
 logger = logging.getLogger(__name__)
 
-class MonitorBoostRequest(BaseModel):
-    """监控加速请求参数"""
-    device_id: int
-    ttl_seconds: int = 60
-    interval: Optional[float] = None
-    monitor_interval: Optional[float] = None
-
-class MonitorRestoreRequest(BaseModel):
-    """监控恢复请求参数"""
-    device_id: int
-
 class DeviceRecycleActionRequest(BaseModel):
     """设备回收站操作请求参数"""
     device_id: int
@@ -358,31 +347,6 @@ async def get_device_ssh_command_audit_logs(
     result = await device_service.get_ssh_command_audit_logs(int(device_id), page=int(page), page_size=int(page_size))
     return {"code": 200, "data": result}
 
-@router.post("/monitor/boost")
-async def boost_device_monitor(
-    data: MonitorBoostRequest,
-    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
-):
-    """临时提高设备监控频率（加速监控）"""
-    monitor = MonitorManager()
-    await monitor.boost_device(
-        device_id=int(data.device_id),
-        ttl_seconds=int(data.ttl_seconds or 60),
-        interval=data.interval,
-        monitor_interval=data.monitor_interval,
-    )
-    return {"code": 200}
-
-@router.post("/monitor/restore")
-async def restore_device_monitor(
-    data: MonitorRestoreRequest,
-    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
-):
-    """恢复设备默认监控频率"""
-    monitor = MonitorManager()
-    await monitor.restore_boost(int(data.device_id))
-    return {"code": 200}
-
 @router.post("/monitor/sync/{device_id}")
 async def sync_device_monitor(
     device_id: int,
@@ -418,7 +382,7 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
 
     async def redis_listener():
         try:
-            redis_client = redis_manager.get_client()
+            redis_client = redis_manager.get_pubsub_client()
         except Exception:
             return
         pubsub = redis_client.pubsub()
@@ -518,7 +482,7 @@ async def websocket_device_list(websocket: WebSocket):
 
     async def redis_listener():
         try:
-            redis_client = redis_manager.get_client()
+            redis_client = redis_manager.get_pubsub_client()
         except Exception:
             return
         pubsub = redis_client.pubsub()
@@ -621,7 +585,7 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
 
     did = int(device_id)
     try:
-        redis_client = redis_manager.get_client()
+        redis_client = redis_manager.get_pubsub_client()
     except Exception:
         await websocket.close(code=1011, reason="Redis不可用")
         return
@@ -910,7 +874,10 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
         async def ws_to_ssh():
             while True:
-                data = await websocket.receive_text()
+                try:
+                    data = await websocket.receive_text()
+                except WebSocketDisconnect:
+                    return
                 try:
                     if device_id:
                         await device_service.log_ssh_command(
@@ -925,14 +892,29 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
         async def ssh_to_ws():
             while True:
-                out = await asyncio.to_thread(conn.read_channel)
+                try:
+                    out = await asyncio.to_thread(conn.read_channel)
+                except Exception:
+                    out = ""
                 if out:
-                    await websocket.send_text(str(out))
+                    try:
+                        await websocket.send_text(str(out))
+                    except WebSocketDisconnect:
+                        return
+                    except Exception:
+                        return
                 await asyncio.sleep(0.05)
 
         t1 = asyncio.create_task(ws_to_ssh())
         t2 = asyncio.create_task(ssh_to_ws())
         done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
+        for t in done:
+            try:
+                _ = t.exception()
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                pass
         for t in pending:
             t.cancel()
     except WebSocketDisconnect:
