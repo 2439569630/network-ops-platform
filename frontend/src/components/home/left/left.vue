@@ -35,12 +35,12 @@
                     </el-menu-item>
 
                     <!-- 3. 业务管理 (设备与位置) -->
-                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:manage', 'sys:config:push'])">
+                    <el-sub-menu index="business" v-if="hasAnyPerm(['sys:device:list', 'sys:location:manage', 'sys:location:add', 'sys:location:edit', 'sys:location:del', 'sys:location:bind', 'sys:config:push'])">
                          <template #title>
                             <el-icon><OfficeBuilding /></el-icon>
                             <span>业务管理</span>
                         </template>
-                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasPerm('sys:location:manage')">
+                        <el-menu-item index="location" @click="goto('/user/location')" v-if="hasAnyPerm(['sys:location:manage', 'sys:location:add', 'sys:location:edit', 'sys:location:del', 'sys:location:bind'])">
                             <el-icon><Location /></el-icon>
                             <span>位置管理</span>
                         </el-menu-item>
@@ -76,13 +76,21 @@
                             <el-icon><Setting /></el-icon>
                             <span>系统管理</span>
                         </template>
-                        <el-menu-item index="role" @click="goto('/user/role')" v-if="isAdmin">
+                        <el-menu-item index="role" @click="goto('/user/role')" v-if="hasPerm('sys:role:manage')">
                             <el-icon><Avatar /></el-icon>
                             <span>角色与权限管理</span>
                         </el-menu-item>
                         <el-menu-item index="role-distribution" @click="goto('/user/role-distribution')" v-if="isAdmin || hasPerm('sys:role:distribution')">
                             <el-icon><User /></el-icon>
                             <span>角色人员分布</span>
+                        </el-menu-item>
+                        <el-menu-item index="user-manage" @click="goto('/user/user-manage')" v-if="hasPerm('sys:user:view')">
+                            <el-icon><User /></el-icon>
+                            <span>用户管理</span>
+                        </el-menu-item>
+                        <el-menu-item index="audit" @click="goto('/user/audit')" v-if="hasPerm('sys:audit:view')">
+                            <el-icon><User /></el-icon>
+                            <span>系统操作审计</span>
                         </el-menu-item>
                         <el-menu-item index="user-import" @click="goto('/user/user-import')" v-if="hasPerm('sys:user:import')">
                             <el-icon><User /></el-icon>
@@ -155,6 +163,8 @@ const activeMenu = computed(() => {
     // 系统管理
     if (path.includes('/user/organization')) return 'organization';
     if (path.includes('/user/role-distribution')) return 'role-distribution';
+    if (path.includes('/user/user-manage')) return 'user-manage';
+    if (path.includes('/user/audit')) return 'audit';
     if (path.includes('/user/role')) return 'role';
     if (path.includes('/user/permission')) return 'role';
     if (path.includes('/user/user-import')) return 'user-import';

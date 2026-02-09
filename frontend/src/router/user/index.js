@@ -64,13 +64,25 @@ const homeRoutes = [
                 path: 'role',
                 name: 'role',
                 component: () => import('@/components/Role/RoleManagement.vue'),
-                meta: { title: '角色与权限管理', roleCodes: ['admin', 'superadmin', 'super_admin'] } // 仅管理员可见
+                meta: { title: '角色与权限管理', perms: ['sys:role:manage'] } // 仅管理员和有权限者可见
             },
             {
                 path: 'role-distribution',
                 name: 'role-distribution',
                 component: () => import('@/components/Role/RoleUserDistribution.vue'),
                 meta: { title: '角色人员分布', perms: ['sys:role:distribution'] }
+            },
+            {
+                path: 'user-manage',
+                name: 'user-manage',
+                component: () => import('@/components/System/UserManagement.vue'),
+                meta: { title: '用户管理', perms: ['sys:user:view'] }
+            },
+            {
+                path: 'audit',
+                name: 'audit',
+                component: () => import('@/components/System/UserAdminAudit.vue'),
+                meta: { title: '系统操作审计', perms: ['sys:audit:view'] }
             },
             {
                 path: 'user-import',
@@ -82,13 +94,13 @@ const homeRoutes = [
                 path: 'permission',
                 name: 'permission',
                 redirect: { name: 'role', query: { tab: 'permission' } },
-                meta: { title: '角色与权限管理', roleCodes: ['admin', 'superadmin', 'super_admin'] } // 仅管理员可见
+                meta: { title: '角色与权限管理', perms: ['sys:role:manage'] } // 仅管理员和有权限者可见
             },
             {
                 path: 'location',
                 name: 'location',
                 component: () => import('@/components/Location/index.vue'),
-                meta: { title: '位置管理', perms: ['sys:location:manage'] } // 仅管理员和有权限者可见
+                meta: { title: '位置管理', perms: ['sys:location:manage', 'sys:location:add', 'sys:location:edit', 'sys:location:del', 'sys:location:bind'] } // 仅管理员和有权限者可见
             },
             {
                 path: 'organization',

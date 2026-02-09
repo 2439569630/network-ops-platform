@@ -326,7 +326,7 @@ const handleDeleteUser = async (user) => {
       cancelButtonText: '取消',
       type: 'warning'
     });
-    const res = await axios.delete('/api/v1/users/delete', { data: { user_id: user.id } });
+    const res = await axios.delete(`/api/v1/users/${user.id}`);
     if (res.data.code === 200) {
       ElMessage.success('删除成功');
       fetchUsers();

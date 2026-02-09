@@ -503,21 +503,7 @@ const currentUserId = ref(null);
 
 // --- Computed ---
 
-const permissionDepsByCode = {
-  'sys:location:del': ['sys:location:view'],
-  'sys:device:add': ['sys:device:list'],
-  'sys:device:edit': ['sys:device:list'],
-  'sys:device:del': ['sys:device:list'],
-  'sys:device:audit': ['sys:device:list'],
-  'sys:user:manage': ['sys:user:view'],
-  'sys:user:import': ['sys:user:manage'],
-  'sys:config:edit': ['sys:config:view'],
-  'sys:repair:create': ['sys:repair:view'],
-  'sys:repair:handle': ['sys:repair:view'],
-  'sys:repair:manage': ['sys:repair:view', 'sys:repair:handle'],
-  'sys:role:manage': ['sys:role:view'],
-  'sys:menu:manage': ['sys:menu:view'],
-};
+const permissionDepsByCode = ref({});
 
 const normalizePermCode = (code) => String(code || '').trim();
 
@@ -584,7 +570,7 @@ const expandPermCodes = (codes) => {
   while (changed) {
     changed = false;
     for (const code of Array.from(selected)) {
-      const deps = permissionDepsByCode[code] || [];
+      const deps = permissionDepsByCode.value?.[code] || [];
       for (const dep of deps) {
         const depNorm = normalizePermCode(dep);
         if (depNorm && !selected.has(depNorm)) {
@@ -603,7 +589,7 @@ const buildStableSelectionAfterRemoval = (selectedCodes) => {
   while (changed) {
     changed = false;
     for (const code of Array.from(selected)) {
-      const deps = permissionDepsByCode[code] || [];
+      const deps = permissionDepsByCode.value?.[code] || [];
       const ok = deps.every(d => selected.has(normalizePermCode(d)));
       if (!ok) {
         selected.delete(code);
@@ -732,6 +718,7 @@ onMounted(() => {
   fetchRoles();
   fetchPermissions();
   fetchDisabledPermissions();
+  fetchPermissionDependencies();
   fetchPermissionDirectory();
   updateIndicator();
 
@@ -851,6 +838,15 @@ const fetchPermissionDirectory = async () => {
   } finally {
     permissionLoading.value = false;
   }
+};
+
+const fetchPermissionDependencies = async () => {
+  try {
+    const res = await axios.get('/api/v1/rbac/permissions/dependencies');
+    if (res.data.code === 200) {
+      permissionDepsByCode.value = res.data.data || {};
+    }
+  } catch (e) {}
 };
 
 const isGloballyDisabled = (code) => {

@@ -78,6 +78,17 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (status === 401 && errCode === "AUTH_ACCOUNT_DISABLED") {
+      Cookies.remove("token");
+      ElNotification({
+        title: "账号已封禁",
+        message: data.message || "账号已封禁或已删除，请联系管理员",
+        type: "warning",
+      });
+      dispatchForceLogin({ reason: "disabled" });
+      return Promise.reject(error);
+    }
+
     if (status === 401 && (errCode === "AUTH_TOKEN_TOO_OLD" || errCode === "AUTHZ_VERSION_MISMATCH")) {
       const originalConfig = error?.config || {};
       const url = String(originalConfig?.url || "");

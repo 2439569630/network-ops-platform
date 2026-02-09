@@ -762,7 +762,7 @@ let tabResizeObserver;
 
 const visibleTabs = computed(() => {
     const tabs = [{ name: 'site', label: '站内消息', icon: Bell }];
-    if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知（历史）', icon: Message });
+    if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
     return tabs;
 });

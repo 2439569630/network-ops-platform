@@ -97,7 +97,7 @@ const getFirstAccessibleUserPath = (ctx) => {
 
 const getDefaultAuthedPath = async (decoded) => {
     const roleCodes = Array.isArray(decoded?.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : []
-    const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
+    const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
     const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2)
     const store = homeDataStore()
     store.syncAuthFromToken()
@@ -139,7 +139,7 @@ router.beforeEach(async (to, from, next) => {
     if (token && decoded) {
         try {
             const roleCodes = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
-            const isSuper = Boolean(decoded.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin');
+            const isSuper = Boolean(decoded.is_super) || roleCodes.includes('superadmin') || roleCodes.includes('super_admin');
             const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2);
             const store = homeDataStore();
             store.syncAuthFromToken();
