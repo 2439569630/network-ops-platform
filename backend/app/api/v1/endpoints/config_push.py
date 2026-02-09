@@ -5,7 +5,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
 
 from app.core.redis import redis_manager
-from app.core.security import PermissionChecker, user_has_permission, user_is_super, verify_token_ws, UnicornException
+from app.core.security import PermissionChecker, user_has_permission, user_is_super, verify_token_ws, UnicornException, get_or_init_user_auth_version
 from app.schemas.config_push import ConfigPushJobCreateRequest
 from app.services.config_push_service import ConfigPushService, normalize_command_list
 
@@ -90,7 +90,23 @@ async def config_push_ws(websocket: WebSocket, job_id: int, token: str | None = 
     redis = redis_manager.get_client()
 
     try:
+        token_auth_ver = user.get("auth_ver")
+        try:
+            token_auth_ver = int(token_auth_ver) if token_auth_ver is not None else None
+        except Exception:
+            token_auth_ver = None
+        last_auth_check = 0.0
         while True:
+            now = asyncio.get_running_loop().time()
+            if token_auth_ver is not None and now - last_auth_check >= 2.0:
+                last_auth_check = now
+                current_ver = await get_or_init_user_auth_version(int(user.get("id") or 0))
+                if int(current_ver) != int(token_auth_ver):
+                    try:
+                        await websocket.close(code=4001, reason="会话已失效")
+                    except Exception:
+                        pass
+                    return
             try:
                 res = await redis.xread({stream: last_id}, count=100, block=1000)
             except Exception:

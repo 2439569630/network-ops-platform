@@ -29,6 +29,14 @@ class UserStatusUpdate(BaseModel):
     """用户状态更新模型"""
     is_approved: bool
 
+class AdminUserUpdate(BaseModel):
+    """管理员更新用户信息模型"""
+    nickname: Optional[str] = None
+    email: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_email_notify: Optional[bool] = None
+    is_approved: Optional[bool] = None
+
 class UserResponse(UserBase):
     """用户响应模型"""
     id: int

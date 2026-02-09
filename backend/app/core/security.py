@@ -20,6 +20,10 @@ DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
 USER_AUTH_VERSION_REDIS_KEY_PREFIX = "auth:ver:user:"
 USER_AUTH_SESSION_REDIS_KEY_PREFIX = "auth:session:user:"
 
+def _user_version_key_ttl_seconds() -> int:
+    token_ttl = int(getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60) or 60) * 60
+    return max(int(token_ttl * 2), 60 * 60 * 24 * 30)
+
 
 def _normalize_permission_codes(value) -> list[str]:
     """标准化权限代码列表"""
@@ -170,7 +174,7 @@ def user_is_super(user: dict) -> bool:
     if user.get("is_super") is True:
         return True
     roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
-    if roles & {"admin", "superadmin", "super_admin", "super-admin"}:
+    if roles & {"superadmin", "super_admin", "super-admin"}:
         return True
     return False
 
@@ -213,18 +217,22 @@ async def _get_or_init_user_perm_version(user_id: int) -> int:
         return 1
     if raw is None:
         try:
-            await redis_client.set(key, "1")
+            await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
         except Exception:
             return 1
         return 1
     try:
         v = int(raw)
         if v > 0:
+            try:
+                await redis_client.expire(key, _user_version_key_ttl_seconds())
+            except Exception:
+                pass
             return v
     except Exception:
         pass
     try:
-        await redis_client.set(key, "1")
+        await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
     except Exception:
         return 1
     return 1
@@ -242,18 +250,22 @@ async def get_or_init_user_auth_version(user_id: int) -> int:
         return 1
     if raw is None:
         try:
-            await redis_client.set(key, "1")
+            await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
         except Exception:
             return 1
         return 1
     try:
         v = int(raw)
         if v > 0:
+            try:
+                await redis_client.expire(key, _user_version_key_ttl_seconds())
+            except Exception:
+                pass
             return v
     except Exception:
         pass
     try:
-        await redis_client.set(key, "1")
+        await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
     except Exception:
         return 1
     return 1
@@ -268,10 +280,14 @@ async def bump_user_auth_version(user_id: int) -> int:
     try:
         v = await redis_client.incr(key)
         if int(v) > 0:
+            try:
+                await redis_client.expire(key, _user_version_key_ttl_seconds())
+            except Exception:
+                pass
             return int(v)
     except Exception:
         pass
-    await redis_client.set(key, "1")
+    await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
     return 1
 
 async def set_user_auth_session_info(user_id: int, *, auth_ver: int, ip: Optional[str] = None, user_agent: Optional[str] = None, device: Optional[str] = None) -> None:
@@ -393,6 +409,12 @@ async def verify_token(token: Optional[str] = Cookie(None)):
             except Exception:
                 raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
             if token_auth_ver_int != int(redis_auth_ver):
+                try:
+                    row = await db.fetch_one('SELECT is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1', uid)
+                except Exception:
+                    row = None
+                if row and (row.get("is_approved") is False or row.get("is_deleted") is True):
+                    raise UnicornException(401, "账号已封禁，请联系管理员", error_code="AUTH_ACCOUNT_DISABLED")
                 new_login = await get_user_auth_session_info(uid)
                 raise UnicornException(401, "会话已失效，请重新登录", error_code="AUTH_SESSION_REVOKED", data={"new_login": new_login})
 

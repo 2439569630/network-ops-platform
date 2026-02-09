@@ -83,7 +83,7 @@ async def move_location_node(
 
 
 @router.get("/bind/roles", response_model=dict)
-async def list_bind_roles(user: dict = Depends(PermissionChecker(["sys:location:manage"]))):
+async def list_bind_roles(user: dict = Depends(PermissionChecker(["sys:location:bind"]))):
     """获取可绑定角色列表"""
     try:
         rows = await db.fetch_all("SELECT id, name, code FROM roles ORDER BY id")
@@ -99,7 +99,7 @@ async def search_bind_users(
     role_id: Optional[int] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    user: dict = Depends(PermissionChecker(["sys:location:manage"])),
+    user: dict = Depends(PermissionChecker(["sys:location:bind"])),
 ):
     """
     搜索可绑定用户
@@ -225,7 +225,7 @@ async def remove_devices_from_location(
 @router.get("/bind/users/by_ids", response_model=dict)
 async def list_bind_users_by_ids(
     ids: list[int] = Query(default=[]),
-    user: dict = Depends(PermissionChecker(["sys:location:manage"])),
+    user: dict = Depends(PermissionChecker(["sys:location:bind"])),
 ):
     """根据ID获取用户列表"""
     try:

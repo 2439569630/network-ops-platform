@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.core.database import db
 from app.core.security import PermissionChecker
 from app.core.system_config import SystemConfig
+from app.services.user_admin_audit_service import UserAdminAuditService
 from pydantic import BaseModel
 from typing import Optional, List
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -119,3 +121,65 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
     except Exception as e:
         logger.error(f"更新配置失败: {e}")
         return {"code": 500, "message": f"更新失败: {str(e)}"}
+
+
+@router.get("/audit/user-admin", response_model=dict)
+async def list_user_admin_audit_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    actor_username: Optional[str] = Query(None, max_length=100),
+    action: Optional[str] = Query(None, max_length=100),
+    target_user_id: Optional[int] = Query(None),
+    start_at: Optional[datetime] = Query(None),
+    end_at: Optional[datetime] = Query(None),
+    user: dict = Depends(PermissionChecker(["sys:audit:view"])),
+):
+    try:
+        where = ["1=1"]
+        args: list = []
+        idx = 1
+        if actor_username:
+            where.append(f"actor_username ILIKE ${idx}")
+            args.append(f"%{str(actor_username).strip()}%")
+            idx += 1
+        if action:
+            where.append(f"action ILIKE ${idx}")
+            args.append(f"%{str(action).strip()}%")
+            idx += 1
+        if target_user_id is not None:
+            where.append(f"target_user_id = ${idx}")
+            args.append(int(target_user_id))
+            idx += 1
+        if start_at is not None:
+            where.append(f"created_at >= ${idx}")
+            args.append(start_at)
+            idx += 1
+        if end_at is not None:
+            where.append(f"created_at <= ${idx}")
+            args.append(end_at)
+            idx += 1
+
+        where_sql = " AND ".join(where)
+        total = await db.fetch_val(f"SELECT COUNT(1) FROM user_admin_audit_log WHERE {where_sql}", *args)
+        limit = int(page_size)
+        offset = (int(page) - 1) * int(page_size)
+        rows = await db.fetch_all(
+            f"""
+            SELECT id, actor_user_id, actor_username, action, target_user_id, request_ip, detail, created_at
+            FROM user_admin_audit_log
+            WHERE {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT {limit} OFFSET {offset}
+            """,
+            *args,
+        )
+        items = [dict(r) for r in (rows or [])]
+        for it in items:
+            it["action_label"] = UserAdminAuditService.get_action_label(it.get("action"))
+        return {
+            "code": 200,
+            "data": items,
+            "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)},
+        }
+    except Exception as e:
+        return {"code": 500, "message": f"获取审计日志失败: {str(e)}"}

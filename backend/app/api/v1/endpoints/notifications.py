@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from app.core.security import PermissionChecker, user_is_super, user_has_permission, verify_token_ws
+from app.core.security import PermissionChecker, user_is_super, user_has_permission, verify_token_ws, get_or_init_user_auth_version
 from app.services.notification_service import NotificationService
 from app.schemas.notification import NotificationConfig, TestNotification, SiteMessageCreate, SystemAlertPayload, SystemAlertRecentResponse
 from app.core.redis import redis_manager
@@ -192,6 +192,11 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
     使用 Server-Sent Events 推送站内消息
     """
     user_id = int(user.get("id"))
+    token_auth_ver = user.get("auth_ver")
+    try:
+        token_auth_ver = int(token_auth_ver) if token_auth_ver is not None else None
+    except Exception:
+        token_auth_ver = None
 
     async def event_stream():
         redis_client = redis_manager.get_pubsub_client()
@@ -209,7 +214,14 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
             init_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
             yield f"event: unread\ndata: {json.dumps({'count': int(init_count)}, ensure_ascii=False)}\n\n"
 
+            last_auth_check = 0.0
             while True:
+                now = asyncio.get_running_loop().time()
+                if token_auth_ver is not None and now - last_auth_check >= 3.0:
+                    last_auth_check = now
+                    current_ver = await get_or_init_user_auth_version(int(user_id))
+                    if int(current_ver) != int(token_auth_ver):
+                        return
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
                 if message and message.get("type") == "message":
                     payload = None

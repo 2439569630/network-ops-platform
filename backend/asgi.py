@@ -20,8 +20,6 @@ from app.core.redis import redis_manager
 from app.core.logger import setup_logger
 from app.core.security import UnicornException, unicorn_exception_handler
 from app.core.system_config import SystemConfig
-from app.services.notification_service import NotificationService
-from app.services.device_service import device_service
 from app.services.rbac_service import RbacService
 from app.utils.remote_image_api import RemoteImageApiClient
 from app.core.max_body_size_middleware import MaxBodySizeMiddleware
@@ -42,10 +40,6 @@ async def lifespan(app: FastAPI):
 
     try:
         await db.connect()
-    except Exception as e:
-        logger.error(f"数据库连接失败: {e}")
-
-    try:
         await db.fetch_val('select 1')
         logger.info("数据库连接成功")
     except Exception as e:
@@ -95,6 +89,13 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"设备深度巡检配置表结构初始化失败: {e}")
 
+        try:
+            await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN NOT NULL DEFAULT FALSE;')
+            await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMPTZ NULL;')
+            await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "deleted_by" INT NULL;')
+        except Exception as e:
+            logger.error(f"用户表结构初始化失败: {e}")
+
         # 同步系统权限
         try:
             sync_res = await RbacService.sync_system_permissions()
@@ -102,6 +103,8 @@ async def lifespan(app: FastAPI):
             
             # 自动给 admin 角色赋予新权限
             await RbacService.grant_permission_to_role_code("admin", "sys:role:distribution")
+            await RbacService.grant_permission_to_role_code("admin", "sys:audit:view")
+            await RbacService.grant_permission_to_role_code("admin", "sys:role:manage")
         except Exception as e:
             logger.error(f"系统权限同步失败: {e}")
 
@@ -118,16 +121,6 @@ async def lifespan(app: FastAPI):
 
     except Exception as e:
         logger.error(f"Tortoise ORM 初始化失败: {e}")
-
-    try:
-        await NotificationService._ensure_site_message_tables()
-    except Exception as e:
-        logger.error(f"站内消息表初始化失败: {e}")
-
-    try:
-        await device_service.ensure_ssh_command_audit_table()
-    except Exception as e:
-        logger.error(f"SSH 命令审计表初始化失败: {e}")
 
     try:
         yield

@@ -23,3 +23,17 @@ class SshCommandAuditLog(models.Model):
 
     class Meta:
         table = "ssh_command_audit_log"
+
+
+class UserAdminAuditLog(models.Model):
+    id = fields.BigIntField(pk=True)
+    actor_user_id = fields.IntField(null=True)
+    actor_username = fields.CharField(max_length=100, null=True)
+    action = fields.CharField(max_length=100)
+    target_user_id = fields.IntField(null=True)
+    request_ip = fields.CharField(max_length=64, null=True)
+    detail = fields.JSONField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "user_admin_audit_log"

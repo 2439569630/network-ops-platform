@@ -4,9 +4,10 @@ import logging
 import json
 import time
 from fastapi import APIRouter, Depends, Response, HTTPException, WebSocket, WebSocketDisconnect, Query
+from starlette.websockets import WebSocketState
 from typing import List, Optional
 from pydantic import BaseModel
-from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission
+from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission, get_or_init_user_auth_version
 from app.core.database import db
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceTest, DeviceDelete, DeviceConfigUpdate
 from app.services.device_service import device_service
@@ -19,6 +20,36 @@ from netmiko import ConnectHandler
 router = APIRouter()
 ssh_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+async def _ws_auth_guard(websocket: WebSocket, user: dict):
+    uid = user.get("id")
+    if uid is None:
+        return
+    try:
+        uid = int(uid)
+    except Exception:
+        return
+    token_auth_ver = user.get("auth_ver")
+    try:
+        token_auth_ver = int(token_auth_ver) if token_auth_ver is not None else None
+    except Exception:
+        token_auth_ver = None
+    if token_auth_ver is None:
+        return
+    while True:
+        try:
+            if websocket.client_state != WebSocketState.CONNECTED:
+                return
+        except Exception:
+            return
+        await asyncio.sleep(2.0)
+        current_ver = await get_or_init_user_auth_version(int(uid))
+        if int(current_ver) != int(token_auth_ver):
+            try:
+                await websocket.close(code=4001, reason="会话已失效")
+            except Exception:
+                pass
+            return
 
 class DeviceRecycleActionRequest(BaseModel):
     """设备回收站操作请求参数"""
@@ -379,6 +410,7 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
 
     monitor = MonitorManager()
     q = monitor.subscribe_detail(int(device_id))
+    guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
 
     async def redis_listener():
         try:
@@ -435,6 +467,8 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
         monitor.unsubscribe_detail(int(device_id), q)
         if redis_task:
             redis_task.cancel()
+        if guard_task:
+            guard_task.cancel()
 
 @router.websocket("/ws/list")
 async def websocket_device_list(websocket: WebSocket):
@@ -465,6 +499,7 @@ async def websocket_device_list(websocket: WebSocket):
 
     monitor = MonitorManager()
     q = monitor.subscribe_list()
+    guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
 
     async def monitor_listener():
         try:
@@ -557,6 +592,8 @@ async def websocket_device_list(websocket: WebSocket):
         if redis_task:
             redis_task.cancel()
         monitor.unsubscribe_list(q)
+        if guard_task:
+            guard_task.cancel()
 
 
 @router.websocket("/ws/resources/{device_id}")
@@ -584,9 +621,11 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
             return
 
     did = int(device_id)
+    guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
     try:
         redis_client = redis_manager.get_pubsub_client()
     except Exception:
+        guard_task.cancel()
         await websocket.close(code=1011, reason="Redis不可用")
         return
 
@@ -639,6 +678,8 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
             await pubsub.close()
         except Exception:
             pass
+        if guard_task:
+            guard_task.cancel()
 
 def _pick_netmiko_device_type(value) -> str:
     s = str(value or "").strip().lower()
@@ -671,6 +712,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     if not user:
         return
     user_id = str(user.get("id") or "")
+    guard_task = None
 
     if not user_is_super(user):
         if not await user_has_permission(user, "sys:ssh:connect"):
@@ -860,6 +902,8 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         except Exception:
             pass
 
+    guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
+
     try:
         try:
             try:
@@ -926,6 +970,8 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         except Exception:
             pass
     finally:
+        if guard_task:
+            guard_task.cancel()
         await close_conn()
         try:
             if connected_ok and device_id:

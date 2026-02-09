@@ -6,20 +6,23 @@ import time
 import os
 import asyncio
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile, File, Query
 from fastapi.responses import HTMLResponse
 from typing import List, Optional, Any
-from app.schemas.user import UserCreate, UserResponse, RoleUpdate, UserUpdate, UserStatusUpdate
+from app.schemas.user import UserCreate, UserResponse, RoleUpdate, UserUpdate, UserStatusUpdate, AdminUserUpdate
 from app.services.avatar_service import AvatarService
 from app.services.user_service import UserService
+from app.services.user_admin_audit_service import UserAdminAuditService
 from app.api import deps
 from app.core.security import PermissionChecker, user_is_super, get_disabled_permission_codes_cached, get_password_hash
 from app.core.redis import redis_manager
 from app.core.database import db
 from app.models.orm.user import User
+from tortoise.expressions import Q
 from app.utils.remote_image_api import RemoteImageApiError
 from pydantic import BaseModel
 
@@ -88,58 +91,64 @@ async def _set_user_import_progress(
         payload["detail"] = detail
     await redis_client.set(_import_progress_key(token), json.dumps(payload, ensure_ascii=False), ex=_IMPORT_TTL_SECONDS)
 
-def check_admin(user: dict):
-    if user_is_super(user):
+_PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
+
+
+async def _get_user_role_codes(user_id: int) -> list[str]:
+    rows = await db.fetch_all(
+        """
+        SELECT r.code
+        FROM roles r
+        INNER JOIN user_roles ur ON ur.role_id = r.id
+        WHERE ur.user_id = $1
+        """,
+        int(user_id),
+    )
+    codes: list[str] = []
+    for r in rows or []:
+        c = str((r or {}).get("code") or "").strip()
+        if c:
+            codes.append(c)
+    return codes
+
+
+async def _require_actor_superadmin_when_target_protected(target_user_id: int, actor: dict) -> None:
+    if user_is_super(actor):
         return
-    raise HTTPException(status_code=403, detail="权限不足")
+    codes = {str(c).strip().lower() for c in (await _get_user_role_codes(int(target_user_id))) if str(c).strip()}
+    if codes & _PROTECTED_ROLE_CODES:
+        raise HTTPException(status_code=403, detail="仅超级管理员可操作该用户")
 
-@router.post("/add", response_model=dict)
-async def create_user(
-    user_in: UserCreate, 
-    current_user: dict = Depends(deps.get_current_user),
-    _: dict = Depends(PermissionChecker(["sys:auth:register", "sys:user:manage"]))
-):
-    """创建新用户 (仅管理员)"""
-    check_admin(current_user)
+
+def _get_request_ip(request: Request) -> Optional[str]:
     try:
-        user_id = await UserService.create_user(user_in)
-        return {"code": 200, "message": "用户创建成功", "data": {"id": user_id}}
-    except ValueError as e:
-        return {"code": 400, "message": str(e)}
-    except Exception as e:
-        return {"code": 500, "message": f"创建用户失败: {str(e)}"}
-
-@router.delete("/delete", response_model=dict)
-async def delete_user(
-    user_id: int = Body(..., embed=True), # Accept user_id from body to match old style or query? Old style was body.
-    current_user: dict = Depends(deps.get_current_user),
-    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
-):
-    """删除用户 (仅管理员)"""
-    check_admin(current_user)
-    if user_id == current_user.get("id"):
-        return {"code": 400, "message": "不能删除自己"}
-        
-    try:
-        await UserService.delete_user(user_id)
-        return {"code": 200, "message": "用户删除成功"}
-    except Exception as e:
-        return {"code": 500, "message": f"删除用户失败: {str(e)}"}
-
+        xff = request.headers.get("x-forwarded-for") if request else None
+        ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else None)
+        return str(ip).strip() or None
+    except Exception:
+        return None
 
 @router.post("/batch/delete", response_model=dict)
 async def delete_users_batch(
+    request: Request,
     user_ids: List[int] = Body(..., embed=True),
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """批量删除用户 (仅管理员)"""
-    check_admin(current_user)
     if current_user.get("id") in user_ids:
         return {"code": 400, "message": "不能删除自己"}
         
     try:
-        await UserService.delete_users(user_ids)
+        for uid in user_ids or []:
+            await _require_actor_superadmin_when_target_protected(int(uid), current_user)
+        await UserService.admin_delete_users(user_ids, actor_id=current_user.get("id"))
+        await UserAdminAuditService.log(
+            action="user.batch_delete",
+            actor=current_user,
+            request_ip=_get_request_ip(request) if request else None,
+            detail={"count": len(user_ids or []), "user_ids": user_ids or []},
+        )
         return {"code": 200, "message": "批量删除成功"}
     except Exception as e:
         return {"code": 500, "message": f"批量删除失败: {str(e)}"}
@@ -148,14 +157,21 @@ async def delete_users_batch(
 @router.put("/{user_id}/password", response_model=dict)
 async def reset_user_password(
     user_id: int,
+    request: Request,
     password: str = Body(..., embed=True),
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """管理员重置用户密码"""
-    check_admin(current_user)
     try:
+        await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
         await UserService.reset_password(user_id, password)
+        await UserAdminAuditService.log(
+            action="user.reset_password",
+            actor=current_user,
+            target_user_id=int(user_id),
+            request_ip=_get_request_ip(request) if request else None,
+        )
         return {"code": 200, "message": "密码重置成功"}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
@@ -164,50 +180,70 @@ async def reset_user_password(
 
 @router.post("/update_perms", response_model=dict)
 async def update_user_perms(
+    request: Request,
     user_id: int = Body(...),
     permissions: List[str] = Body(...),
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """更新用户细粒度权限 (仅管理员)"""
-    check_admin(current_user)
     try:
-        data = RoleUpdate(permissions=permissions)
-        await UserService.update_user_role(user_id, data)
-        return {"code": 200, "message": "权限修改成功"}
+        await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
+        from app.services.rbac_service import RbacService
+
+        raw = [str(p).strip() for p in (permissions or []) if str(p).strip()]
+        all_codes = await RbacService.get_all_permission_codes()
+        existing = {str(c).strip() for c in (all_codes or []) if str(c).strip()}
+
+        disabled_raw = await get_disabled_permission_codes_cached()
+        disabled = {str(c).strip() for c in (disabled_raw or []) if str(c).strip()}
+
+        invalid = [p for p in raw if p not in existing]
+        if invalid:
+            return {"code": 400, "message": "包含不存在的权限码", "data": {"invalid": invalid}}
+
+        selected = [p for p in raw if p in existing and p not in disabled]
+        expanded = RbacService.expand_permission_codes(selected)
+        expanded = [c for c in expanded if c in existing and c not in disabled]
+
+        data = RoleUpdate(permissions=expanded)
+        await UserService.update_user_role(int(user_id), data)
+        await UserAdminAuditService.log(
+            action="user.update_permissions",
+            actor=current_user,
+            target_user_id=int(user_id),
+            request_ip=_get_request_ip(request) if request else None,
+            detail={"permissions": expanded},
+        )
+        return {"code": 200, "message": "权限修改成功", "data": {"permissions": expanded}}
     except Exception as e:
         return {"code": 500, "message": f"修改权限失败: {str(e)}"}
 
 @router.post("/status", response_model=dict)
 async def update_user_status(
+    request: Request,
     user_id: int = Body(...),
     is_approved: bool = Body(...),
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
     """封禁/解封用户 (仅管理员)"""
-    check_admin(current_user)
     if user_id == current_user.get("id"):
         return {"code": 400, "message": "不能封禁自己"}
         
     try:
+        await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
         await UserService.update_status(user_id, is_approved)
+        await UserAdminAuditService.log(
+            action="user.update_status",
+            actor=current_user,
+            target_user_id=int(user_id),
+            request_ip=_get_request_ip(request) if request else None,
+            detail={"is_approved": bool(is_approved)},
+        )
         return {"code": 200, "message": "状态更新成功"}
     except Exception as e:
         return {"code": 500, "message": f"更新状态失败: {str(e)}"}
-
-@router.get("/roleList", response_model=dict)
-async def list_roles(
-    current_user: dict = Depends(deps.get_current_user),
-    _: dict = Depends(PermissionChecker(["sys:user:view"]))
-):
-    """获取用户角色列表 (仅管理员，复用 list 逻辑但适配前端路径)"""
-    check_admin(current_user)
-    try:
-        users = await UserService.get_user_list()
-        return {"code": 200, "data": users}
-    except Exception as e:
-        return {"code": 500, "message": f"获取用户列表失败: {str(e)}"}
 
 # Profile routes (Merged from profile.py)
 
@@ -564,7 +600,6 @@ async def parse_user_import_file(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
-    check_admin(current_user)
     try:
         columns, rows = await _read_import_rows_from_file(file)
         limited_rows = rows[:5000]
@@ -621,7 +656,6 @@ async def get_user_import_progress(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
-    check_admin(current_user)
     try:
         t = str(token or "").strip()
         if not t:
@@ -644,7 +678,6 @@ async def cancel_user_import(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
-    check_admin(current_user)
     try:
         t = str(data.token or "").strip()
         if not t:
@@ -680,7 +713,6 @@ async def get_user_import_result(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
-    check_admin(current_user)
     try:
         t = str(token or "").strip()
         if not t:
@@ -700,7 +732,6 @@ async def commit_user_import(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
-    check_admin(current_user)
     token_for_progress = ""
     phase_for_log = ""
     timing_ms: dict[str, int] = {}
@@ -1321,3 +1352,137 @@ async def commit_user_import(
         except Exception:
             pass
         return {"code": 500, "message": f"导入失败({phase_for_log}): {type(e).__name__}: {str(e)}"}
+
+
+def _is_valid_email(email: str) -> bool:
+    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", str(email or "").strip()))
+
+
+@router.get("", response_model=dict)
+@router.get("/", response_model=dict)
+async def admin_list_users(
+    q: str = Query("", max_length=200),
+    is_approved: Optional[bool] = Query(None),
+    include_deleted: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:view"])),
+):
+    try:
+        result = await UserService.admin_list_users(
+            q=str(q or ""),
+            is_approved=is_approved,
+            include_deleted=bool(include_deleted),
+            page=int(page),
+            page_size=int(page_size),
+        )
+        return {
+            "code": 200,
+            "data": result.get("items") or [],
+            "meta": {"total": int(result.get("total") or 0), "page": int(page), "page_size": int(page_size), "q": str(result.get("q") or "").strip()},
+        }
+    except Exception as e:
+        return {"code": 500, "message": f"获取用户列表失败: {str(e)}"}
+
+
+@router.get("/{user_id}", response_model=dict)
+async def admin_get_user_detail(
+    user_id: int,
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:view"])),
+):
+    try:
+        data = await UserService.admin_get_user_detail(int(user_id))
+        if not data:
+            return {"code": 404, "message": "用户不存在"}
+        return {"code": 200, "data": data}
+    except Exception as e:
+        return {"code": 500, "message": f"获取用户详情失败: {str(e)}"}
+
+
+@router.post("", response_model=dict)
+@router.post("/", response_model=dict)
+async def admin_create_user(
+    user_in: UserCreate,
+    request: Request,
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"])),
+):
+    try:
+        user_id = await UserService.create_user(user_in)
+        await UserAdminAuditService.log(
+            action="user.create",
+            actor=current_user,
+            target_user_id=int(user_id),
+            request_ip=_get_request_ip(request),
+            detail={"username": user_in.username, "email": user_in.email, "nickname": user_in.nickname},
+        )
+        return {"code": 200, "message": "用户创建成功", "data": {"id": user_id}}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"创建用户失败: {str(e)}"}
+
+
+@router.put("/{user_id}", response_model=dict)
+async def admin_update_user(
+    user_id: int,
+    data: AdminUserUpdate,
+    request: Request,
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"])),
+):
+    try:
+        uid = int(user_id)
+        await _require_actor_superadmin_when_target_protected(uid, current_user)
+        if uid == int(current_user.get("id") or 0) and data.is_approved is False:
+            return {"code": 400, "message": "不能封禁自己"}
+
+        if data.email is not None:
+            email = str(data.email or "").strip()
+            if email and not _is_valid_email(email):
+                return {"code": 400, "message": "邮箱格式不正确"}
+
+        result = await UserService.admin_update_user(uid, data)
+        if not result.get("updated") and result.get("reason") == "empty":
+            return {"code": 200, "message": "无更新内容"}
+        if not result.get("updated"):
+            return {"code": 404, "message": "用户不存在"}
+        await UserAdminAuditService.log(
+            action="user.update",
+            actor=current_user,
+            target_user_id=int(uid),
+            request_ip=_get_request_ip(request),
+            detail=data.model_dump(exclude_none=True),
+        )
+        return {"code": 200, "message": "更新成功"}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"更新失败: {str(e)}"}
+
+
+@router.delete("/{user_id}", response_model=dict)
+async def admin_delete_user(
+    user_id: int,
+    request: Request,
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"])),
+):
+    if int(user_id) == int(current_user.get("id") or 0):
+        return {"code": 400, "message": "不能删除自己"}
+    try:
+        await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
+        ok = await UserService.admin_delete_user(int(user_id), actor_id=current_user.get("id"))
+        if not ok:
+            return {"code": 404, "message": "用户不存在"}
+        await UserAdminAuditService.log(
+            action="user.delete",
+            actor=current_user,
+            target_user_id=int(user_id),
+            request_ip=_get_request_ip(request),
+        )
+        return {"code": 200, "message": "用户删除成功"}
+    except Exception as e:
+        return {"code": 500, "message": f"删除用户失败: {str(e)}"}

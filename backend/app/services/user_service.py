@@ -7,7 +7,7 @@ import secrets
 from datetime import timedelta
 from app.core.database import db
 from app.core.security import get_password_hash
-from app.schemas.user import UserCreate, UserUpdate, RoleUpdate
+from app.schemas.user import UserCreate, UserUpdate, RoleUpdate, AdminUserUpdate
 from app.core.redis import redis_manager
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email
@@ -48,6 +48,170 @@ class UserService:
             # Permissions is already JSONField, so it's a list or dict
             result.append(u_dict)
         return result
+
+    @staticmethod
+    async def admin_list_users(
+        *,
+        q: str = "",
+        is_approved: Optional[bool] = None,
+        include_deleted: bool = False,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        query = User.all()
+        if not bool(include_deleted):
+            query = query.filter(is_deleted=False)
+        if is_approved is not None:
+            query = query.filter(is_approved=bool(is_approved))
+        qn = str(q or "").strip()
+        if qn:
+            query = query.filter(
+                Q(username__icontains=qn) | Q(nickname__icontains=qn) | Q(email__icontains=qn)
+            )
+        total = await query.count()
+        rows = (
+            await query.order_by("id")
+            .offset((int(page) - 1) * int(page_size))
+            .limit(int(page_size))
+        )
+        items: list[dict] = []
+        for u in rows:
+            items.append(
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "nickname": u.nickname,
+                    "email": u.email,
+                    "avatar_url": getattr(u, "avatar_url", None),
+                    "is_email_notify": getattr(u, "is_email_notify", False),
+                    "is_approved": u.is_approved,
+                    "permissions": u.permissions if isinstance(u.permissions, list) else [],
+                    "created_at": u.created_at,
+                    "updated_at": u.updated_at,
+                }
+            )
+        return {"items": items, "total": int(total or 0), "q": qn}
+
+    @staticmethod
+    async def _get_user_roles(user_id: int) -> list[dict]:
+        rows = await db.fetch_all(
+            """
+            SELECT r.id, r.name, r.code
+            FROM roles r
+            INNER JOIN user_roles ur ON ur.role_id = r.id
+            WHERE ur.user_id = $1
+            ORDER BY r.id
+            """,
+            int(user_id),
+        )
+        roles: list[dict] = []
+        for r in rows or []:
+            if not r or r.get("id") is None:
+                continue
+            roles.append({"id": int(r["id"]), "name": r.get("name"), "code": r.get("code")})
+        return roles
+
+    @staticmethod
+    async def admin_get_user_detail(user_id: int) -> Optional[dict]:
+        user = await User.filter(id=int(user_id)).first()
+        if not user:
+            return None
+        roles = await UserService._get_user_roles(int(user_id))
+        return {
+            "id": user.id,
+            "username": user.username,
+            "nickname": user.nickname,
+            "email": user.email,
+            "avatar_url": getattr(user, "avatar_url", None),
+            "is_email_notify": getattr(user, "is_email_notify", False),
+            "is_approved": user.is_approved,
+            "is_deleted": getattr(user, "is_deleted", False),
+            "deleted_at": getattr(user, "deleted_at", None),
+            "deleted_by": getattr(user, "deleted_by", None),
+            "permissions": user.permissions if isinstance(user.permissions, list) else [],
+            "roles": roles,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
+        }
+
+    @staticmethod
+    async def admin_update_user(user_id: int, data: AdminUserUpdate) -> dict:
+        uid = int(user_id)
+        updates: dict = {}
+        if data.nickname is not None:
+            updates["nickname"] = data.nickname
+        if data.avatar_url is not None:
+            updates["avatar_url"] = data.avatar_url
+        if data.is_email_notify is not None:
+            updates["is_email_notify"] = bool(data.is_email_notify)
+        if data.is_approved is not None:
+            updates["is_approved"] = bool(data.is_approved)
+        if data.email is not None:
+            email = str(data.email or "").strip()
+            if email:
+                exists_other = await User.filter(email__iexact=email).exclude(id=uid).exists()
+                if exists_other:
+                    raise ValueError("该邮箱已被其他账号绑定")
+                updates["email"] = email
+            else:
+                updates["email"] = None
+        if not updates:
+            return {"updated": False, "reason": "empty"}
+        updated = await User.filter(id=uid).update(**updates)
+        if updated and updates.get("is_approved") is False:
+            try:
+                await bump_user_auth_version(int(uid))
+            except Exception:
+                pass
+        return {"updated": bool(updated)}
+
+    @staticmethod
+    async def admin_delete_user(user_id: int, *, actor_id: Optional[int] = None) -> bool:
+        uid = int(user_id)
+        user = await User.filter(id=uid).first()
+        if not user:
+            return False
+        if bool(getattr(user, "is_deleted", False)):
+            try:
+                await bump_user_auth_version(int(uid))
+            except Exception:
+                pass
+            return True
+
+        now = datetime.now(tz=timezone.utc)
+        suffix = secrets.token_hex(4)
+        new_username = f"deleted_{uid}_{suffix}"
+        updates = {
+            "username": new_username,
+            "nickname": "已注销用户",
+            "email": None,
+            "avatar_url": None,
+            "is_email_notify": False,
+            "is_approved": False,
+            "is_deleted": True,
+            "deleted_at": now,
+            "deleted_by": int(actor_id) if actor_id is not None else None,
+            "permissions": [],
+        }
+        await User.filter(id=uid).update(**updates)
+        try:
+            await bump_user_auth_version(int(uid))
+        except Exception:
+            pass
+        return True
+
+    @staticmethod
+    async def admin_delete_users(user_ids: List[int], *, actor_id: Optional[int] = None) -> int:
+        ids = [int(uid) for uid in (user_ids or []) if uid is not None]
+        ids = sorted(list(set(ids)))
+        if not ids:
+            return 0
+        deleted = 0
+        for uid in ids:
+            ok = await UserService.admin_delete_user(int(uid), actor_id=actor_id)
+            if ok:
+                deleted += 1
+        return int(deleted)
 
     @staticmethod
     async def get_user_by_id(user_id: int) -> Optional[dict]:
@@ -114,12 +278,25 @@ class UserService:
         并触发权限版本更新
         """
         if data.permissions is not None:
-             await User.filter(id=user_id).update(permissions=data.permissions)
-             try:
-                 from app.services.rbac_service import RbacService
-                 await RbacService.bump_user_perm_version(int(user_id))
-             except Exception:
-                  pass
+            from app.services.rbac_service import RbacService
+            from app.core.security import get_disabled_permission_codes_cached
+
+            raw = [str(p).strip() for p in (data.permissions or []) if str(p).strip()]
+            all_codes = await RbacService.get_all_permission_codes()
+            existing = {str(c).strip() for c in (all_codes or []) if str(c).strip()}
+
+            disabled_raw = await get_disabled_permission_codes_cached()
+            disabled = {str(c).strip() for c in (disabled_raw or []) if str(c).strip()}
+
+            selected = [p for p in raw if p in existing and p not in disabled]
+            expanded = RbacService.expand_permission_codes(selected)
+            expanded = [c for c in expanded if c in existing and c not in disabled]
+
+            await User.filter(id=int(user_id)).update(permissions=expanded)
+            try:
+                await RbacService.bump_user_perm_version(int(user_id))
+            except Exception:
+                pass
 
     @staticmethod
     async def delete_user(user_id: int):
@@ -151,7 +328,12 @@ class UserService:
 
     @staticmethod
     async def update_status(user_id: int, is_approved: bool):
-        await User.filter(id=user_id).update(is_approved=is_approved)
+        await User.filter(id=int(user_id)).update(is_approved=bool(is_approved))
+        if bool(is_approved) is False:
+            try:
+                await bump_user_auth_version(int(user_id))
+            except Exception:
+                pass
 
     @staticmethod
     async def update_profile(user_id: int, data: UserUpdate):

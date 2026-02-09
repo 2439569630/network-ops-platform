@@ -198,13 +198,14 @@ async def _get_or_init_perm_ver(user_id: int) -> int:
     key = f"authz:ver:user:{int(user_id)}"
     raw = await redis_client.get(key)
     if raw is None:
-        await redis_client.set(key, "1")
+        await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
         return 1
     try:
         v = int(raw)
+        await redis_client.expire(key, 60 * 60 * 24 * 30)
         return v if v > 0 else 1
     except Exception:
-        await redis_client.set(key, "1")
+        await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
         return 1
 
 async def _get_or_init_auth_ver(user_id: int) -> int:
@@ -215,13 +216,14 @@ async def _get_or_init_auth_ver(user_id: int) -> int:
         key = f"auth:ver:user:{int(user_id)}"
         raw = await redis_client.get(key)
         if raw is None:
-            await redis_client.set(key, "1")
+            await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
             return 1
         try:
             v = int(raw)
+            await redis_client.expire(key, 60 * 60 * 24 * 30)
             return v if v > 0 else 1
         except Exception:
-            await redis_client.set(key, "1")
+            await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
             return 1
 
 @router.post("/login")
@@ -586,9 +588,10 @@ async def refresh_token(response: Response, token: Optional[str] = Cookie(None))
             content={"code": 401, "message": "用户不存在", "status": "error"},
         )
     if user.get("is_approved") is False:
+        response.delete_cookie(key="token")
         return JSONResponse(
-            status_code=403,
-            content={"code": 403, "message": "账户未审核或已封禁，请联系管理员", "status": "error"},
+            status_code=401,
+            content={"code": 401, "message": "账户未审核或已封禁，请联系管理员", "status": "error", "error": "AUTH_ACCOUNT_DISABLED"},
         )
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
