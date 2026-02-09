@@ -6,7 +6,6 @@ ASGI 入口文件
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -35,7 +34,6 @@ setup_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info('服务初始化...')
-    disable_internal_monitor = str(os.getenv("DISABLE_INTERNAL_MONITOR", "")).strip() in {"1", "true", "TRUE", "yes", "YES"}
 
     try:
         await redis_manager.init()
@@ -131,27 +129,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"SSH 命令审计表初始化失败: {e}")
 
-    monitor = None
-    if not disable_internal_monitor:
-        from app.workers.monitor.manager import MonitorManager
-
-        monitor = MonitorManager()
-        await monitor.start()
-
     try:
         yield
     except asyncio.CancelledError:
         pass
 
     logger.info('服务关闭中...')
-
-    if monitor:
-        try:
-            await monitor.stop()
-        except asyncio.CancelledError:
-            logger.warning("监控服务停止过程被取消")
-        except Exception as e:
-            logger.error(f"监控服务停止失败: {e}")
     
     try:
         await Tortoise.close_connections()

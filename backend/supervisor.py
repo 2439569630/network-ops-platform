@@ -10,13 +10,6 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def _env_with(overrides: dict[str, str]) -> dict[str, str]:
-    env = os.environ.copy()
-    for k, v in (overrides or {}).items():
-        env[str(k)] = str(v)
-    return env
-
-
 def _terminate_process(proc: subprocess.Popen, timeout_seconds: float = 8.0) -> None:
     if proc.poll() is not None:
         return
@@ -116,7 +109,6 @@ def main() -> int:
     monitor_cmd = [python_exe, os.path.join(project_root, "processes", "monitor_daemon.py")]
     config_push_cmd = [python_exe, os.path.join(project_root, "processes", "config_push_worker.py")]
 
-    fastapi_env = _env_with({"DISABLE_INTERNAL_MONITOR": "1"})
     monitor_env = os.environ.copy()
 
     logger.info(f"Starting FastAPI: {' '.join(fastapi_cmd)}")
@@ -134,7 +126,7 @@ def main() -> int:
         fastapi_proc = subprocess.Popen(
             fastapi_cmd,
             cwd=project_root,
-            env=fastapi_env,
+            env=monitor_env,
             stdout=fastapi_log_fp,
             stderr=fastapi_log_fp,
         )

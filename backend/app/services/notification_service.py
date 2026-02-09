@@ -738,6 +738,69 @@ class NotificationService:
         return payload
 
     @staticmethod
+    def _extract_offline_reason(message: str) -> tuple[bool, str]:
+        s = str(message or "").strip()
+        if not s:
+            return False, ""
+        if s.startswith("设备离线"):
+            for sep in ("：", ":"):
+                if sep in s:
+                    _, tail = s.split(sep, 1)
+                    return True, str(tail or "").strip()
+            return True, ""
+        if "离线" in s:
+            for sep in ("：", ":"):
+                if sep in s:
+                    _, tail = s.split(sep, 1)
+                    return True, str(tail or "").strip()
+        return False, ""
+
+    @staticmethod
+    def _format_device_alert_email_content(
+        *,
+        message: str,
+        device_name: str,
+        device_ip: str,
+        severity_cn: str,
+        time_iso: Optional[str],
+    ) -> str:
+        msg = str(message or "").strip()
+        is_offline, offline_reason = NotificationService._extract_offline_reason(msg)
+
+        lines: list[str] = []
+        if is_offline:
+            lines.append("告警: 设备离线")
+            if offline_reason:
+                lines.append(f"原因: {offline_reason}")
+        elif msg:
+            lines.append(f"告警: {msg}")
+        else:
+            lines.append("告警: -")
+
+        lines.append(f"设备: {device_name} ({device_ip})")
+        lines.append(f"级别: {severity_cn}")
+        lines.append(f"时间: {str(time_iso or '-').strip() or '-'}")
+
+        if is_offline:
+            lines.append("")
+            lines.append("处理建议:")
+            lines.append("- 检查设备电源与物理链路")
+            lines.append("- 检查管理 IP/端口连通性（ping/22）")
+            lines.append("- 检查 SSH 账号权限与登录策略")
+            lines.append("- 如为间歇性离线，关注链路抖动与丢包")
+
+        if is_offline and msg:
+            normalized = "设备离线"
+            if offline_reason:
+                normalized = f"{normalized}: {offline_reason}"
+            if msg != normalized:
+                lines.append("")
+                lines.append("技术详情:")
+                lines.append(msg)
+
+        return "\n".join(lines).strip() + "\n"
+
+    @staticmethod
     async def notify_device_offline(device_id: int, reason: Optional[str] = None) -> Dict[str, Any]:
         device_name = None
         ipv4 = None
@@ -802,7 +865,13 @@ class NotificationService:
                 await NotificationService._send_alert_emails(
                     user_ids=email_user_ids,
                     subject=f"【设备离线】{display_name} ({display_ip})",
-                    content=f"{message}\n\n时间: {payload.get('time')}",
+                    content=NotificationService._format_device_alert_email_content(
+                        message=f"设备离线: {str(reason or '').strip()}" if reason else "设备离线",
+                        device_name=display_name,
+                        device_ip=display_ip,
+                        severity_cn="严重",
+                        time_iso=str(payload.get("time") or "").strip() or None,
+                    ),
                 )
         except Exception as e:
             logger.error(f"发送设备离线通知失败: device_id={device_id}; err={e}")
@@ -898,7 +967,13 @@ class NotificationService:
                 await NotificationService._send_alert_emails(
                     user_ids=email_user_ids,
                     subject=f"【{sev_cn}告警】{display_name} ({display_ip})",
-                    content=f"{message}\n\n设备: {display_name} ({display_ip})\n级别: {sev_cn}\n时间: {payload.get('time')}",
+                    content=NotificationService._format_device_alert_email_content(
+                        message=message,
+                        device_name=display_name,
+                        device_ip=display_ip,
+                        severity_cn=sev_cn,
+                        time_iso=str(payload.get("time") or "").strip() or None,
+                    ),
                 )
         except Exception as e:
             logger.error(f"发送设备告警邮件失败: device_id={device_id}; rule_id={rule_id}; severity={notify_sev}; match_severity={match_sev}; err={e}")

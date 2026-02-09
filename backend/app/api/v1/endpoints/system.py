@@ -34,6 +34,10 @@ _REMOVED_CONFIG_KEYS = {
     "repair_image_api_strategy_id",
 }
 
+_HIDDEN_CONFIG_KEYS = {
+    "rbac:disabled_permissions",
+}
+
 async def _ensure_default_configs_exist(keys: list[str]) -> None:
     if not keys:
         return
@@ -77,7 +81,8 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
             AND NOT (key = ANY($1::text[]))
             ORDER BY group_name, key
         """
-        configs = await db.fetch_all(sql, list(_REMOVED_CONFIG_KEYS))
+        ignored = list(_REMOVED_CONFIG_KEYS | _HIDDEN_CONFIG_KEYS)
+        configs = await db.fetch_all(sql, ignored)
         return {"code": 200, "data": [dict(c) for c in configs]}
     except Exception as e:
         return {"code": 500, "message": f"获取配置失败: {str(e)}"}
@@ -90,6 +95,8 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
             return {"code": 400, "message": "trap_autostart 已废弃，无法更新"}
         if str(data.key) in _REMOVED_CONFIG_KEYS:
             return {"code": 400, "message": "该配置项已移除"}
+        if str(data.key) in _HIDDEN_CONFIG_KEYS:
+            return {"code": 400, "message": "该配置项不在全局配置中维护，请使用 RBAC 管理接口"}
         meta = _DEFAULT_CONFIG_META.get(str(data.key)) or {}
         group_name = str(meta.get("group_name") or "system")
         description = meta.get("description")

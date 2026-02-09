@@ -12,7 +12,7 @@ from collections import defaultdict
 from typing import Dict, Set, Optional, Any
 from app.drivers.factory import create_device
 from app.drivers.base import BaseDevice
-from app.drivers.ssh_retry import classify_ssh_failure
+from app.drivers.ssh_retry import classify_ssh_failure, compact_exception_message
 from app.core.config import settings
 from app.core.redis import redis_manager
 from app.services.notification_service import NotificationService
@@ -1471,6 +1471,7 @@ class MonitorManager:
                 data = await device.collect_status()
             except Exception as e:
                 reason = str(e).splitlines()[0] if str(e) else "采集异常"
+                raw_exc = compact_exception_message(e)
                 cost_ms = int((time.monotonic() - start_at) * 1000)
                 cmds = []
                 if hasattr(device, "end_inspection"):
@@ -1504,12 +1505,12 @@ class MonitorManager:
                     retry_in_s = max(0, int(float(offline_retry_at or 0.0) - time.monotonic()))
                     logger.warning(
                         f"巡检失败 inspect_id={inspect_id} job=metrics cost_ms={cost_ms} "
-                        f"reason={device.fsm_reason or reason} next_retry_in_s={retry_in_s}{cmds_text}"
+                        f"reason={device.fsm_reason or reason} raw_err={raw_exc} next_retry_in_s={retry_in_s}{cmds_text}"
                     )
                 else:
                     logger.warning(
                         f"巡检失败 inspect_id={inspect_id} job=metrics cost_ms={cost_ms} "
-                        f"reason={device.fsm_reason or reason}{cmds_text}"
+                        f"reason={device.fsm_reason or reason} raw_err={raw_exc}{cmds_text}"
                     )
                 return
 
