@@ -48,8 +48,8 @@
           <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" :prefix-icon="Lock" />
         </el-form-item>
 
-        <div class="auth-row">
-          <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+         <div class="auth-row">
+          <el-checkbox v-model="rememberPassword">记住账号</el-checkbox>
           <el-button type="primary" link @click="goForgotPassword">忘记密码</el-button>
         </div>
       </el-form>
@@ -102,10 +102,8 @@ onMounted(() => {
   loadKickedInfo()
 
   const cachedUser = localStorage.getItem('username')
-  const cachedPwd = localStorage.getItem('password')
-  if (cachedUser && cachedPwd) {
+  if (cachedUser) {
     form.username = cachedUser
-    form.password = cachedPwd
     rememberPassword.value = true
     return
   }
@@ -168,10 +166,8 @@ const submitLogin = async () => {
 
     if (rememberPassword.value) {
       localStorage.setItem('username', username)
-      localStorage.setItem('password', password)
     } else {
       localStorage.removeItem('username')
-      localStorage.removeItem('password')
     }
 
     if (res.data?.token) {

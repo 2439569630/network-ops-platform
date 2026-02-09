@@ -55,16 +55,6 @@
                         <el-icon><Location /></el-icon>
                       </template>
                     </el-cascader>
-                    <el-button 
-                        type="primary" 
-                        size="large" 
-                        :icon="Scan" 
-                        class="scan-btn-inline" 
-                        @click="startScan"
-                        plain
-                    >
-                        扫码
-                    </el-button>
                   </div>
                 </el-form-item>
               </el-col>
@@ -132,35 +122,19 @@
         </el-form>
       </el-card>
     </div>
-
-    <!-- Scan Dialog -->
-    <el-dialog
-        v-model="scanDialogVisible"
-        title="扫描设备二维码"
-        width="500px"
-        :before-close="handleScanClose"
-        append-to-body
-        align-center
-    >
-        <div class="scan-container">
-            <div id="reader" class="qr-reader"></div>
-            <p class="scan-tip">请将摄像头对准设备二维码</p>
-        </div>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { 
   Edit, EditPen, Monitor, InfoFilled, WarningFilled, Document, 
   Promotion, Check, CoffeeCup, Timer, Warning, CircleCloseFilled,
-  FullScreen as Scan, Location
+  Location
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import axios from '@/axios/axios';
 import { useRouter } from 'vue-router';
-import { Html5Qrcode } from "html5-qrcode";
 
 const router = useRouter();
 const repairFormRef = ref(null);
@@ -168,10 +142,6 @@ const loading = ref(false);
 const locationLoading = ref(false);
 const submitting = ref(false);
 const locationOptions = ref([]);
-
-// Scan
-const scanDialogVisible = ref(false);
-let html5QrCode = null;
 
 const form = reactive({
   title: '',
@@ -254,73 +224,8 @@ const submitForm = async (formEl) => {
   });
 };
 
-// --- Scan Logic ---
-const startScan = () => {
-  scanDialogVisible.value = true;
-  // Wait for dialog animation
-  setTimeout(() => {
-    if (!html5QrCode) {
-      html5QrCode = new Html5Qrcode("reader");
-    }
-    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-    html5QrCode.start(
-      { facingMode: "environment" }, 
-      config, 
-      onScanSuccess, 
-      onScanFailure
-    ).catch(err => {
-      console.error("Error starting scanner", err);
-      ElMessage.error("无法启动摄像头，请检查权限");
-    });
-  }, 300);
-};
-
-const onScanSuccess = (decodedText, decodedResult) => {
-  console.log(`Scan result: ${decodedText}`, decodedResult);
-  // Expected format: "LocationID:123"
-  let id = null;
-  if (decodedText.startsWith("LocationID:")) {
-      id = decodedText.split(":")[1];
-  } else if (/^\d+$/.test(decodedText)) {
-      // Assuming number only is location ID for now if we don't have prefix
-      id = decodedText;
-  }
-  
-  if (id) {
-      handleScanClose();
-      form.location_id = Number(id);
-      ElMessage.success("扫码成功，已自动选择位置");
-  } else {
-      ElMessage.warning(`无法识别的二维码: ${decodedText}`);
-  }
-};
-
-const onScanFailure = (error) => {
-  // console.warn(`Code scan error = ${error}`);
-};
-
-const handleScanClose = () => {
-  if (html5QrCode && html5QrCode.isScanning) {
-    html5QrCode.stop().then(() => {
-        html5QrCode.clear();
-        scanDialogVisible.value = false;
-    }).catch(err => {
-        console.error("Failed to stop scanner", err);
-        scanDialogVisible.value = false;
-    });
-  } else {
-      scanDialogVisible.value = false;
-  }
-};
-
 onMounted(() => {
     fetchLocations();
-});
-
-onBeforeUnmount(() => {
-    if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch(err => console.error(err));
-    }
 });
 </script>
 
@@ -505,35 +410,12 @@ onBeforeUnmount(() => {
     flex: 1;
     min-width: 0; /* 防止 flex item 溢出 */
 }
-.scan-btn-inline {
-    padding: 0 16px;
-    flex-shrink: 0;
-}
 
 .form-tip {
     font-size: 12px;
     color: #909399;
     margin-top: 4px;
     line-height: 1.4;
-}
-
-.scan-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 10px;
-}
-.qr-reader {
-    width: 100%;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-}
-.scan-tip {
-    margin-top: 20px;
-    color: #606266;
-    font-size: 15px;
-    font-weight: 500;
 }
 
 /* Mobile Responsive */
@@ -599,14 +481,6 @@ onBeforeUnmount(() => {
   
   .text-content .p-desc {
       font-size: 11px;
-  }
-  
-  /* Scan Button Mobile Optimization */
-  .scan-btn-inline {
-      padding: 0 12px; /* 减小内边距 */
-  }
-  .scan-btn-inline span {
-      display: none; /* 隐藏文字，只显示图标 */
   }
   
   /* Buttons */

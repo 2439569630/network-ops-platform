@@ -22,8 +22,6 @@ import Main from './Main.vue'
 import Footer from './Footer.vue';
 import { useDeviceStore } from './store'
 import { onMounted } from 'vue'
-import axios from 'axios';
-import { ElMessage } from 'element-plus'
 
 const deviceStore = useDeviceStore()
 

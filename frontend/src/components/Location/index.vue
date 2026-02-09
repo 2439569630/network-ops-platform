@@ -73,7 +73,7 @@
                 </div>
                 <div class="title-row">
                     <h1 class="node-title">{{ currentNode.label }}</h1>
-                    <el-tag :type="getTypeTagEffect(currentNode.type)" effect="dark" class="ml-3">
+                    <el-tag :type="getTypeTagType(currentNode.type)" effect="dark" class="ml-3">
                         {{ getTypeName(currentNode.type) }}
                     </el-tag>
                     <el-tag v-if="currentNode.status === false" type="danger" effect="dark" class="ml-2">已停用</el-tag>
@@ -82,7 +82,6 @@
             </div>
             <div class="header-right">
                 <el-button type="primary" :icon="Edit" :disabled="!canEdit" @click="handleEdit(currentNode)">编辑</el-button>
-                <el-button type="success" plain :icon="Printer" @click="handleQrCode(currentNode)">二维码</el-button>
                 <el-dropdown trigger="click" class="ml-2" @command="handleCommand">
                     <el-button>
                         更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
@@ -365,30 +364,6 @@
       </template>
     </el-dialog>
 
-    <!-- QR Code Dialog -->
-    <el-dialog v-model="qrVisible" title="位置二维码" width="360px" center append-to-body>
-        <div class="qr-container" v-if="qrNode">
-            <div class="qr-header">
-                <div class="qr-title">{{ qrNode.label }}</div>
-                <div class="qr-subtitle">{{ qrNode.address || '暂无地址信息' }}</div>
-            </div>
-            <div class="qr-code-box">
-                <!-- Placeholder for QR Code -->
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LocationID:123" alt="QR" class="qr-img" />
-            </div>
-            <div class="qr-meta">
-                <div class="meta-item">
-                    <span class="label">编码:</span>
-                    <span class="value">{{ qrNode.code || qrNode.id }}</span>
-                </div>
-                <div class="meta-hint">扫码即可快速报修或查看详情</div>
-            </div>
-        </div>
-        <template #footer>
-            <el-button type="primary" @click="downloadQr" style="width: 100%">下载二维码</el-button>
-        </template>
-    </el-dialog>
-
     <!-- Add Device Dialog -->
     <el-dialog v-model="deviceDialogVisible" title="添加设备" width="500px" append-to-body>
         <el-form :model="deviceForm" label-width="80px">
@@ -423,9 +398,9 @@
 import { ref, watch, reactive, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-    Plus, Edit, Delete, Search, Download, Refresh, Sort, 
+    Plus, Edit, Delete, Search, Refresh, Sort, 
     School, OfficeBuilding, House, Location,
-    Printer, CopyDocument, Warning, ArrowDown, User, Monitor, Lock,
+    CopyDocument, Warning, ArrowDown, User, Monitor, Lock,
     Menu, Setting, Key, Reading, Management, Place
 } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
@@ -455,9 +430,6 @@ const formType = ref('create')
 const formRef = ref(null)
 const isRoot = ref(false)
 const currentParent = ref(null)
-
-const qrVisible = ref(false)
-const qrNode = ref(null)
 
 const deviceDialogVisible = ref(false)
 const deviceForm = reactive({ deviceId: null })
@@ -620,8 +592,9 @@ const getTypeName = (type) => {
     return map[type] || type
 }
 
-const getTypeTagEffect = (type) => {
-    return type === 'campus' ? 'dark' : 'plain'
+const getTypeTagType = (type) => {
+    const map = { campus: 'primary', building: 'warning', floor: 'success', room: 'info' }
+    return map[type] || 'info'
 }
 
 const formatDate = (dateStr) => {
@@ -969,17 +942,6 @@ const handleDrop = async (draggingNode, dropNode, dropType) => {
     } finally {
         saving.value = false
     }
-}
-
-// QR Code
-const handleQrCode = (data) => {
-    qrNode.value = data
-    qrVisible.value = true
-}
-
-const downloadQr = () => {
-    ElMessage.success('二维码已开始下载')
-    qrVisible.value = false
 }
 
 const handleAddDevice = () => {
@@ -1339,54 +1301,6 @@ onBeforeUnmount(() => {
     color: #909399;
     background: #fff;
     border-radius: 8px;
-}
-
-/* QR Code */
-.qr-container {
-    text-align: center;
-    padding: 10px;
-}
-.qr-header {
-    margin-bottom: 16px;
-}
-.qr-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #303133;
-    margin-bottom: 4px;
-}
-.qr-subtitle {
-    font-size: 13px;
-    color: #909399;
-}
-.qr-code-box {
-    background: #f8f9fa;
-    padding: 16px;
-    border-radius: 8px;
-    display: inline-block;
-    margin-bottom: 16px;
-}
-.qr-img {
-    display: block;
-    width: 180px;
-    height: 180px;
-}
-.qr-meta {
-    background: #f0f9eb;
-    padding: 12px;
-    border-radius: 6px;
-    margin-bottom: 8px;
-}
-.meta-item {
-    font-size: 16px;
-    font-family: monospace;
-    font-weight: 600;
-    color: #67c23a;
-    margin-bottom: 4px;
-}
-.meta-hint {
-    font-size: 12px;
-    color: #909399;
 }
 
 /* Responsive */
