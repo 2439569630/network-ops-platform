@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Union, Any
 import logging
 import json
+import secrets
 from jose import jwt
 from passlib.context import CryptContext
 from fastapi import Request, WebSocket, Query, Cookie, Depends
@@ -135,8 +136,30 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     to_encode = {"exp": expire, "sub": sub}
     if isinstance(subject, dict):
         to_encode.update(subject)
+    to_encode["token_type"] = "access"
         
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+def create_refresh_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None, *, jti: Optional[str] = None) -> str:
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=getattr(settings, "REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30))
+
+    sub: str
+    if isinstance(subject, dict):
+        sub = str(subject.get("id") or subject.get("username") or "")
+    else:
+        sub = str(subject)
+
+    to_encode = {"exp": expire, "sub": sub}
+    if isinstance(subject, dict):
+        to_encode.update(subject)
+    to_encode["token_type"] = "refresh"
+    to_encode["jti"] = str(jti or secrets.token_urlsafe(16))
+
+    encoded_jwt = jwt.encode(to_encode, getattr(settings, "REFRESH_SECRET_KEY", settings.SECRET_KEY), algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 def _normalize_role_codes(value) -> list[str]:
@@ -178,14 +201,34 @@ def user_is_super(user: dict) -> bool:
         return True
     return False
 
-def decode_token(token: str) -> dict:
-    """解码并验证 JWT 令牌"""
+def _decode_token(token: str, *, secret: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
+        payload = jwt.decode(token, secret, algorithms=[settings.ALGORITHM])
+        return payload if isinstance(payload, dict) else None
     except Exception as e:
         logger.error(f"Decode token failed: {e}", exc_info=True)
         return None
+
+def decode_access_token(token: str) -> Optional[dict]:
+    payload = _decode_token(token, secret=settings.SECRET_KEY)
+    if not payload:
+        return None
+    if payload.get("token_type") != "access":
+        return None
+    return payload
+
+def decode_refresh_token(token: str) -> Optional[dict]:
+    payload = _decode_token(token, secret=getattr(settings, "REFRESH_SECRET_KEY", settings.SECRET_KEY))
+    if not payload:
+        return None
+    if payload.get("token_type") != "refresh":
+        return None
+    if not payload.get("jti"):
+        return None
+    return payload
+
+def decode_token(token: str) -> Optional[dict]:
+    return decode_access_token(token)
 
 def _normalize_permissions(value) -> list[str]:
     if value is None:
@@ -393,7 +436,7 @@ async def verify_token(token: Optional[str] = Cookie(None)):
         raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
 
     try:
-        payload = decode_token(token)
+        payload = decode_access_token(token)
         if not payload:
             raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
 
@@ -455,7 +498,7 @@ async def verify_token_ws(
         return None
 
     try:
-        payload = decode_token(token)
+        payload = decode_access_token(token)
         if not payload:
              logger.warning("WS Auth: Decode failed or expired")
              await websocket.close(code=4001, reason="Token无效")

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="dev-secret", alias="JWT_SECRET_KEY")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     ALGORITHM: str = "HS256"
+    REFRESH_SECRET_KEY: str = Field(default="dev-refresh-secret", alias="JWT_REFRESH_SECRET_KEY")
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
     
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = [

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.core.redis import redis_manager
-from app.core.security import create_access_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_token, get_disabled_permission_codes_cached, get_or_init_user_auth_version, bump_user_auth_version, set_user_auth_session_info, get_user_auth_session_info
+from app.core.security import create_access_token, create_refresh_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_access_token, decode_refresh_token, get_disabled_permission_codes_cached, get_or_init_user_auth_version, bump_user_auth_version, set_user_auth_session_info, get_user_auth_session_info
 from app.core.config import settings
 from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
@@ -26,6 +26,15 @@ import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+REFRESH_JTI_REDIS_KEY_PREFIX = "auth:refresh:jti:"
+
+def _refresh_jti_key(jti: str) -> str:
+    return f"{REFRESH_JTI_REDIS_KEY_PREFIX}{str(jti or '').strip()}"
+
+def _refresh_ttl_seconds() -> int:
+    minutes = int(getattr(settings, "REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30) or (60 * 24 * 30))
+    return max(60, minutes * 60)
 
 #登录表单
 class LoginForm(BaseModel):
@@ -355,21 +364,42 @@ async def login(data: LoginForm, response: Response, request: Request):
         subject=token_data,
         expires_delta=access_token_expires
     )
+
+    refresh_jti = secrets.token_urlsafe(32)
+    refresh_token = create_refresh_token(
+        subject={"id": user["id"], "auth_ver": int(auth_ver)},
+        expires_delta=timedelta(seconds=_refresh_ttl_seconds()),
+        jti=refresh_jti,
+    )
+
+    try:
+        redis_client = redis_manager.get_client()
+        await redis_client.set(_refresh_jti_key(refresh_jti), str(int(user["id"])), ex=_refresh_ttl_seconds())
+    except Exception:
+        pass
     
     # 设置 Cookie
     response.set_cookie(
         key='token',
         value=access_token,
-        httponly=False,
+        httponly=True,
         secure=False,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=_refresh_ttl_seconds(),
     )
     
     return {
         "status": "success",
         "message": "登录成功",
-        "token": access_token 
     }
 
 @router.post("/password/reset/request")
@@ -526,51 +556,69 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
     return {"code": 200, "message": "密码已重置"}
 
 @router.post("/refresh")
-async def refresh_token(response: Response, token: Optional[str] = Cookie(None)):
-    """刷新访问令牌"""
-    if token is None:
+async def refresh_token(response: Response, refresh_token: Optional[str] = Cookie(None)):
+    if refresh_token is None:
         return JSONResponse(
             status_code=401,
-            content={"code": 401, "message": "未登录", "status": "error"},
-        )
-    token_payload = decode_token(token)
-    if not token_payload:
-        return JSONResponse(
-            status_code=401,
-            content={"code": 401, "message": "Token无效", "status": "error"},
+            content={"code": 401, "message": "未登录", "status": "error", "error": "AUTH_NOT_LOGGED_IN"},
         )
 
-    user_id = token_payload.get("id")
-    if not user_id:
+    token_payload = decode_refresh_token(refresh_token)
+    if not token_payload:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
         return JSONResponse(
             status_code=401,
-            content={"code": 401, "message": "未登录", "status": "error"},
+            content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
+        )
+
+    user_id = token_payload.get("id") or token_payload.get("sub")
+    if not user_id:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "未登录", "status": "error", "error": "AUTH_NOT_LOGGED_IN"},
+        )
+
+    try:
+        uid = int(user_id)
+    except Exception:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
         )
 
     token_auth_ver = token_payload.get("auth_ver")
     if token_auth_ver is None:
         response.delete_cookie(key="token")
-        return JSONResponse(
-            status_code=401,
-            content={"code": 401, "message": "Token版本过旧，请重新登录", "status": "error", "error": "AUTH_TOKEN_TOO_OLD"},
-        )
-    try:
-        token_auth_ver_int = int(token_auth_ver)
-    except Exception:
-        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
         )
     try:
-        redis_auth_ver = await get_or_init_user_auth_version(int(user_id))
+        token_auth_ver_int = int(token_auth_ver)
+    except Exception:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
+        )
+
+    try:
+        redis_auth_ver = await get_or_init_user_auth_version(uid)
     except Exception:
         redis_auth_ver = 1
     if int(token_auth_ver_int) != int(redis_auth_ver):
         response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
         new_login = None
         try:
-            new_login = await get_user_auth_session_info(int(user_id))
+            new_login = await get_user_auth_session_info(uid)
         except Exception:
             new_login = None
         return JSONResponse(
@@ -578,17 +626,46 @@ async def refresh_token(response: Response, token: Optional[str] = Cookie(None))
             content={"code": 401, "message": "会话已失效，请重新登录", "status": "error", "error": "AUTH_SESSION_REVOKED", "data": {"new_login": new_login}},
         )
 
-    user = await db.fetch_one(
-        "SELECT id, username, permissions, is_approved FROM users WHERE id = $1",
-        int(user_id),
-    )
-    if not user:
+    jti = str(token_payload.get("jti") or "").strip()
+    if not jti:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
         return JSONResponse(
             status_code=401,
-            content={"code": 401, "message": "用户不存在", "status": "error"},
+            content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
         )
-    if user.get("is_approved") is False:
+
+    redis_client = redis_manager.get_client()
+    try:
+        bound_uid = await redis_client.get(_refresh_jti_key(jti))
+    except Exception:
+        bound_uid = None
+    if not bound_uid or str(bound_uid).strip() != str(uid):
         response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "会话已失效，请重新登录", "status": "error", "error": "AUTH_SESSION_REVOKED"},
+        )
+
+    user = await db.fetch_one(
+        "SELECT id, username, permissions, is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1",
+        uid,
+    )
+    if not user:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "用户不存在", "status": "error", "error": "AUTH_ACCOUNT_DISABLED"},
+        )
+    if user.get("is_approved") is False or user.get("is_deleted") is True:
+        response.delete_cookie(key="token")
+        response.delete_cookie(key="refresh_token")
+        try:
+            await redis_client.delete(_refresh_jti_key(jti))
+        except Exception:
+            pass
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "账户未审核或已封禁，请联系管理员", "status": "error", "error": "AUTH_ACCOUNT_DISABLED"},
@@ -604,13 +681,14 @@ async def refresh_token(response: Response, token: Optional[str] = Cookie(None))
         user_permissions = sorted(list(merged))
     except Exception:
         pass
-    
-    is_super = user_is_super(token_payload) or user_is_super({"roles": user_roles})
+
+    is_super = user_is_super({"roles": user_roles})
     if not is_super:
         try:
             disabled = await get_disabled_permission_codes_cached()
             if "sys:auth:login" in {str(c) for c in (disabled or [])}:
                 response.delete_cookie(key="token")
+                response.delete_cookie(key="refresh_token")
                 return JSONResponse(
                     status_code=403,
                     content={"code": 403, "message": "登录权限已关闭", "status": "error"},
@@ -630,16 +708,57 @@ async def refresh_token(response: Response, token: Optional[str] = Cookie(None))
     }
 
     access_token = create_access_token(subject=token_data, expires_delta=access_token_expires)
+
+    next_refresh_jti = secrets.token_urlsafe(32)
+    next_refresh_token = create_refresh_token(
+        subject={"id": uid, "auth_ver": int(auth_ver)},
+        expires_delta=timedelta(seconds=_refresh_ttl_seconds()),
+        jti=next_refresh_jti,
+    )
+
+    try:
+        await redis_client.delete(_refresh_jti_key(jti))
+    except Exception:
+        pass
+    try:
+        await redis_client.set(_refresh_jti_key(next_refresh_jti), str(uid), ex=_refresh_ttl_seconds())
+    except Exception:
+        pass
+
     response.set_cookie(
         key="token",
         value=access_token,
-        httponly=False,
+        httponly=True,
         secure=False,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+    response.set_cookie(
+        key="refresh_token",
+        value=next_refresh_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=_refresh_ttl_seconds(),
+    )
 
-    return {"code": 200, "status": "success", "token": access_token}
+    return {"code": 200, "status": "success"}
+
+@router.post("/logout")
+async def logout(response: Response, refresh_token: Optional[str] = Cookie(None)):
+    if refresh_token:
+        payload = decode_refresh_token(refresh_token)
+        if payload:
+            jti = str(payload.get("jti") or "").strip()
+            if jti:
+                try:
+                    redis_client = redis_manager.get_client()
+                    await redis_client.delete(_refresh_jti_key(jti))
+                except Exception:
+                    pass
+    response.delete_cookie(key="token")
+    response.delete_cookie(key="refresh_token")
+    return {"code": 200, "status": "success"}
 
 @router.post("/register")
 async def register(data: RegisterForm):
@@ -727,19 +846,21 @@ async def get_my_permissions(token_payload: dict = Depends(verify_token)):
     perms = await get_user_permissions_cached(int(user_id), perm_ver=token_payload.get("perm_ver"))
     return {"code": 200, "status": "success", "data": {"perm_ver": token_payload.get("perm_ver"), "permissions": perms}}
 
-@router.post("/users/me")
-async def read_current_user(response: Response, token = Depends(verify_token)):
-    """获取当前用户信息（测试用）"""
-    print(token.get('code'))
-    if token.get('code') != 200:
-        response.status_code = token.get('code')
-        return token
-
-
-    return {
-        "code": 200,
-        "status": "success",
+@router.get("/me")
+async def get_my_session(token_payload: dict = Depends(verify_token)):
+    data = {
+        "id": token_payload.get("id"),
+        "username": token_payload.get("username"),
+        "roles": token_payload.get("roles") or [],
+        "is_super": bool(token_payload.get("is_super") or False),
+        "perm_ver": token_payload.get("perm_ver"),
+        "auth_ver": token_payload.get("auth_ver"),
     }
+    return {"code": 200, "status": "success", "data": data}
+
+@router.post("/users/me")
+async def read_current_user(token_payload: dict = Depends(verify_token)):
+    return {"code": 200, "status": "success", "data": token_payload}
 
 @router.get("/users/me/security")
 async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
