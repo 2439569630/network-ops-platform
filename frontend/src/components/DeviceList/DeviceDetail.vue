@@ -246,7 +246,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
-import Cookies from 'js-cookie'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { homeDataStore } from '@/components/home/home/data'
 import { getDeviceStatusTagType, getDeviceStatusText } from './deviceStatus'
@@ -391,14 +390,22 @@ const applyStatusPayload = (payload) => {
 
 const openWs = () => {
   if (!deviceId.value) return
-  const token = Cookies.get('token') || ''
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const url = `${proto}://${window.location.host}/api/v1/user/device/ws/detail/${deviceId.value}?token=${encodeURIComponent(token)}`
+  const url = `${proto}://${window.location.host}/api/v1/user/device/ws/detail/${deviceId.value}`
   ws = new WebSocket(url)
   ws.onmessage = (evt) => {
     try {
       const payload = JSON.parse(evt.data)
       applyStatusPayload(payload)
+    } catch {}
+  }
+  ws.onclose = async (e) => {
+    const closeCode = Number(e?.code || 0)
+    if (closeCode !== 4001) return
+    try {
+      await axios.post('/api/v1/auth/refresh')
+      closeWs()
+      openWs()
     } catch {}
   }
 }

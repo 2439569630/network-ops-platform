@@ -8,8 +8,6 @@
 import { h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
-import Cookies from 'js-cookie'
-import { jwtDecode } from 'jwt-decode'
 import { homeDataStore } from '@/components/home/home/data'
 import { messageCenterDataStore } from '@/components/MessageCenter/date'
 import { useDeviceStore } from '@/components/DeviceList/store'
@@ -25,15 +23,10 @@ let notifyInitialized = false
 const lastNotifiedSiteMessageId = ref('')
 const currentUserId = ref(null)
 
-const syncCurrentUserIdFromToken = () => {
-  const token = Cookies.get('token')
-  if (!token) {
-    currentUserId.value = null
-    return
-  }
+const syncCurrentUserIdFromSession = async () => {
   try {
-    const decoded = jwtDecode(token)
-    const id = Number(decoded?.id)
+    const session = await store.ensureSession()
+    const id = Number(session?.id)
     currentUserId.value = Number.isFinite(id) ? id : null
   } catch {
     currentUserId.value = null
@@ -123,9 +116,9 @@ const notifyAlert = (alert) => {
 }
 
 const startRealtime = async () => {
-  const token = Cookies.get('token')
-  if (!token) return
-  syncCurrentUserIdFromToken()
+  const session = await store.ensureSession()
+  if (!session) return
+  await syncCurrentUserIdFromSession()
   store.syncAuthFromToken()
   await store.fetchPermissions()
   await msgStore.startSiteMessageRealtime()
@@ -156,7 +149,7 @@ const stopRealtime = () => {
 }
 
 onMounted(async () => {
-  syncCurrentUserIdFromToken()
+  await syncCurrentUserIdFromSession()
   await startRealtime()
 
   authRefreshListener = async () => {
@@ -165,11 +158,12 @@ onMounted(async () => {
   window.addEventListener('auth:refreshed', authRefreshListener)
 
   authGuardTimer = setInterval(async () => {
-    if (!Cookies.get('token')) {
+    const session = await store.ensureSession()
+    if (!session) {
       stopRealtime()
       return
     }
-    syncCurrentUserIdFromToken()
+    await syncCurrentUserIdFromSession()
     await startRealtime()
   }, 5000)
 })

@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import axios from '@/axios/axios';
-import Cookies from 'js-cookie';
 
 export const messageCenterDataStore = defineStore('messageCenterData', () => {
   let siteMessagePollTimer = null;
@@ -27,6 +26,14 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
       }
     } catch (e) {
       return;
+    }
+  };
+
+  const hasSession = () => {
+    try {
+      return Boolean(sessionStorage.getItem('auth:session_cache:v1'));
+    } catch {
+      return false;
     }
   };
 
@@ -179,7 +186,7 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
       });
 
       siteMessageEventSource.onerror = async () => {
-        if (!Cookies.get('token')) {
+        if (!hasSession()) {
           stopSiteMessageRealtime();
           return;
         }
@@ -190,7 +197,7 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
         await fetchLatestSiteMessages();
       };
     } catch (e) {
-      if (!Cookies.get('token')) return;
+      if (!hasSession()) return;
       await fetchLatestSiteMessages();
       siteMessagePollTimer = setInterval(async () => {
         await fetchSiteMessageUnreadCount();
@@ -220,4 +227,3 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
     stopSiteMessageRealtime,
   };
 });
-

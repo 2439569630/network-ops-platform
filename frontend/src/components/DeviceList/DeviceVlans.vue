@@ -42,7 +42,6 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
-import Cookies from 'js-cookie'
 
 const props = defineProps({
   deviceId: {
@@ -131,14 +130,15 @@ const closeWs = () => {
 
 const openWs = () => {
   if (!props.deviceId) return
-  const token = Cookies.get('token')
-  if (!token) return
+  try {
+    if (!sessionStorage.getItem('auth:session_cache:v1')) return
+  } catch {}
 
   manualClose = false
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsHost = normalizeHostname(window.location.hostname)
   const wsPort = window.location.port ? `:${window.location.port}` : ''
-  const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/resources/${props.deviceId}?token=${encodeURIComponent(token)}`
+  const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/resources/${props.deviceId}`
 
   try {
     ws = new WebSocket(wsUrl)
@@ -185,13 +185,9 @@ const openWs = () => {
 
     if (e?.code === 4001) {
       try {
-        const res = await axios.post('/api/v1/auth/refresh')
-        const nextToken = res?.data?.token
-        if (nextToken) {
-          Cookies.set('token', nextToken, { sameSite: 'lax' })
-          reconnectAttempts = 0
-          openWs()
-        }
+        await axios.post('/api/v1/auth/refresh')
+        reconnectAttempts = 0
+        openWs()
       } catch {
         return
       }

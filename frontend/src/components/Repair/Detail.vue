@@ -411,9 +411,8 @@ import {
 } from '@element-plus/icons-vue';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
 import { getDeviceStatusTagType, getDeviceStatusText, isSshEnabled } from '@/components/DeviceList/deviceStatus';
+import { homeDataStore } from '@/components/home/home/data';
 
 const route = useRoute();
 const router = useRouter();
@@ -430,6 +429,7 @@ const locationTreeLoading = ref(false);
 const locationTreeLoaded = ref(false);
 const locationTreeForbidden = ref(false);
 const locationNodeById = reactive({});
+const store = homeDataStore();
 
 // Dialogs
 const dialogAssignVisible = ref(false);
@@ -977,32 +977,21 @@ const handleAddWorkLog = async () => {
     }
 };
 
-onMounted(() => {
+onMounted(async () => {
     nowTimer = window.setInterval(() => {
         nowTick.value = Date.now()
     }, 1000)
-    const token = Cookies.get('token');
-    if (token) {
-        try {
-            const decoded = jwtDecode(token);
-            const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
+    store.syncAuthFromToken();
+    try {
+        const session = await store.ensureSession();
+        if (session) {
+            const roles = Array.isArray(store.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : [];
             roleCodes.value = roles;
-            isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
-            
-            // Note: permissions are usually fetched from API in store, but here we might not have them easily if we don't use store.
-            // Let's try to get them from store if available, or fetch them.
-            // Assuming homeDataStore is available globally or we can use axios.
-            // For now, let's just use what we have or try to fetch permissions if not present.
-            // Actually, jwt might have perm_ver but not the full list.
-            // Let's try to fetch permissions.
-            axios.get('/api/v1/auth/permissions').then(res => {
-                if (res.data.code === 200) {
-                    permissions.value = res.data.data.permissions || [];
-                }
-            });
-
-        } catch (e) {}
-    }
+            isSuper.value = Boolean(store.isSuper);
+            const perms = await store.fetchPermissions();
+            permissions.value = Array.isArray(perms) ? perms : [];
+        }
+    } catch {}
     fetchDetail();
     if (isSuper.value) {
         fetchMaintenanceUsers();

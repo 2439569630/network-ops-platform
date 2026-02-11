@@ -116,7 +116,6 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router';
 import { onMounted, onBeforeUnmount, computed, watch } from 'vue';
-import Cookies from 'js-cookie';
 import axios from '@/axios/axios';
 import { homeDataStore } from '@/components/home/home/data';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
@@ -191,9 +190,8 @@ let authRefreshListener = null;
 const syncAuthAndPerms = async (options = {}) => {
   const force = Boolean(options.force);
   store.syncAuthFromToken();
-  if (!Cookies.get('token')) {
-    return;
-  }
+  const session = await store.ensureSession({ force });
+  if (!session) return;
   await store.fetchPermissions({ force });
 };
 
@@ -201,10 +199,8 @@ onMounted(async () => {
   await syncAuthAndPerms();
 
   try {
-    const res = await axios.post('/api/v1/auth/refresh');
-    if (res.data && res.data.token) {
-        await syncAuthAndPerms({ force: true });
-    }
+    await axios.post('/api/v1/auth/refresh');
+    await syncAuthAndPerms({ force: true });
   } catch (e) {
     return;
   }
@@ -237,9 +233,11 @@ watch(
   }
 );
 
-const goto = (path) => {
+const goto = async (path) => {
     if (String(path).toLowerCase() === '/login') {
-        Cookies.remove('token');
+        try {
+            await axios.post('/api/v1/auth/logout');
+        } catch {}
     }
     router.push(path);
 }

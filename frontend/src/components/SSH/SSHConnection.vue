@@ -36,7 +36,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Monitor } from '@element-plus/icons-vue';
-import Cookies from 'js-cookie'; // 引入 js-cookie
 import axios from '@/axios/axios';
 
 const route = useRoute();
@@ -74,13 +73,12 @@ const handleConnect = (options = {}) => {
     }
     terminalContent.value = '';
     
-    // 获取 Token
-    const token = Cookies.get('token');
-    
-    if (!token) {
-        terminalContent.value = '错误：未登录或 Token 无效。\n';
-        return;
-    }
+    try {
+        if (!sessionStorage.getItem('auth:session_cache:v1')) {
+            terminalContent.value = '错误：未登录或会话已失效。\n';
+            return;
+        }
+    } catch {}
 
     // 动态获取 WebSocket 地址
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -95,7 +93,7 @@ const handleConnect = (options = {}) => {
     }
     if (!Number.isFinite(p) || p <= 0 || p > 65535) p = 22;
 
-    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${encodeURIComponent(String(ip.value || '').trim())}?token=${encodeURIComponent(token)}&port=${encodeURIComponent(String(p))}`;
+    const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/ws/ssh/${encodeURIComponent(String(ip.value || '').trim())}?port=${encodeURIComponent(String(p))}`;
     
     console.log('Connecting to SSH WebSocket:', wsUrl);
 
@@ -147,9 +145,7 @@ const handleConnect = (options = {}) => {
             if (reconnectTimer) clearTimeout(reconnectTimer);
             reconnectTimer = setTimeout(async () => {
                 try {
-                    const res = await axios.post('/api/v1/auth/refresh');
-                    const nextToken = res?.data?.token;
-                    if (nextToken) Cookies.set('token', nextToken, { sameSite: 'lax' });
+                    await axios.post('/api/v1/auth/refresh');
                     handleConnect({ reason: 'auth_refresh' });
                 } catch (err) {
                     terminalContent.value += '\n认证已失效，请重新登录。\n';

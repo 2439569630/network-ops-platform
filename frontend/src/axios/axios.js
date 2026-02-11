@@ -1,6 +1,5 @@
 // src/axios/axios.js
 import axios from "axios";
-import Cookies from "js-cookie";
 import { ElNotification } from "element-plus";
 
 // 基础配置
@@ -28,13 +27,7 @@ const refreshAuth = async () => {
   if (refreshingPromise) return refreshingPromise;
   refreshingPromise = (async () => {
     const res = await axios.post("/api/v1/auth/refresh");
-    const nextToken = res?.data?.token;
-    if (nextToken) {
-      Cookies.set("token", nextToken, { sameSite: "lax" });
-      dispatchAuthRefreshed(nextToken);
-    } else {
-      dispatchAuthRefreshed(null);
-    }
+    dispatchAuthRefreshed(true);
     return res;
   })();
   try {
@@ -60,6 +53,9 @@ axios.interceptors.response.use(
     const status = error?.response?.status;
     const data = error?.response?.data || {};
     const errCode = data.error;
+    const originalConfig = error?.config || {};
+    const url = String(originalConfig?.url || "");
+    if (originalConfig.__skipAuthHandling) return Promise.reject(error);
 
     if (status === 401 && errCode === "AUTH_SESSION_REVOKED") {
       const device = data?.data?.new_login?.device;
@@ -68,7 +64,9 @@ axios.interceptors.response.use(
         const payload = data?.data?.new_login ?? null;
         sessionStorage.setItem("auth:kicked_info", JSON.stringify(payload));
       } catch {}
-      Cookies.remove("token");
+      try {
+        await axios.post("/api/v1/auth/logout", null, { __skipAuthHandling: true });
+      } catch {}
       ElNotification({
         title: "登录已失效",
         message: data.message || (device || ip ? `已在其他设备登录（${String(device || "未知设备")} / ${String(ip || "未知IP")}）` : "会话已失效，请重新登录"),
@@ -79,7 +77,9 @@ axios.interceptors.response.use(
     }
 
     if (status === 401 && errCode === "AUTH_ACCOUNT_DISABLED") {
-      Cookies.remove("token");
+      try {
+        await axios.post("/api/v1/auth/logout", null, { __skipAuthHandling: true });
+      } catch {}
       ElNotification({
         title: "账号已封禁",
         message: data.message || "账号已封禁或已删除，请联系管理员",
@@ -89,20 +89,21 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (status === 401 && (errCode === "AUTH_TOKEN_TOO_OLD" || errCode === "AUTHZ_VERSION_MISMATCH")) {
-      const originalConfig = error?.config || {};
-      const url = String(originalConfig?.url || "");
+    if (status === 401) {
       if (url.includes("/api/v1/auth/refresh")) return Promise.reject(error);
+      if (url.includes("/api/v1/auth/logout")) return Promise.reject(error);
       if (!originalConfig.__authRefreshed) {
         originalConfig.__authRefreshed = true;
         try {
           await refreshAuth();
           return axios(originalConfig);
         } catch (e) {
-          Cookies.remove("token");
+          try {
+            await axios.post("/api/v1/auth/logout", null, { __skipAuthHandling: true });
+          } catch {}
           ElNotification({
             title: "登录已失效",
-            message: data.message || "权限已更新，请重新登录",
+            message: data.message || "认证已过期，请重新登录",
             type: "warning",
           });
           dispatchForceLogin({ reason: "expired" });

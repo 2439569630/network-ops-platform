@@ -1,9 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import loginRoutes from '@/router/login/index.js'
 import homeRoutes from '@/router/user/index.js'
-import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
-import { jwtDecode } from 'jwt-decode'
 import { homeDataStore } from '@/components/home/home/data'
 
 // 路径状态导入
@@ -95,12 +93,10 @@ const getFirstAccessibleUserPath = (ctx) => {
     return '/login'
 }
 
-const getDefaultAuthedPath = async (decoded) => {
-    const roleCodes = Array.isArray(decoded?.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : []
-    const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
+const getDefaultAuthedPath = async (store) => {
+    const roleCodes = Array.isArray(store?.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : []
+    const isSuper = Boolean(store?.isSuper)
     const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2)
-    const store = homeDataStore()
-    store.syncAuthFromToken()
     const perms = isSuper ? [] : await store.fetchPermissions()
     const ctx = { roleCodes, isSuper, userRole, userPerms: Array.isArray(perms) ? perms.map(String) : [] }
     return getFirstAccessibleUserPath(ctx)
@@ -114,83 +110,70 @@ router.beforeEach(async (to, from, next) => {
         document.title = to.meta.title
     }
 
-    // 权限检查
-    let token = Cookies.get('token');
-    let decoded = null;
-    if (token) {
-        try {
-            decoded = jwtDecode(token);
-        } catch (e) {
-            Cookies.remove('token');
-            token = null;
-        }
-    }
+    const store = homeDataStore()
+    store.syncAuthFromToken()
 
-    if (token && decoded && to.path === '/login') {
+    if (to.path === '/login') {
         try {
-            const fallback = await getDefaultAuthedPath(decoded)
-            if (fallback && fallback !== '/login') {
-                next(fallback)
-                return
+            const session = await store.ensureSession()
+            if (session) {
+                const fallback = await getDefaultAuthedPath(store)
+                if (fallback && fallback !== '/login') {
+                    next(fallback)
+                    return
+                }
             }
         } catch (e) {}
     }
 
-    if (token && decoded) {
-        try {
-            const roleCodes = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
-            const isSuper = Boolean(decoded.is_super) || roleCodes.includes('superadmin') || roleCodes.includes('super_admin');
-            const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2);
-            const store = homeDataStore();
-            store.syncAuthFromToken();
-
-            let denied = false;
-            const hasPermMeta = to.meta.perms && Array.isArray(to.meta.perms) && to.meta.perms.length > 0;
-            let userPerms = [];
-
-            if (hasPermMeta) {
-                if (!isSuper) {
-                    const perms = await store.fetchPermissions();
-                    userPerms = Array.isArray(perms) ? perms.map(String) : [];
-                    const hasAnyPerm = to.meta.perms.some(p => userPerms.includes(String(p)));
-                    denied = !hasAnyPerm;
-                }
-            } else if (to.meta.roleCodes && Array.isArray(to.meta.roleCodes) && to.meta.roleCodes.length > 0) {
-                if (!isSuper) {
-                    const allowed = to.meta.roleCodes.some(rc => roleCodes.includes(String(rc).toLowerCase()));
-                    denied = !allowed;
-                }
-            } else if (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
-                denied = !to.meta.roles.includes(userRole);
-            }
-
-            if (denied) {
-                ElNotification({
-                    title: '权限不足',
-                    message: '您没有权限访问该页面',
-                    type: 'error',
-                });
-
-                const ctx = { roleCodes, isSuper, userRole, userPerms }
-                const fallback = getFirstAccessibleUserPath(ctx)
-                if (fallback && fallback !== to.path) {
-                    next(fallback)
-                    return
-                }
-                next('/login')
-                return
-            }
-        } catch (e) {
-            Cookies.remove('token')
-            if (to.path.startsWith('/user')) {
-                next('/login')
-                return
-            }
+    const isProtected = String(to.path || '').startsWith('/user')
+    if (isProtected) {
+        const session = await store.ensureSession()
+        if (!session) {
+            next('/login')
+            return
         }
-    } else if (to.path.startsWith('/user')) {
-        // 未登录访问受保护页面
-        next('/login');
-        return;
+
+        const roleCodes = Array.isArray(store.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : []
+        const isSuper = Boolean(store.isSuper)
+        const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2)
+
+        let denied = false
+        const hasPermMeta = to.meta.perms && Array.isArray(to.meta.perms) && to.meta.perms.length > 0
+        let userPerms = []
+
+        if (hasPermMeta) {
+            if (!isSuper) {
+                const perms = await store.fetchPermissions()
+                userPerms = Array.isArray(perms) ? perms.map(String) : []
+                const hasAnyPerm = to.meta.perms.some(p => userPerms.includes(String(p)))
+                denied = !hasAnyPerm
+            }
+        } else if (to.meta.roleCodes && Array.isArray(to.meta.roleCodes) && to.meta.roleCodes.length > 0) {
+            if (!isSuper) {
+                const allowed = to.meta.roleCodes.some(rc => roleCodes.includes(String(rc).toLowerCase()))
+                denied = !allowed
+            }
+        } else if (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
+            denied = !to.meta.roles.includes(userRole)
+        }
+
+        if (denied) {
+            ElNotification({
+                title: '权限不足',
+                message: '您没有权限访问该页面',
+                type: 'error',
+            })
+
+            const ctx = { roleCodes, isSuper, userRole, userPerms }
+            const fallback = getFirstAccessibleUserPath(ctx)
+            if (fallback && fallback !== to.path) {
+                next(fallback)
+                return
+            }
+            next('/login')
+            return
+        }
     }
 
     // 修复路由存在性检查

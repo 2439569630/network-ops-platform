@@ -66,10 +66,9 @@
 import { reactive, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from '@/axios/axios'
-import Cookies from 'js-cookie'
 import { ElNotification } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
-import { jwtDecode } from 'jwt-decode'
+import { homeDataStore } from '@/components/home/home/data'
 
 const router = useRouter()
 const route = useRoute()
@@ -128,22 +127,15 @@ const goForgotPassword = () => {
   router.push('/forgot-password')
 }
 
-const pickPostLoginPath = async (token) => {
+const pickPostLoginPath = async () => {
   const fallback = '/user/home'
-  if (!token) return fallback
+  const store = homeDataStore()
+  const session = await store.ensureSession({ force: true })
+  if (!session) return fallback
+  if (store.isSuper) return '/user/dashboard'
 
   try {
-    const decoded = jwtDecode(token)
-    const roleCodes = Array.isArray(decoded?.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : []
-    const isSuper = Boolean(decoded?.is_super) || roleCodes.includes('admin') || roleCodes.includes('superadmin') || roleCodes.includes('super_admin')
-    if (isSuper) return '/user/dashboard'
-  } catch (e) {
-    return fallback
-  }
-
-  try {
-    const res = await axios.get('/api/v1/auth/permissions')
-    const perms = Array.isArray(res.data?.data?.permissions) ? res.data.data.permissions.map(String) : []
+    const perms = await store.fetchPermissions({ force: true })
     if (perms.includes('sys:dashboard:view')) return '/user/dashboard'
     if (perms.includes('sys:message:access')) return '/user/message'
     return fallback
@@ -170,11 +162,7 @@ const submitLogin = async () => {
       localStorage.removeItem('username')
     }
 
-    if (res.data?.token) {
-      Cookies.set('token', res.data.token, { sameSite: 'lax' })
-    }
-
-    const nextPath = await pickPostLoginPath(res.data?.token)
+    const nextPath = await pickPostLoginPath()
     await router.push(nextPath)
 
     ElNotification({

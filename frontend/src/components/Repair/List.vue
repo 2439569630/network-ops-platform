@@ -209,8 +209,6 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from '@/axios/axios';
 import { useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
 
 const router = useRouter();
 const store = homeDataStore();
@@ -422,28 +420,27 @@ const submitReview = async () => {
     }
 };
 
-onMounted(() => {
-    const token = Cookies.get('token');
-    if (token) {
-        try {
-            const decoded = jwtDecode(token);
-            const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
+onMounted(async () => {
+    store.syncAuthFromToken();
+    try {
+        const session = await store.ensureSession();
+        if (session) {
+            const roles = Array.isArray(store.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : [];
             roleCodes.value = roles;
-            isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
-            currentUserId.value = decoded.id;
-
-            if (isYunwei.value) {
-                currentScope.value = 'assigned_to_me';
-                activeTab.value = 'assigned';
-            } else if (isAdminOrManage.value) {
-                currentScope.value = '';
-            } else {
-                currentScope.value = 'created_by_me';
-            }
-        } catch (e) {
-            // ignore
+            isSuper.value = Boolean(store.isSuper);
+            currentUserId.value = session?.id ?? null;
         }
+    } catch {}
+
+    if (isYunwei.value) {
+        currentScope.value = 'assigned_to_me';
+        activeTab.value = 'assigned';
+    } else if (isAdminOrManage.value) {
+        currentScope.value = '';
+    } else {
+        currentScope.value = 'created_by_me';
     }
+
     fetchOrders();
 });
 </script>

@@ -422,8 +422,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } 
 import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
+import { homeDataStore } from '@/components/home/home/data'
 import { 
   Key, InfoFilled, Avatar, Lock, UserFilled, MoreFilled, 
   Search, Connection, Delete, User, Back
@@ -700,17 +699,17 @@ const filteredPermGroups = computed(() => {
 });
 
 // --- Lifecycle ---
-onMounted(() => {
+onMounted(async () => {
   handleResize();
   window.addEventListener('resize', handleResize);
-  const token = Cookies.get('token');
-  if (token) {
-    try {
-      const decoded = jwtDecode(token);
-      if (decoded && decoded.id !== undefined && decoded.id !== null) {
-        currentUserId.value = Number(decoded.id);
-      }
-    } catch {}
+  try {
+    const store = homeDataStore()
+    store.syncAuthFromToken()
+    const session = await store.ensureSession()
+    const id = Number(session?.id)
+    currentUserId.value = Number.isFinite(id) ? id : null
+  } catch {
+    currentUserId.value = null
   }
   if (route.query.tab) {
     activeTab.value = route.query.tab;
@@ -997,11 +996,7 @@ const saveCurrentRole = async () => {
     if(updatedRole) handleSelectRole(updatedRole);
     
     try {
-      const refreshRes = await axios.post('/api/v1/auth/refresh');
-      const nextToken = refreshRes?.data?.token;
-      if (nextToken) {
-        Cookies.set('token', nextToken, { sameSite: 'lax' });
-      }
+      await axios.post('/api/v1/auth/refresh');
     } catch {}
     await router.replace({ query: { ...route.query, __perm_refresh: String(Date.now()) } });
 

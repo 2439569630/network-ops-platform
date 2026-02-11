@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
-import Cookies from 'js-cookie'
 import { homeDataStore } from '@/components/home/home/data'
 
 export const useDeviceStore = defineStore('device', () => {
@@ -112,10 +111,9 @@ export const useDeviceStore = defineStore('device', () => {
         // 防止重复连接
         if (wsStatus.value === 'connected' || wsStatus.value === 'connecting') return
 
-        const token = Cookies.get('token')
-        if (!token) {
-            return // 无 Token 不连接
-        }
+        try {
+            if (!sessionStorage.getItem('auth:session_cache:v1')) return
+        } catch {}
         
         // 简单权限检查 (如果有必要)
         // const hasPerm = authStore.isSuper || (authStore.permissions && authStore.permissions.includes('sys:device:list'))
@@ -127,7 +125,7 @@ export const useDeviceStore = defineStore('device', () => {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsHost = normalizeHostname(window.location.hostname)
         const wsPort = window.location.port ? `:${window.location.port}` : ''
-        const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/list?token=${encodeURIComponent(token)}`
+        const wsUrl = `${wsProtocol}//${wsHost}${wsPort}/api/v1/user/device/ws/list`
 
         try {
             const socket = new WebSocket(wsUrl)
@@ -183,13 +181,9 @@ export const useDeviceStore = defineStore('device', () => {
                 // 4001: Token 失效
                 if (e.code === 4001) {
                     try {
-                        const res = await axios.post('/api/v1/auth/refresh')
-                        const nextToken = res?.data?.token
-                        if (nextToken) {
-                            Cookies.set('token', nextToken, { sameSite: 'lax' })
-                            reconnectAttempts = 0
-                            startRealtime()
-                        }
+                        await axios.post('/api/v1/auth/refresh')
+                        reconnectAttempts = 0
+                        startRealtime()
                     } catch (err) {
                         // 刷新失败，可能需要重新登录
                         return

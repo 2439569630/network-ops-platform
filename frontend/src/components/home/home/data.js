@@ -2,8 +2,6 @@ import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
-import Cookies from 'js-cookie';
-import { jwtDecode } from 'jwt-decode';
 
 export const homeDataStore = defineStore('homeData', () => {
   const profileLoading = ref(false);
@@ -82,6 +80,11 @@ export const homeDataStore = defineStore('homeData', () => {
 
   const roleCodes = ref([]);
   const isSuper = ref(false);
+  const sessionUserId = ref(null);
+  const sessionUsername = ref('');
+  const sessionPermVer = ref(null);
+  const sessionAuthVer = ref(null);
+  const sessionLoadedAt = ref(0);
   const permissions = ref([]);
   const permVer = ref(null);
   const permissionsLoading = ref(false);
@@ -89,6 +92,64 @@ export const homeDataStore = defineStore('homeData', () => {
   let permissionsPromise = null;
 
   const PERMS_CACHE_KEY = 'auth:permissions_cache:v1';
+  const SESSION_CACHE_KEY = 'auth:session_cache:v1';
+
+  const loadSessionCache = () => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const loadedAt = Number(parsed.loadedAt || 0);
+      if (!Number.isFinite(loadedAt) || loadedAt <= 0) return null;
+      return {
+        id: parsed.id ?? null,
+        username: String(parsed.username || ''),
+        roles: Array.isArray(parsed.roles) ? parsed.roles.map(r => String(r).toLowerCase()) : [],
+        isSuper: Boolean(parsed.is_super || false),
+        permVer: parsed.perm_ver ?? null,
+        authVer: parsed.auth_ver ?? null,
+        loadedAt,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const saveSessionCache = () => {
+    try {
+      sessionStorage.setItem(
+        SESSION_CACHE_KEY,
+        JSON.stringify({
+          id: sessionUserId.value ?? null,
+          username: sessionUsername.value || '',
+          roles: Array.isArray(roleCodes.value) ? roleCodes.value : [],
+          is_super: Boolean(isSuper.value || false),
+          perm_ver: sessionPermVer.value ?? null,
+          auth_ver: sessionAuthVer.value ?? null,
+          loadedAt: sessionLoadedAt.value || Date.now(),
+        })
+      );
+    } catch {}
+  };
+
+  const clearSessionCache = () => {
+    try {
+      sessionStorage.removeItem(SESSION_CACHE_KEY);
+    } catch {}
+  };
+
+  const applySession = (data) => {
+    const roles = Array.isArray(data?.roles) ? data.roles.map(r => String(r).toLowerCase()) : [];
+    roleCodes.value = roles;
+    isSuper.value = Boolean(data?.is_super || false) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+    sessionUserId.value = data?.id ?? null;
+    sessionUsername.value = String(data?.username || '');
+    sessionPermVer.value = data?.perm_ver ?? null;
+    sessionAuthVer.value = data?.auth_ver ?? null;
+    sessionLoadedAt.value = Date.now();
+    saveSessionCache();
+  };
 
   const loadPermsCache = () => {
     try {
@@ -133,45 +194,91 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const syncAuthFromToken = () => {
-    const token = Cookies.get('token');
-    if (!token) {
+    const cached = loadSessionCache();
+    if (!cached) {
       roleCodes.value = [];
       isSuper.value = false;
+      sessionUserId.value = null;
+      sessionUsername.value = '';
+      sessionPermVer.value = null;
+      sessionAuthVer.value = null;
+      sessionLoadedAt.value = 0;
       clearAuthCache();
       return;
     }
-    try {
-      const decoded = jwtDecode(token);
-      const roles = Array.isArray(decoded.roles) ? decoded.roles.map(r => String(r).toLowerCase()) : [];
-      roleCodes.value = roles;
-      isSuper.value = Boolean(decoded.is_super) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+    roleCodes.value = cached.roles;
+    isSuper.value = Boolean(cached.isSuper || false);
+    sessionUserId.value = cached.id ?? null;
+    sessionUsername.value = cached.username || '';
+    sessionPermVer.value = cached.permVer ?? null;
+    sessionAuthVer.value = cached.authVer ?? null;
+    sessionLoadedAt.value = cached.loadedAt || 0;
 
-      const tokenPermVer = decoded?.perm_ver ?? null;
-      const cached = loadPermsCache();
-      if (
-        cached &&
-        cached.permissions.length > 0 &&
-        Date.now() - cached.loadedAt < 5 * 60 * 1000 &&
-        (
-          (tokenPermVer !== null && cached.permVer !== null && String(tokenPermVer) === String(cached.permVer)) ||
-          tokenPermVer === null
-        )
-      ) {
-        permissions.value = cached.permissions;
-        permVer.value = cached.permVer;
-        permissionsLoadedAt.value = cached.loadedAt;
-      }
-    } catch {
-      roleCodes.value = [];
-      isSuper.value = false;
-      clearAuthCache();
+    const cachedPerms = loadPermsCache();
+    const tokenPermVer = cached.permVer ?? null;
+    if (
+      cachedPerms &&
+      cachedPerms.permissions.length > 0 &&
+      Date.now() - cachedPerms.loadedAt < 5 * 60 * 1000 &&
+      (
+        (tokenPermVer !== null && cachedPerms.permVer !== null && String(tokenPermVer) === String(cachedPerms.permVer)) ||
+        tokenPermVer === null
+      )
+    ) {
+      permissions.value = cachedPerms.permissions;
+      permVer.value = cachedPerms.permVer;
+      permissionsLoadedAt.value = cachedPerms.loadedAt;
     }
+  };
+
+  let sessionPromise = null;
+  const ensureSession = async (options = {}) => {
+    const force = Boolean(options.force);
+    const cache = loadSessionCache();
+    if (!force && cache && Date.now() - cache.loadedAt < 5 * 60 * 1000) {
+      syncAuthFromToken();
+      return cache;
+    }
+    if (sessionPromise && !force) return sessionPromise;
+    sessionPromise = (async () => {
+      try {
+        const res = await axios.get('/api/v1/auth/me');
+        if (res?.data?.code === 200) {
+          applySession(res.data?.data || {});
+          return loadSessionCache();
+        }
+        roleCodes.value = [];
+        isSuper.value = false;
+        sessionUserId.value = null;
+        sessionUsername.value = '';
+        sessionPermVer.value = null;
+        sessionAuthVer.value = null;
+        sessionLoadedAt.value = 0;
+        clearSessionCache();
+        clearAuthCache();
+        return null;
+      } catch (e) {
+        roleCodes.value = [];
+        isSuper.value = false;
+        sessionUserId.value = null;
+        sessionUsername.value = '';
+        sessionPermVer.value = null;
+        sessionAuthVer.value = null;
+        sessionLoadedAt.value = 0;
+        clearSessionCache();
+        clearAuthCache();
+        return null;
+      } finally {
+        sessionPromise = null;
+      }
+    })();
+    return await sessionPromise;
   };
 
   const fetchPermissions = async (options = {}) => {
     let force = Boolean(options.force);
-    const token = Cookies.get('token');
-    if (!token) {
+    const session = await ensureSession();
+    if (!session) {
       clearAuthCache();
       return [];
     }
@@ -184,8 +291,7 @@ export const homeDataStore = defineStore('homeData', () => {
     }
 
     try {
-      const decoded = jwtDecode(token);
-      const tokenPermVer = decoded?.perm_ver ?? null;
+      const tokenPermVer = session?.permVer ?? null;
       if (tokenPermVer !== null && permVer.value !== null && String(tokenPermVer) !== String(permVer.value)) {
         force = true;
       }
@@ -438,8 +544,8 @@ export const homeDataStore = defineStore('homeData', () => {
       stopAlertsRealtime();
       return;
     }
-    const token = Cookies.get('token') || '';
-    if (!token) {
+    const session = await ensureSession();
+    if (!session) {
       stopAlertsRealtime();
       return;
     }
@@ -449,7 +555,7 @@ export const homeDataStore = defineStore('homeData', () => {
     alertsWsStatus.value = 'connecting';
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${window.location.host}/api/v1/notifications/ws/system-alerts?token=${encodeURIComponent(token)}`;
+    const url = `${proto}://${window.location.host}/api/v1/notifications/ws/system-alerts`;
 
     const mapToHistoryItem = (p) => {
       const time = String((p && (p.time || p.created_at)) || '').trim();
@@ -684,6 +790,7 @@ export const homeDataStore = defineStore('homeData', () => {
     startPolling,
     stopPolling,
     syncAuthFromToken,
+    ensureSession,
     clearAuthCache,
     fetchPermissions,
     syncProfileForm,

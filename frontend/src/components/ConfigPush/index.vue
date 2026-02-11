@@ -84,7 +84,6 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import Cookies from 'js-cookie'
 import axios from '@/axios/axios'
 import { ElNotification } from 'element-plus'
 
@@ -221,12 +220,11 @@ const handleEvent = (evt) => {
 
 const openWs = () => {
   closeWs()
-  const token = Cookies.get('token')
-  if (!token || !jobId.value) return
+  if (!jobId.value) return
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsHost = window.location.hostname
   const wsPort = window.location.port ? `:${window.location.port}` : ''
-  const url = `${wsProtocol}//${wsHost}${wsPort}/api/v1/config-push/ws/${jobId.value}?token=${encodeURIComponent(token)}&last_id=${encodeURIComponent(lastId.value)}`
+  const url = `${wsProtocol}//${wsHost}${wsPort}/api/v1/config-push/ws/${jobId.value}?last_id=${encodeURIComponent(lastId.value)}`
   ws = new WebSocket(url)
   ws.onmessage = (event) => {
     let payload = null
@@ -238,7 +236,14 @@ const openWs = () => {
     handleEvent(payload)
   }
   ws.onopen = () => {}
-  ws.onclose = () => {}
+  ws.onclose = async (e) => {
+    const closeCode = Number(e?.code || 0)
+    if (closeCode !== 4001) return
+    try {
+      await axios.post('/api/v1/auth/refresh')
+      openWs()
+    } catch {}
+  }
   ws.onerror = () => {}
 }
 
