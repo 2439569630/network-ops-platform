@@ -85,10 +85,17 @@ def setup_logger(log_level: str = "INFO"):
     
     包括控制台输出和文件输出，以及特定模块的日志级别设置
     """
-    # 1. 确保日志目录存在
-    log_dir = 'logs'
+    log_dir = str(os.getenv("LOG_DIR", "")).strip() or "logs"
+    service_name = (
+        str(os.getenv("LOG_SERVICE", "")).strip()
+        or str(os.getenv("SERVICE_NAME", "")).strip()
+        or str(os.getenv("LOG_BASENAME", "")).strip()
+        or "app"
+    )
+    enable_console = str(os.getenv("LOG_CONSOLE", "1")).strip().lower() not in {"0", "false", "no", "off"}
+
     if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
 
     # 2. 定义格式器
     file_formatter = logging.Formatter(
@@ -115,13 +122,15 @@ def setup_logger(log_level: str = "INFO"):
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # Console Handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
+    if enable_console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(console_formatter)
+        root_logger.addHandler(console_handler)
 
     # File Handler
-    main_file_handler = logging.FileHandler(os.path.join(log_dir, 'app.log'), encoding='utf-8')
+    log_file = str(os.getenv("LOG_FILE", "")).strip() or f"{service_name}.log"
+    log_file_path = log_file if os.path.isabs(log_file) else os.path.join(log_dir, log_file)
+    main_file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
     main_file_handler.setFormatter(file_formatter)
     root_logger.addHandler(main_file_handler)
 
@@ -129,7 +138,11 @@ def setup_logger(log_level: str = "INFO"):
     # Device Drivers
     driver_logger = logging.getLogger("app.drivers")
     driver_logger.setLevel(logging.INFO)
-    driver_handler = logging.FileHandler(os.path.join(log_dir, 'drivers.log'), encoding='utf-8')
+    if driver_logger.hasHandlers():
+        driver_logger.handlers.clear()
+    driver_log_file = str(os.getenv("DRIVER_LOG_FILE", "")).strip() or f"{service_name}.drivers.log"
+    driver_log_path = driver_log_file if os.path.isabs(driver_log_file) else os.path.join(log_dir, driver_log_file)
+    driver_handler = logging.FileHandler(driver_log_path, encoding="utf-8")
     driver_handler.setFormatter(file_formatter)
     driver_logger.addHandler(driver_handler)
     driver_logger.propagate = True

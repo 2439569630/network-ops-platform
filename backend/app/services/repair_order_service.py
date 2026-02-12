@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from typing import List, Optional, Dict
 from app.core.database import db
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, OrderReviewCreate
 
 # ORM Imports
@@ -12,6 +13,7 @@ from app.models.orm.device import NetworkDevice
 from app.models.orm.location import LocationNode
 from app.models.orm.rbac import Role, UserRole
 from tortoise.expressions import Q
+from app.services.image_storage_service import ImageStorageService
 
 class RepairOrderService:
     """
@@ -95,10 +97,27 @@ class RepairOrderService:
         if location_id:
             # Check if any user is bound to this location
             # We pick the first one as the responsible admin
-            loc_user = await LocationNodeUser.filter(node_id=location_id).first()
-            if loc_user:
-                assignee_id = loc_user.user_id
-                auto_assigned_reason = "自动派单给区域管理员"
+            loc_users = await LocationNodeUser.filter(node_id=location_id).order_by("id").all()
+            candidate_user_ids: list[int] = []
+            for r in loc_users or []:
+                try:
+                    candidate_user_ids.append(int(r.user_id))
+                except Exception:
+                    continue
+            if candidate_user_ids:
+                active_ids = await User.filter(
+                    id__in=candidate_user_ids, is_approved=True, is_deleted=False
+                ).values_list("id", flat=True)
+                active_set = {int(x) for x in (active_ids or []) if x is not None}
+                for r in loc_users or []:
+                    try:
+                        uid = int(r.user_id)
+                    except Exception:
+                        continue
+                    if uid in active_set:
+                        assignee_id = uid
+                        auto_assigned_reason = "自动派单给区域管理员"
+                        break
         
         order = await RepairOrder.create(
             title=data.title,
@@ -224,18 +243,24 @@ class RepairOrderService:
         
         items = []
         for o in orders:
+            submitter_name = user_map.get(o.submitter_id) if o.submitter_id else None
+            if o.submitter_id and not submitter_name:
+                submitter_name = DELETED_USER_DISPLAY_NAME
+            assignee_name = user_map.get(o.assignee_id) if o.assignee_id else None
+            if o.assignee_id and not assignee_name:
+                assignee_name = DELETED_USER_DISPLAY_NAME
             items.append({
                 "id": o.id,
                 "title": o.title,
                 "description": o.description,
                 "submitter_id": o.submitter_id,
-                "submitter_name": user_map.get(o.submitter_id),
+                "submitter_name": submitter_name,
                 "device_id": o.device_id,
                 "device_name": device_map.get(o.device_id),
                 "location_id": o.location_id,
                 "location_name": location_map.get(o.location_id),
                 "assignee_id": o.assignee_id,
-                "assignee_name": user_map.get(o.assignee_id) if o.assignee_id else None,
+                "assignee_name": assignee_name,
                 "priority": o.priority,
                 "status": o.status,
                 "actual_completion_time": o.actual_completion_time,
@@ -264,18 +289,24 @@ class RepairOrderService:
         device = await NetworkDevice.filter(id=o.device_id).first() if o.device_id else None
         location = await LocationNode.filter(id=o.location_id).first() if o.location_id else None
         
+        submitter_name = submitter.username if submitter else None
+        if o.submitter_id and not submitter_name:
+            submitter_name = DELETED_USER_DISPLAY_NAME
+        assignee_name = assignee.username if assignee else None
+        if o.assignee_id and not assignee_name:
+            assignee_name = DELETED_USER_DISPLAY_NAME
         order = {
             "id": o.id,
             "title": o.title,
             "description": o.description,
             "submitter_id": o.submitter_id,
-            "submitter_name": submitter.username if submitter else None,
+            "submitter_name": submitter_name,
             "device_id": o.device_id,
             "device_name": device.device_name if device else None,
             "location_id": o.location_id,
             "location_name": location.name if location else None,
             "assignee_id": o.assignee_id,
-            "assignee_name": assignee.username if assignee else None,
+            "assignee_name": assignee_name,
             "priority": o.priority,
             "status": o.status,
             "actual_completion_time": o.actual_completion_time,
@@ -292,11 +323,14 @@ class RepairOrderService:
         
         order['logs'] = []
         for l in logs:
+            operator_name = op_map.get(l.operator_id)
+            if l.operator_id and not operator_name:
+                operator_name = DELETED_USER_DISPLAY_NAME
             order['logs'].append({
                 "id": l.id,
                 "order_id": l.order_id,
                 "operator_id": l.operator_id,
-                "operator_name": op_map.get(l.operator_id),
+                "operator_name": operator_name,
                 "action": l.action,
                 "from_status": l.from_status,
                 "to_status": l.to_status,
@@ -479,7 +513,7 @@ class RepairOrderService:
             for img in imgs:
                 url = str(img.url or "").strip()
                 if url:
-                    images_map[int(img.id)] = url
+                    images_map[int(img.id)] = ImageStorageService.normalize_public_url(url)
                 else:
                     images_map[int(img.id)] = f"/api/v1/repair-images/{int(img.id)}/content"
 
@@ -503,7 +537,10 @@ class RepairOrderService:
                         if u:
                             resolved.append(u)
                         continue
-                    resolved.append(s)
+                    if s.startswith("/uploads/") or "://" in s:
+                        resolved.append(ImageStorageService.normalize_public_url(s))
+                    else:
+                        resolved.append(s)
                     continue
             out.append({
                 "id": l.id,

@@ -7,6 +7,7 @@ import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 from app.core.database import db
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse
 from app.core.redis import redis_manager
 from app.workers.monitor.manager import MonitorManager
@@ -147,7 +148,12 @@ class DeviceService:
 
             result = []
             for d in devices:
-                created_by_name = user_map.get(int(d.created_by), "") if d.created_by and d.created_by.isdigit() else ""
+                created_by_name = ""
+                if d.created_by:
+                    if d.created_by.isdigit():
+                        created_by_name = user_map.get(int(d.created_by)) or DELETED_USER_DISPLAY_NAME
+                    else:
+                        created_by_name = str(d.created_by)
                 
                 # Get location name from mapping
                 node_id = dev_to_node.get(d.id)
@@ -224,8 +230,8 @@ class DeviceService:
                         "uptime": str(snap.get("uptime") or "未知"),
                         "os_version": str(snap.get("os_version") or snap.get("kernel") or "Unknown"),
                         "created_by": str(row.get("created_by") or ""),
-                        "created_by_name": str(row.get("created_by_name") or ""),
-                        "ops_admin_name": str(row.get("created_by_name") or ""),
+                        "created_by_name": str(row.get("created_by_name") or DELETED_USER_DISPLAY_NAME),
+                        "ops_admin_name": str(row.get("created_by_name") or DELETED_USER_DISPLAY_NAME),
                     }
                 )
             except Exception as e:
@@ -761,7 +767,12 @@ class DeviceService:
 
         items = []
         for l in logs:
-            executed_by_name = user_map.get(int(l.executed_by), "") if l.executed_by and l.executed_by.isdigit() else ""
+            executed_by_name = ""
+            if l.executed_by:
+                if l.executed_by.isdigit():
+                    executed_by_name = user_map.get(int(l.executed_by)) or DELETED_USER_DISPLAY_NAME
+                else:
+                    executed_by_name = DELETED_USER_DISPLAY_NAME
             items.append({
                 "id": l.id,
                 "device_id": l.device_id,
@@ -796,7 +807,12 @@ class DeviceService:
 
         items = []
         for l in logs:
-            changed_by_name = user_map.get(int(l.changed_by), "") if l.changed_by and l.changed_by.isdigit() else ""
+            changed_by_name = ""
+            if l.changed_by:
+                if l.changed_by.isdigit():
+                    changed_by_name = user_map.get(int(l.changed_by)) or DELETED_USER_DISPLAY_NAME
+                else:
+                    changed_by_name = DELETED_USER_DISPLAY_NAME
             items.append({
                 "id": l.id,
                 "device_id": l.device_id,

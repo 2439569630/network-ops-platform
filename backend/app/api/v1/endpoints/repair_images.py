@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.core.security import PermissionChecker
 from app.schemas.repair_image import RepairImageResponse, RepairImageUpdate
+from app.services.image_storage_service import ImageStorageService
 from app.services.repair_image_service import RepairImageService
 from app.utils.remote_image_api import RemoteImageApiError
 
@@ -37,7 +38,8 @@ async def upload_image(
             order_id=order_id,
             work_log_id=work_log_id,
         )
-        return {"code": 200, "data": {"id": img.id, "url": img.url}}
+        url = ImageStorageService.normalize_public_url(str(img.url or ""))
+        return {"code": 200, "data": {"id": img.id, "url": url}}
     except RemoteImageApiError as e:
         http_status = getattr(e, "status_code", None)
         if http_status == 429:
@@ -57,7 +59,9 @@ async def get_image(
     img = await RepairImageService.get_image(image_id)
     if not img:
         return {"code": 404, "message": "图片不存在"}
-    return {"code": 200, "data": RepairImageResponse(**dict(img)).dict()}
+    payload = RepairImageResponse(**dict(img)).dict()
+    payload["url"] = ImageStorageService.normalize_public_url(str(payload.get("url") or ""))
+    return {"code": 200, "data": payload}
 
 
 @router.get("/{image_id}/content")
@@ -73,6 +77,7 @@ async def get_image_content(
     url = str(img.url or "").strip()
     if not url:
         return {"code": 404, "message": "图片链接不存在"}
+    url = ImageStorageService.normalize_public_url(url)
     return RedirectResponse(url=url, status_code=307)
 
 

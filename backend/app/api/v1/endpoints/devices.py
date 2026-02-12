@@ -9,6 +9,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission, get_or_init_user_auth_version
 from app.core.database import db
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.schemas.device import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceTest, DeviceDelete, DeviceConfigUpdate
 from app.services.device_service import device_service
 from app.workers.monitor.manager import MonitorManager
@@ -257,8 +258,8 @@ async def get_device_detail(
     # 2. 格式化数据库返回的数据
     data = dict(row)
     data["created_by"] = str(data.get("created_by") or "")
-    data["created_by_name"] = str(data.get("created_by_name") or "未知")
-    data["ops_admin_name"] = str(data.get("created_by_name") or "未知")
+    data["created_by_name"] = str(data.get("created_by_name") or DELETED_USER_DISPLAY_NAME)
+    data["ops_admin_name"] = str(data.get("created_by_name") or DELETED_USER_DISPLAY_NAME)
     data["ipv4"] = str(data.get("ipv4") or "")
     data["ipv6"] = str(data.get("ipv6") or "")
     data["mac"] = str(data.get("mac") or "")

@@ -8,7 +8,7 @@ from app.core.database import db
 from app.core.redis import redis_manager
 from app.core.security import get_disabled_permission_codes_cached
 from app.core.system_config import SystemConfig
-from app.utils.notification_sender import send_email, send_pushplus, send_http
+from app.utils.notification_sender import send_email, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
 
 # ORM Imports
@@ -105,7 +105,10 @@ class NotificationService:
                 continue
             if v > 0:
                 result.add(v)
-        return result
+        if not result:
+            return set()
+        active_ids = await User.filter(id__in=list(result), is_approved=True, is_deleted=False).values_list("id", flat=True)
+        return {int(x) for x in (active_ids or []) if x is not None}
 
     @staticmethod
     async def _notify_site_message_to_users(
@@ -1136,8 +1139,6 @@ class NotificationService:
         return {
             "enable_email": False,
             "email_config": {},
-            "enable_pushplus": False,
-            "pushplus_token": "",
             "enable_http": False,
             "http_url": ""
         }
@@ -1197,12 +1198,6 @@ class NotificationService:
                 "这是一条测试消息",
                 nickname=str(nickname or "").strip() or None,
             )
-            
-        elif data.channel == 'pushplus':
-            token = data.config.get('pushplus_token') if data.config else None
-            if not token:
-                raise ValueError("缺少 PushPlus Token")
-            success, msg = await send_pushplus(token, "这是一条测试消息")
             
         elif data.channel == 'http':
             url = data.config.get('http_url') if data.config else None

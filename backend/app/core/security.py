@@ -470,7 +470,7 @@ async def verify_token(token: Optional[str] = Cookie(None)):
             except Exception:
                 raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
             if token_ver_int != int(redis_ver):
-                raise UnicornException(401, "权限已更新，请重新登录", error_code="AUTHZ_VERSION_MISMATCH")
+                raise UnicornException(401, "权限已更新，请刷新页面", error_code="AUTHZ_VERSION_MISMATCH")
 
         return payload
     except UnicornException:
@@ -532,7 +532,7 @@ async def verify_token_ws(
                 await websocket.close(code=4001, reason="Token无效")
                 return None
             if token_ver_int != int(redis_ver):
-                await websocket.close(code=4001, reason="权限已更新，请重新登录")
+                await websocket.close(code=4001, reason="权限已更新，请刷新页面")
                 return None
 
         logger.info(f"WS Auth: Success for user {payload.get('id', 'unknown')}")

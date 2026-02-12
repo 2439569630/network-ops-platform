@@ -22,6 +22,7 @@ from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
 from app.services.notification_service import NotificationService
 from app.utils.notification_sender import send_email
+from app.utils.pg_json import jsonb_param
 import json
 
 router = APIRouter()
@@ -743,9 +744,14 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
     )
 
     return {"code": 200, "status": "success"}
-
 @router.post("/logout")
 async def logout(response: Response, refresh_token: Optional[str] = Cookie(None)):
+    """
+    用户登出
+    
+    清除 Redis 中的 refresh_token 记录，并删除浏览器中的 token 和 refresh_token Cookie
+    """
+    # 如果存在 refresh_token，尝试解析并清除对应的 Redis 记录
     if refresh_token:
         payload = decode_refresh_token(refresh_token)
         if payload:
@@ -753,9 +759,12 @@ async def logout(response: Response, refresh_token: Optional[str] = Cookie(None)
             if jti:
                 try:
                     redis_client = redis_manager.get_client()
+                    # 删除 Redis 中保存的 refresh_token 映射，防止被再次使用
                     await redis_client.delete(_refresh_jti_key(jti))
                 except Exception:
+                    # Redis 操作失败时静默处理，不影响登出主流程
                     pass
+    # 清除浏览器中的 token 和 refresh_token Cookie
     response.delete_cookie(key="token")
     response.delete_cookie(key="refresh_token")
     return {"code": 200, "status": "success"}
@@ -790,7 +799,7 @@ async def register(data: RegisterForm):
     nickname = (data.nickname or "").strip() or username
     email = (data.email or "").strip() or None
     hashed_pw = get_password_hash(password)
-    perms_json = ["sys:monitor:view"]
+    perms_json = jsonb_param(["sys:monitor:view"])
 
     user_id = await db.fetch_val(
         """

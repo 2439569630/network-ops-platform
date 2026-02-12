@@ -1,0 +1,2 @@
+DELETED_USER_DISPLAY_NAME = "已注销用户"
+

@@ -171,33 +171,42 @@ class UserService:
         user = await User.filter(id=uid).first()
         if not user:
             return False
-        if bool(getattr(user, "is_deleted", False)):
-            try:
-                await bump_user_auth_version(int(uid))
-            except Exception:
-                pass
-            return True
-
-        now = datetime.now(tz=timezone.utc)
-        suffix = secrets.token_hex(4)
-        new_username = f"deleted_{uid}_{suffix}"
-        updates = {
-            "username": new_username,
-            "nickname": "已注销用户",
-            "email": None,
-            "avatar_url": None,
-            "is_email_notify": False,
-            "is_approved": False,
-            "is_deleted": True,
-            "deleted_at": now,
-            "deleted_by": int(actor_id) if actor_id is not None else None,
-            "permissions": [],
-        }
-        await User.filter(id=uid).update(**updates)
         try:
             await bump_user_auth_version(int(uid))
         except Exception:
             pass
+        try:
+            from app.services.rbac_service import RbacService
+
+            await RbacService.bump_user_perm_version(int(uid))
+        except Exception:
+            pass
+        try:
+            from app.models.orm.rbac import UserRole
+
+            await UserRole.filter(user_id=int(uid)).delete()
+        except Exception:
+            pass
+        try:
+            from app.models.orm.location import LocationNodeUser
+
+            await LocationNodeUser.filter(user_id=int(uid)).delete()
+        except Exception:
+            pass
+        try:
+            from app.models.orm.alert import AlertSubscription
+
+            await AlertSubscription.filter(subscriber_user_id=int(uid)).delete()
+        except Exception:
+            pass
+        try:
+            from app.models.orm.notification import SiteMessageRead, UserEmailVerification
+
+            await SiteMessageRead.filter(user_id=int(uid)).delete()
+            await UserEmailVerification.filter(user_id=int(uid)).delete()
+        except Exception:
+            pass
+        await User.filter(id=uid).delete()
         return True
 
     @staticmethod

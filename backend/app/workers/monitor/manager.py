@@ -14,6 +14,7 @@ from app.drivers.factory import create_device
 from app.drivers.base import BaseDevice
 from app.drivers.ssh_retry import classify_ssh_failure, compact_exception_message
 from app.core.config import settings
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.core.redis import redis_manager
 from app.services.notification_service import NotificationService
 from app.services.device_event_service import DEVICE_UPDATE_CHANNEL
@@ -1175,7 +1176,7 @@ class MonitorManager:
         devices_data = []
         for d in devices:
             d_dict = dict(d)  # 将 ORM 实例转为字典，方便后续处理
-            d_dict['created_by_name'] = user_map.get(d.created_by, "")  # 根据 user_map 回填创建人用户名
+            d_dict['created_by_name'] = user_map.get(d.created_by) or DELETED_USER_DISPLAY_NAME  # 根据 user_map 回填创建人用户名
             devices_data.append(d_dict)
         
         # 初始化数据库中存在的设备 ID 集合，后续用于比对本地缓存与数据库差异

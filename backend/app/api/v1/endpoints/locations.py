@@ -6,6 +6,7 @@ from app.core.security import PermissionChecker
 from app.schemas.location import LocationNodeCreate, LocationNodeUpdate, LocationNodeMove
 from app.services.location_service import LocationService
 from app.core.database import db
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.models.orm.location import LocationNode, LocationNodeDevice
 from app.models.orm.device import NetworkDevice
 
@@ -232,6 +233,13 @@ async def list_bind_users_by_ids(
         norm = [int(x) for x in (ids or []) if x is not None]
         if not norm:
             return {"code": 200, "data": []}
+        seen: set[int] = set()
+        uniq: list[int] = []
+        for uid in norm:
+            if uid in seen:
+                continue
+            seen.add(uid)
+            uniq.append(uid)
         rows = await db.fetch_all(
             """
             SELECT id, username, nickname, email
@@ -239,8 +247,15 @@ async def list_bind_users_by_ids(
             WHERE id = ANY($1::int[])
             ORDER BY username
             """,
-            norm,
+            uniq,
         )
-        return {"code": 200, "data": [dict(r) for r in (rows or [])]}
+        row_map = {int(r["id"]): dict(r) for r in (rows or []) if r and r.get("id") is not None}
+        data: list[dict] = []
+        for uid in uniq:
+            item = row_map.get(int(uid))
+            if item is None:
+                item = {"id": int(uid), "username": None, "nickname": DELETED_USER_DISPLAY_NAME, "email": None}
+            data.append(item)
+        return {"code": 200, "data": data}
     except Exception as e:
         return {"code": 500, "message": f"获取用户失败: {str(e)}"}

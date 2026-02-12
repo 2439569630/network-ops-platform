@@ -6,14 +6,12 @@ class NotificationConfig(BaseModel):
     """通知配置模型"""
     enable_email: bool
     email_config: Optional[Dict] = None
-    enable_pushplus: bool
-    pushplus_token: Optional[str] = None
     enable_http: bool
     http_url: Optional[str] = None
 
 class TestNotification(BaseModel):
     """通知测试模型"""
-    channel: str # email, pushplus, http
+    channel: str # email, http
     config: Optional[Dict] = None # 如果不传则尝试使用已保存配置
     target: Optional[str] = None # 测试目标（如接收邮箱）
 

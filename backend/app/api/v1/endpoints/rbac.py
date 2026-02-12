@@ -40,6 +40,41 @@ def check_super_admin(user: dict):
 _PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
 
 
+async def _get_role_code(role_id: int) -> str:
+    row = await db.fetch_one("SELECT code FROM roles WHERE id = $1", int(role_id))
+    return str((row or {}).get("code") or "").strip().lower()
+
+
+async def _is_protected_role_id(role_id: int) -> bool:
+    return (await _get_role_code(int(role_id))) in _PROTECTED_ROLE_CODES
+
+
+async def _count_protected_role_users(*, exclude_user_id: int | None = None) -> int:
+    codes = sorted(list(_PROTECTED_ROLE_CODES))
+    if exclude_user_id is None:
+        sql = """
+        SELECT COUNT(DISTINCT ur.user_id) AS cnt
+        FROM user_roles ur
+        INNER JOIN roles r ON r.id = ur.role_id
+        INNER JOIN users u ON u.id = ur.user_id
+        WHERE LOWER(COALESCE(r.code, '')) = ANY($1::text[])
+          AND COALESCE(u.is_deleted, FALSE) = FALSE
+        """
+        val = await db.fetch_val(sql, codes)
+        return int(val or 0)
+    sql = """
+    SELECT COUNT(DISTINCT ur.user_id) AS cnt
+    FROM user_roles ur
+    INNER JOIN roles r ON r.id = ur.role_id
+    INNER JOIN users u ON u.id = ur.user_id
+    WHERE LOWER(COALESCE(r.code, '')) = ANY($1::text[])
+      AND COALESCE(u.is_deleted, FALSE) = FALSE
+      AND ur.user_id <> $2
+    """
+    val = await db.fetch_val(sql, codes, int(exclude_user_id))
+    return int(val or 0)
+
+
 async def _target_has_protected_role(user_id: int) -> bool:
     rows = await db.fetch_all(
         """
@@ -361,6 +396,8 @@ async def add_users_to_role(
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        if await _is_protected_role_id(int(role_id)) and not user_is_super(current_user):
+            return {"code": 403, "message": "仅超级管理员可管理该角色成员"}
         await RbacService.add_users_to_role(role_id, user_ids)
         return {"code": 200, "message": "成员添加成功"}
     except Exception as e:
@@ -375,6 +412,14 @@ async def remove_user_from_role(
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        if await _is_protected_role_id(int(role_id)):
+            if not user_is_super(current_user):
+                return {"code": 403, "message": "仅超级管理员可管理该角色成员"}
+            if int(user_id) == int(current_user.get("id") or 0):
+                return {"code": 400, "message": "不允许将自己从超级管理员角色移除"}
+            remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
+            if remaining <= 0:
+                return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
         await RbacService.remove_user_from_role(role_id, user_id)
         return {"code": 200, "message": "移除成功"}
     except Exception as e:
@@ -397,6 +442,25 @@ async def set_user_roles(
     try:
         if await _target_has_protected_role(int(user_id)) and not check_super_admin(current_user):
             return {"code": 403, "message": "仅超级管理员可操作该用户"}
+        actor_id = int(current_user.get("id") or 0)
+        new_role_ids = [int(rid) for rid in (data.role_ids or []) if rid is not None]
+        new_role_ids = sorted(list(set(new_role_ids)))
+
+        old_has_protected = await _target_has_protected_role(int(user_id))
+        new_has_protected = False
+        if new_role_ids:
+            rows = await db.fetch_all("SELECT code FROM roles WHERE id = ANY($1::int[])", new_role_ids)
+            codes = {str((r or {}).get("code") or "").strip().lower() for r in (rows or [])}
+            codes = {c for c in codes if c}
+            new_has_protected = bool(codes & _PROTECTED_ROLE_CODES)
+
+        if old_has_protected and not new_has_protected:
+            if int(user_id) == actor_id:
+                return {"code": 400, "message": "不允许将自己降级为非超级管理员"}
+            remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
+            if remaining <= 0:
+                return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
+
         await RbacService.set_user_roles(user_id, data.role_ids)
         xff = request.headers.get("x-forwarded-for") if request else None
         ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else None)

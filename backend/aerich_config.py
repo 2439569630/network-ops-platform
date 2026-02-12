@@ -14,6 +14,7 @@ TORTOISE_ORM = {
                 "app.models.orm.rbac",
                 "app.models.orm.location",
                 "app.models.orm.config",
+                "app.models.orm.log",
                 "app.models.orm.alert",
                 "aerich.models",
             ],
