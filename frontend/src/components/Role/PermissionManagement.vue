@@ -8,7 +8,30 @@
         </div>
       </template>
 
-      <el-table :data="tableData" style="width: 100%" v-loading="loading">
+      <div v-if="isMobile" class="mobile-list" v-loading="loading">
+        <el-empty v-if="tableData.length === 0" description="暂无数据" />
+        <div v-for="item in tableData" :key="item.id" class="perm-card">
+          <div class="card-header">
+            <span class="perm-name">{{ item.name }}</span>
+            <div class="actions">
+              <el-button type="primary" link @click="openEdit(item)">编辑</el-button>
+              <el-button type="danger" link @click="handleDelete(item)">删除</el-button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="label">编码:</span>
+              <span class="value code">{{ item.code }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">描述:</span>
+              <span class="value">{{ item.description || '-' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <el-table v-else :data="tableData" style="width: 100%" v-loading="loading">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="名称" width="200" />
         <el-table-column prop="code" label="编码" min-width="220" show-overflow-tooltip />
@@ -22,7 +45,7 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="520px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" :width="isMobile ? '90%' : '520px'">
       <el-form :model="form" label-width="90px">
         <el-form-item label="名称">
           <el-input v-model="form.name" />
@@ -43,7 +66,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, reactive, computed } from 'vue';
+import { onMounted, onBeforeUnmount, ref, reactive, computed } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -51,6 +74,21 @@ const loading = ref(false);
 const saving = ref(false);
 const tableData = ref([]);
 const roleUsersData = ref([]);
+const isMobile = ref(false);
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
+
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  fetchList();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
+});
 
 const dialogVisible = ref(false);
 const editingId = ref(null);
@@ -149,6 +187,8 @@ const handleDelete = async (row) => {
 };
 
 onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
   fetchList();
 });
 </script>

@@ -42,23 +42,65 @@
             placeholder="搜索用户名/昵称/邮箱" 
             prefix-icon="Search" 
             clearable 
-            style="width: 300px" 
+            class="filter-input"
             @clear="handleSearch"
             @keyup.enter="handleSearch"
           />
-          <el-button type="primary" icon="Search" @click="handleSearch">搜索</el-button>
-          <el-button icon="Refresh" @click="resetFilter">重置</el-button>
-          <el-button 
-            type="danger" 
-            icon="Delete" 
-            :disabled="selectedUserIds.length === 0" 
-            @click="handleBatchDelete"
-          >
-            批量删除
-          </el-button>
+          <div class="filter-actions">
+            <el-button type="primary" icon="Search" @click="handleSearch">搜索</el-button>
+            <el-button icon="Refresh" @click="resetFilter">重置</el-button>
+            <el-button 
+              type="danger" 
+              icon="Delete" 
+              :disabled="selectedUserIds.length === 0" 
+              @click="handleBatchDelete"
+            >
+              批量删除
+            </el-button>
+          </div>
         </div>
 
-        <div class="table-container">
+        <div v-if="isMobile" class="mobile-list">
+          <el-empty v-if="tableData.length === 0" description="暂无数据" />
+          <div v-for="item in tableData" :key="item.id" class="user-card">
+            <div class="card-header">
+              <div class="user-main">
+                <span class="username">{{ item.username }}</span>
+                <span class="nickname" v-if="item.nickname">({{ item.nickname }})</span>
+              </div>
+              <el-checkbox 
+                :model-value="selectedUserIds.includes(item.id)"
+                @change="(val) => handleMobileSelection(item, val)"
+              />
+            </div>
+            <div class="card-body">
+              <div class="info-row">
+                <span class="label">邮箱:</span>
+                <span class="value">{{ item.email || '-' }}</span>
+              </div>
+              <div class="info-row role-row">
+                <span class="label">角色:</span>
+                <div class="role-tags">
+                   <el-tag 
+                    v-for="role in item.roles" 
+                    :key="role.id" 
+                    size="small" 
+                  >
+                    {{ role.name }}
+                  </el-tag>
+                  <span v-if="!item.roles || item.roles.length === 0" class="text-gray-400 text-xs">暂无角色</span>
+                </div>
+              </div>
+            </div>
+            <div class="card-actions">
+              <el-button size="small" type="primary" link icon="Edit" @click="handleEditUserRoles(item)">分配角色</el-button>
+              <el-button size="small" type="primary" link icon="Key" @click="handleResetPassword(item)">重置密码</el-button>
+              <el-button size="small" type="danger" link icon="Delete" @click="handleDeleteUser(item)">删除</el-button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="table-container">
           <el-table 
             :data="tableData" 
             border 
@@ -128,6 +170,7 @@
               v-for="role in roles" 
               :key="role.id" 
               :label="role.id"
+              :disabled="isProtectedRole(role) && editingUser && currentUserId && Number(editingUser.id) === Number(currentUserId)"
               border
               class="role-checkbox"
             >
@@ -144,7 +187,7 @@
     </el-dialog>
 
     <!-- Reset Password Dialog -->
-    <el-dialog v-model="resetPwdDialogVisible" title="重置密码" width="400px">
+    <el-dialog v-model="resetPwdDialogVisible" title="重置密码" :width="isMobile ? '90%' : '400px'">
       <div v-if="currentResetUser" class="mb-4">
         正在为用户 <span class="font-bold">{{ currentResetUser.nickname || currentResetUser.username }}</span> 重置密码
       </div>
@@ -168,10 +211,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { User, InfoFilled, UserFilled, Check, Search, Refresh, Edit, Delete, Key } from '@element-plus/icons-vue';
+import { homeDataStore } from '@/components/home/home/data';
 
 const loading = ref(false);
 const roles = ref([]);
@@ -181,11 +225,42 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const searchQuery = ref('');
 const filterRoleId = ref(null);
+const isMobile = ref(false);
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
+
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  (async () => {
+    try {
+      const store = homeDataStore();
+      store.syncAuthFromToken();
+      const session = await store.ensureSession();
+      const id = Number(session?.id);
+      currentUserId.value = Number.isFinite(id) ? id : null;
+    } catch {
+      currentUserId.value = null;
+    }
+  })();
+  fetchRoles();
+  fetchUsers();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
+});
 
 const editDialogVisible = ref(false);
 const editingUser = ref(null);
 const selectedRoleIds = ref([]);
 const saving = ref(false);
+
+const currentUserId = ref(null);
+const protectedRoleCodes = new Set(['superadmin', 'super_admin', 'super-admin']);
+const isProtectedRole = (role) => protectedRoleCodes.has(String(role?.code || '').trim().toLowerCase());
 
 const selectedUserIds = ref([]);
 const resetPwdDialogVisible = ref(false);
@@ -381,8 +456,7 @@ const saveUserRoles = async () => {
 };
 
 onMounted(() => {
-  fetchRoles();
-  fetchUsers();
+  // Removed duplicated onMounted logic, merging it above
 });
 </script>
 
@@ -515,6 +589,13 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 16px;
 }
+.filter-input {
+  width: 300px;
+}
+.filter-actions {
+  display: flex;
+  gap: 10px;
+}
 
 .table-container {
   flex: 1;
@@ -552,5 +633,126 @@ onMounted(() => {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #c0c4cc;
   border-radius: 3px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .rbac-container {
+    height: auto;
+    min-height: 100%;
+  }
+  
+  .rbac-header {
+    height: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 12px;
+    gap: 8px;
+  }
+  
+  .rbac-content {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-input {
+    width: 100% !important;
+  }
+  
+  .filter-actions {
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  .filter-actions .el-button {
+    flex: 1;
+  }
+  
+  .pagination-container {
+    justify-content: center;
+  }
+  
+  .role-checkbox {
+    width: 100% !important;
+    margin-right: 0 !important;
+  }
+  
+  .mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .user-card {
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 8px;
+    padding: 12px;
+    background: #fff;
+  }
+  
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ebeef5;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .user-main {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .username {
+    font-weight: 600;
+    color: #303133;
+  }
+  
+  .nickname {
+    font-size: 12px;
+    color: #909399;
+  }
+  
+  .info-row {
+    display: flex;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  
+  .info-row.role-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .label {
+    color: #606266;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  
+  .value {
+    color: #303133;
+    word-break: break-all;
+  }
+  
+  .role-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .card-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+    border-top: 1px solid #f0f2f5;
+    padding-top: 8px;
+  }
 }
 </style>

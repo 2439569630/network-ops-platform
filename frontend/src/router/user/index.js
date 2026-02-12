@@ -112,7 +112,7 @@ const homeRoutes = [
                 path: 'config',
                 name: 'global-config',
                 component: () => import('@/components/System/GlobalConfig.vue'),
-                meta: { title: '系统设置', roleCodes: ['admin', 'superadmin'] }
+                meta: { title: '通知与图床配置', perms: ['sys:config:view'] }
             },
             {
                 path: 'config-push',

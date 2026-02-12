@@ -15,7 +15,7 @@
           v-model="query.actor_username"
           placeholder="操作者用户名"
           clearable
-          style="max-width: 220px"
+          class="filter-item"
           @keyup.enter="handleSearch"
           @clear="handleSearch"
         />
@@ -23,7 +23,7 @@
           v-model="query.action"
           placeholder="动作（如 user.delete）"
           clearable
-          style="max-width: 240px"
+          class="filter-item"
           @keyup.enter="handleSearch"
           @clear="handleSearch"
         />
@@ -31,7 +31,7 @@
           v-model="query.target_user_id"
           placeholder="目标用户ID"
           clearable
-          style="max-width: 160px"
+          class="filter-item"
           @keyup.enter="handleSearch"
           @clear="handleSearch"
         />
@@ -42,13 +42,43 @@
           start-placeholder="开始时间"
           end-placeholder="结束时间"
           value-format="YYYY-MM-DDTHH:mm:ss"
-          style="max-width: 420px"
+          class="filter-item date-range"
         />
-        <el-button type="primary" @click="handleSearch">查询</el-button>
-        <el-button @click="resetFilter">重置</el-button>
+        <div class="filter-actions">
+          <el-button type="primary" @click="handleSearch">查询</el-button>
+          <el-button @click="resetFilter">重置</el-button>
+        </div>
       </div>
 
-      <el-table :data="tableData" border stripe style="width: 100%" v-loading="loading">
+      <div v-if="isMobile" class="mobile-list" v-loading="loading">
+        <el-empty v-if="tableData.length === 0" description="暂无数据" />
+        <div v-for="item in tableData" :key="item.id" class="audit-card">
+          <div class="card-header">
+            <span class="action-title">{{ item.action_label || item.action }}</span>
+            <span class="time">{{ formatTime(item.created_at) }}</span>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="label">操作者:</span>
+              <span class="value">{{ item.actor_username }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">动作代码:</span>
+              <span class="value code">{{ item.action }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">目标用户ID:</span>
+              <span class="value">{{ item.target_user_id }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">IP地址:</span>
+              <span class="value">{{ item.request_ip }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <el-table v-else :data="tableData" border stripe style="width: 100%" v-loading="loading">
         <el-table-column prop="created_at" label="时间" width="190">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
@@ -73,7 +103,8 @@
           v-model:page-size="query.page_size"
           :total="total"
           :page-sizes="[20, 50, 100, 200]"
-          layout="total, sizes, prev, pager, next, jumper"
+          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
+          :small="isMobile"
           background
           @current-change="fetchLogs"
           @size-change="fetchLogs"
@@ -84,13 +115,28 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, onBeforeUnmount, reactive, ref } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 
 const loading = ref(false);
 const tableData = ref([]);
 const total = ref(0);
+const isMobile = ref(false);
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
+
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  fetchLogs();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
+});
 
 const query = reactive({
   page: 1,
@@ -158,7 +204,11 @@ const resetFilter = async () => {
   await fetchLogs();
 };
 
-onMounted(fetchLogs);
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  fetchLogs();
+});
 </script>
 
 <style scoped>
@@ -184,6 +234,17 @@ onMounted(fetchLogs);
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
+.filter-item {
+  max-width: 200px;
+}
+.date-range {
+  max-width: 360px;
+}
+.filter-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .pagination {
   display: flex;
   justify-content: flex-end;
@@ -201,5 +262,91 @@ onMounted(fetchLogs);
   margin-top: 2px;
   font-size: 12px;
   color: #6b7280;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .audit-page {
+    padding: 12px;
+  }
+  
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-item, .date-range {
+    max-width: 100% !important;
+    width: 100%;
+  }
+  
+  .filter-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  
+  .filter-actions .el-button {
+    width: 100%;
+  }
+  
+  .pagination {
+    justify-content: center;
+  }
+  
+  .mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .audit-card {
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 8px;
+    padding: 12px;
+    background: #fff;
+  }
+  
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+    padding-bottom: 8px;
+  }
+  
+  .action-title {
+    font-weight: 600;
+    color: var(--el-color-primary);
+  }
+  
+  .time {
+    font-size: 12px;
+    color: #909399;
+  }
+  
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  
+  .label {
+    color: #606266;
+  }
+  
+  .value {
+    color: #303133;
+    font-weight: 500;
+  }
+  
+  .value.code {
+    font-family: monospace;
+    background: #f4f4f5;
+    padding: 0 4px;
+    border-radius: 4px;
+  }
 }
 </style>

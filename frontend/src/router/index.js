@@ -102,6 +102,16 @@ const getDefaultAuthedPath = async (store) => {
     return getFirstAccessibleUserPath(ctx)
 }
 
+const shouldSkipLoginEnsureSession = (to) => {
+    const reason = String(to?.query?.reason || '').trim()
+    if (reason) return true
+    try {
+        const ts = Number(sessionStorage.getItem('auth:force_login_at') || 0)
+        if (Number.isFinite(ts) && ts > 0 && Date.now() - ts < 60 * 1000) return true
+    } catch {}
+    return false
+}
+
 
 // 路由守卫
 router.beforeEach(async (to, from, next) => {
@@ -114,16 +124,18 @@ router.beforeEach(async (to, from, next) => {
     store.syncAuthFromToken()
 
     if (to.path === '/login') {
-        try {
-            const session = await store.ensureSession()
-            if (session) {
-                const fallback = await getDefaultAuthedPath(store)
-                if (fallback && fallback !== '/login') {
-                    next(fallback)
-                    return
+        if (!shouldSkipLoginEnsureSession(to)) {
+            try {
+                const session = await store.ensureSession()
+                if (session) {
+                    const fallback = await getDefaultAuthedPath(store)
+                    if (fallback && fallback !== '/login') {
+                        next(fallback)
+                        return
+                    }
                 }
-            }
-        } catch (e) {}
+            } catch (e) {}
+        }
     }
 
     const isProtected = String(to.path || '').startsWith('/user')

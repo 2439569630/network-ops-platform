@@ -1,30 +1,30 @@
 <template>
-  <div class="dashboard-container" v-loading="loading">
+  <div class="dashboard-container" :class="{ 'is-mobile': isMobile }" v-loading="loading">
     <!-- Header Controls -->
     <div class="dashboard-header">
          <div class="left-title">
              <h2>系统总览</h2>
-             <span class="update-time" v-if="lastUpdateTime">更新于: {{ lastUpdateTime }}</span>
+             <span class="update-time" v-if="lastUpdateTime && !isMobile">更新于: {{ lastUpdateTime }}</span>
          </div>
          <div class="right-actions">
-             <el-switch v-model="autoRefresh" active-text="自动刷新" inactive-text="暂停" @change="handleAutoRefreshChange" />
+             <el-switch v-if="!isMobile" v-model="autoRefresh" active-text="自动刷新" inactive-text="暂停" @change="handleAutoRefreshChange" />
              <el-button :icon="Refresh" circle @click="refreshData" :loading="refreshing" class="ml-10" />
-             <el-button :icon="FullScreen" circle @click="toggleFullScreen" class="ml-10" />
+             <el-button v-if="!isMobile" :icon="FullScreen" circle @click="toggleFullScreen" class="ml-10" />
          </div>
     </div>
 
     <!-- 1. Statistics Cards -->
-    <el-row :gutter="20">
-      <el-col :span="6" :xs="12" v-for="(stat, index) in statsCards" :key="index">
+    <el-row :gutter="isMobile ? 12 : 20">
+      <el-col :span="6" :xs="12" v-for="(stat, index) in statsCards" :key="index" class="stat-col">
         <el-card shadow="hover" class="stat-card" @click="handleCardClick(stat.link)">
           <div class="stat-content">
              <div class="stat-icon" :style="{ background: stat.bgColor }">
-                 <el-icon :size="24" color="#fff"><component :is="stat.icon" /></el-icon>
+                 <el-icon :size="isMobile ? 20 : 24" color="#fff"><component :is="stat.icon" /></el-icon>
              </div>
              <div class="stat-info">
                  <div class="stat-label">{{ stat.label }}</div>
                  <div class="stat-num" :style="{ color: stat.color }">{{ stat.value }}</div>
-                 <div class="stat-trend">
+                 <div class="stat-trend" v-if="!isMobile">
                      <span :class="stat.trend >= 0 ? 'up' : 'down'">
                          <el-icon><component :is="stat.trend >= 0 ? 'CaretTop' : 'CaretBottom'" /></el-icon>
                          {{ Math.abs(stat.trend) }}%
@@ -38,9 +38,9 @@
     </el-row>
 
     <!-- 2. Charts Row -->
-    <el-row :gutter="20" class="mt-20">
+    <el-row :gutter="isMobile ? 12 : 20" :class="isMobile ? 'mt-12' : 'mt-20'">
         <!-- Device Status Pie -->
-        <el-col :span="8" :xs="24">
+        <el-col :span="8" :xs="24" class="chart-col">
             <el-card shadow="hover" class="chart-card">
                 <template #header>
                     <div class="card-header">
@@ -54,12 +54,12 @@
             </el-card>
         </el-col>
         <!-- Alert Distribution Bar -->
-        <el-col :span="8" :xs="24">
+        <el-col :span="8" :xs="24" class="chart-col">
              <el-card shadow="hover" class="chart-card">
                 <template #header>
                     <div class="card-header">
                         <span>告警级别分布</span>
-                        <el-dropdown>
+                        <el-dropdown trigger="click">
                             <span class="el-dropdown-link">本周<el-icon class="el-icon--right"><arrow-down /></el-icon></span>
                             <template #dropdown>
                                 <el-dropdown-menu>
@@ -77,7 +77,7 @@
             </el-card>
         </el-col>
         <!-- Resource Trend Line -->
-        <el-col :span="8" :xs="24">
+        <el-col :span="8" :xs="24" class="chart-col">
              <el-card shadow="hover" class="chart-card">
                 <template #header>
                     <div class="card-header">
@@ -92,8 +92,8 @@
     </el-row>
 
     <!-- 3. Alert List & Top Resources -->
-    <el-row :gutter="20" class="mt-20">
-      <el-col :span="14" :xs="24">
+    <el-row :gutter="isMobile ? 12 : 20" :class="isMobile ? 'mt-12' : 'mt-20'">
+      <el-col :span="14" :xs="24" class="list-col">
         <el-card class="box-card" shadow="hover">
           <template #header>
             <div class="card-header">
@@ -110,7 +110,7 @@
               </div>
             </div>
           </template>
-          <el-table :data="filteredAlerts" style="width: 100%" height="350" :row-class-name="tableRowClassName">
+          <el-table :data="filteredAlerts" style="width: 100%" height="350" :row-class-name="tableRowClassName" :size="isMobile ? 'small' : 'default'">
             <el-table-column prop="level" label="级别" width="80">
                 <template #default="{ row }">
                     <el-tag :type="getAlertTagType(row.level)" size="small" effect="dark">{{ row.level }}</el-tag>
@@ -118,8 +118,8 @@
             </el-table-column>
             <el-table-column prop="device_name" label="设备" width="120" show-overflow-tooltip />
             <el-table-column prop="message" label="内容" show-overflow-tooltip />
-            <el-table-column prop="time" label="时间" width="100" />
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column prop="time" label="时间" width="100" v-if="!isMobile" />
+            <el-table-column label="操作" width="100" align="center" fixed="right">
                  <template #default="{ row }">
                      <el-button link type="primary" size="small" @click="handleAlertAction(row, 'check')">查看</el-button>
                      <el-button link type="success" size="small" @click="handleAlertAction(row, 'resolve')">处理</el-button>
@@ -129,7 +129,7 @@
         </el-card>
       </el-col>
       
-      <el-col :span="10" :xs="24">
+      <el-col :span="10" :xs="24" class="list-col">
         <el-card class="box-card" shadow="hover">
           <template #header>
             <div class="card-header">
@@ -139,8 +139,8 @@
               </el-tooltip>
             </div>
           </template>
-           <el-table :data="topUsageDevices" style="width: 100%" height="350">
-            <el-table-column prop="device_name" label="设备" width="120" show-overflow-tooltip />
+           <el-table :data="topUsageDevices" style="width: 100%" height="350" :size="isMobile ? 'small' : 'default'">
+            <el-table-column prop="device_name" label="设备" width="100" show-overflow-tooltip />
             <el-table-column label="CPU / 内存">
                 <template #default="scope">
                     <div class="resource-bar">
@@ -153,7 +153,7 @@
                     </div>
                 </template>
             </el-table-column>
-            <el-table-column width="50">
+            <el-table-column width="50" fixed="right">
                  <template #default="scope">
                      <el-button :icon="ArrowRight" circle size="small" @click="goToDevice(scope.row)" />
                  </template>
@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDeviceStore } from '@/components/DeviceList/store'
 import { ElMessage, ElNotification } from 'element-plus'
@@ -189,6 +189,9 @@ use([CanvasRenderer, PieChart, BarChart, LineChart, TitleComponent, TooltipCompo
 const router = useRouter()
 const store = useDeviceStore()
 
+const isMobile = ref(window.innerWidth < 768)
+const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
+
 // State
 const loading = ref(false)
 const refreshing = ref(false)
@@ -207,6 +210,7 @@ const alertStatsData = reactive({
 
 // Initial Data Load
 onMounted(async () => {
+    window.addEventListener('resize', checkMobile)
     loading.value = true
     await refreshData()
     loading.value = false
@@ -219,6 +223,10 @@ onMounted(async () => {
 onUnmounted(() => {
     stopAutoRefresh()
     // store.stopPolling() // App.vue manages global connection
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', checkMobile)
 })
 
 const startAutoRefresh = () => {
@@ -436,12 +444,22 @@ const handleAlertAction = (row, type) => {
     background-color: #f5f7fa;
     min-height: 100vh;
 }
+
+.dashboard-container.is-mobile {
+    padding: 12px;
+}
+
 .dashboard-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
 }
+
+.is-mobile .dashboard-header {
+    margin-bottom: 12px;
+}
+
 .left-title h2 { margin: 0; display: inline-block; margin-right: 15px; }
 .update-time { font-size: 12px; color: #909399; }
 
@@ -455,10 +473,22 @@ const handleAlertAction = (row, type) => {
     transform: translateY(-5px);
     box-shadow: 0 10px 20px rgba(0,0,0,0.1);
 }
+
+.is-mobile .stat-card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .stat-content {
     display: flex;
     align-items: center;
 }
+
+.is-mobile .stat-content {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
 .stat-icon {
     width: 50px;
     height: 50px;
@@ -468,12 +498,35 @@ const handleAlertAction = (row, type) => {
     justify-content: center;
     margin-right: 15px;
 }
+
+.is-mobile .stat-icon {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 8px;
+    margin-right: 0;
+}
+
 .stat-label { font-size: 14px; color: #909399; }
+.is-mobile .stat-label { font-size: 12px; }
+
 .stat-num { font-size: 24px; font-weight: bold; margin: 5px 0; }
+.is-mobile .stat-num { font-size: 18px; margin: 4px 0; }
+
 .stat-trend { font-size: 12px; display: flex; gap: 5px; }
 .up { color: #F56C6C; display: flex; align-items: center; }
 .down { color: #67C23A; display: flex; align-items: center; }
 .trend-text { color: #C0C4CC; }
+
+/* Mobile Grid Adjustments */
+.stat-col {
+    margin-bottom: 12px;
+}
+.chart-col {
+    margin-bottom: 12px;
+}
+.list-col {
+    margin-bottom: 12px;
+}
 
 /* Charts */
 .chart-card {
@@ -481,10 +534,20 @@ const handleAlertAction = (row, type) => {
     display: flex;
     flex-direction: column;
 }
+
+.is-mobile .chart-card {
+    height: 300px;
+}
+
 .chart-container {
     height: 280px;
     width: 100%;
 }
+
+.is-mobile .chart-container {
+    height: 230px;
+}
+
 .chart {
     height: 100%;
     width: 100%;
@@ -499,6 +562,7 @@ const handleAlertAction = (row, type) => {
 .header-left { display: flex; align-items: center; }
 .ml-10 { margin-left: 10px; }
 .mt-5 { margin-top: 5px; }
+.mt-12 { margin-top: 12px; }
 .mt-20 { margin-top: 20px; }
 .resource-bar {
     display: flex;

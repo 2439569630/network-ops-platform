@@ -1,11 +1,11 @@
 <template>
-  <div class="repair-detail-wrapper">
+  <div class="repair-detail-wrapper" :class="{ 'is-mobile': isMobile }">
     <div class="page-header">
-        <el-page-header @back="goBack" title="返回列表">
+        <el-page-header @back="goBack" :title="isMobile ? '' : '返回列表'" :icon="ArrowLeft">
             <template #content>
                 <div class="header-content">
                     <span class="header-title">工单详情 #{{ order?.id }}</span>
-                    <el-tag v-if="order" :type="getStatusType(order)" effect="dark" round>
+                    <el-tag v-if="order" :type="getStatusType(order)" effect="dark" round size="small">
                         {{ getStatusLabel(order) }}
                     </el-tag>
                 </div>
@@ -13,6 +13,7 @@
             <template #extra>
                 <div class="header-actions">
                     <el-button
+                        v-if="!isMobile"
                         class="hidden-xs-only"
                         style="background-color: #409EFF; border-color: #409EFF; color: #fff;"
                         @mouseover="this.style.backgroundColor='#66b1ff'; this.style.borderColor='#66b1ff'"
@@ -26,10 +27,11 @@
                         plain 
                         icon="Edit"
                         @click="dialogStatusVisible = true"
+                        :size="isMobile ? 'small' : 'default'"
                         class="status-btn-mobile"
-                    >修改状态</el-button>
+                    >{{ isMobile ? '改状态' : '修改状态' }}</el-button>
                     
-                    <el-button icon="Refresh" circle @click="fetchDetail" />
+                    <el-button icon="Refresh" circle @click="fetchDetail" :size="isMobile ? 'small' : 'default'" />
                 </div>
             </template>
         </el-page-header>
@@ -40,18 +42,18 @@
             <!-- 左侧主要内容 -->
             <el-col :xs="24" :lg="16">
                 <!-- 流程进度 -->
-                <el-card class="step-card" shadow="hover">
-                    <el-steps :active="currentStep" finish-status="success" align-center>
-                        <el-step title="提交工单" :description="formatDate(order?.created_at)" />
-                        <el-step title="待接单" description="等待分配/抢单" />
-                        <el-step title="维修中" description="师傅已接单" />
-                        <el-step title="已完成" description="服务已结束" />
-                        <el-step title="已评价" description="用户已反馈" />
+                <el-card class="step-card" :shadow="isMobile ? 'never' : 'hover'">
+                    <el-steps :active="currentStep" finish-status="success" :align-center="!isMobile" :direction="isMobile ? 'vertical' : 'horizontal'">
+                        <el-step title="提交" :description="formatDate(order?.created_at)" />
+                        <el-step title="待接单" />
+                        <el-step title="维修中" />
+                        <el-step title="已完成" />
+                        <el-step title="已评价" />
                     </el-steps>
                 </el-card>
 
                 <!-- 故障详情 -->
-                <el-card class="detail-card" shadow="hover">
+                <el-card class="detail-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Document /></el-icon> 故障详情
@@ -80,13 +82,10 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- 图片附件展示区 (预留) -->
-                    <!-- <div class="attachments" v-if="order?.images?.length">...</div> -->
                 </el-card>
 
                 <!-- 关联设备 -->
-                <el-card v-if="order?.location_id || order?.location_name" class="device-card" shadow="hover">
+                <el-card v-if="order?.location_id || order?.location_name" class="device-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Monitor /></el-icon> 关联设备
@@ -150,7 +149,7 @@
                 </el-card>
 
                 <!-- 工作记录 (新增) -->
-                <el-card class="work-log-card" shadow="hover">
+                <el-card class="work-log-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Tools /></el-icon> 维修工作记录
@@ -189,7 +188,7 @@
                 </el-card>
 
                 <!-- 处理记录 -->
-                <el-card class="log-card" shadow="hover">
+                <el-card class="log-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Timer /></el-icon> 处理记录
@@ -221,7 +220,7 @@
                 </el-card>
 
                  <!-- 用户评价 -->
-                <el-card v-if="order?.review" class="review-card" shadow="hover">
+                <el-card v-if="order?.review" class="review-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Star /></el-icon> 用户评价
@@ -239,8 +238,8 @@
 
             <!-- 右侧侧边栏 -->
             <el-col :xs="24" :lg="8">
-                <!-- 操作面板 -->
-                <el-card class="action-card" shadow="hover">
+                <!-- 操作面板 (PC Only) -->
+                <el-card v-if="!isMobile" class="action-card" shadow="hover">
                     <template #header>
                         <div class="card-title">工单操作</div>
                     </template>
@@ -278,7 +277,7 @@
                 </el-card>
 
                 <!-- 基本信息卡片 -->
-                <el-card class="meta-card" shadow="hover">
+                <el-card class="meta-card" :shadow="isMobile ? 'never' : 'hover'">
                     <div class="meta-list">
                         <div class="meta-item">
                             <span class="label">报修人</span>
@@ -300,6 +299,34 @@
                 </el-card>
             </el-col>
         </el-row>
+    </div>
+
+    <!-- Mobile Fixed Footer Actions -->
+    <div v-if="isMobile && ['pending', 'processing'].includes(order?.status)" class="mobile-footer-actions">
+        <!-- 管理员: 派单 -->
+        <div v-if="isAdmin && order?.status === 'pending'" class="action-group">
+            <el-button type="primary" @click="dialogAssignVisible = true">指派</el-button>
+            <el-button @click="handleAutoAssign">自动派单</el-button>
+        </div>
+
+        <!-- 维修人员: 接单 -->
+        <div v-if="isMaintenance && order?.status === 'pending'" class="action-group">
+            <el-button type="primary" @click="handleAccept">接单</el-button>
+        </div>
+
+        <!-- 处理中: 完成 -->
+        <div v-if="(isMaintenance || isAdmin) && order?.status === 'processing'" class="action-group">
+            <el-button type="success" @click="handleComplete">完成</el-button>
+        </div>
+        
+        <!-- 通用: 取消 (仅未结束) -->
+        <div v-if="['pending', 'processing'].includes(order?.status)" class="action-group">
+            <el-popconfirm title="确定要取消吗？" @confirm="handleCancel">
+                <template #reference>
+                    <el-button type="danger" plain icon="Close">取消</el-button>
+                </template>
+            </el-popconfirm>
+        </div>
     </div>
 
     <!-- 弹窗：派单 -->
@@ -430,6 +457,9 @@ const locationTreeLoaded = ref(false);
 const locationTreeForbidden = ref(false);
 const locationNodeById = reactive({});
 const store = homeDataStore();
+
+const isMobile = ref(window.innerWidth < 768)
+const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 // Dialogs
 const dialogAssignVisible = ref(false);
@@ -999,6 +1029,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+    window.removeEventListener('resize', checkMobile)
     if (nowTimer) {
         clearInterval(nowTimer)
         nowTimer = null
@@ -1013,11 +1044,26 @@ onBeforeUnmount(() => {
     padding-bottom: 40px;
 }
 
+.repair-detail-wrapper.is-mobile {
+    padding-bottom: 80px; /* Space for fixed footer */
+    background-color: #fff;
+}
+
 .page-header {
     background: #fff;
     padding: 16px 24px;
     box-shadow: 0 1px 4px rgba(0,21,41,.08);
     margin-bottom: 24px;
+}
+
+.is-mobile .page-header {
+    padding: 12px 16px;
+    margin-bottom: 0;
+    border-bottom: 1px solid #f0f0f0;
+    box-shadow: none;
+    position: sticky;
+    top: 0;
+    z-index: 99;
 }
 
 .header-content {
@@ -1033,10 +1079,18 @@ onBeforeUnmount(() => {
     white-space: nowrap;
 }
 
+.is-mobile .header-title {
+    font-size: 16px;
+}
+
 .main-content {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 20px;
+}
+
+.is-mobile .main-content {
+    padding: 12px 16px;
 }
 
 /* Cards */
@@ -1045,6 +1099,17 @@ onBeforeUnmount(() => {
     border-radius: 8px;
     border: none;
     box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05) !important;
+}
+
+.is-mobile .step-card, 
+.is-mobile .detail-card, 
+.is-mobile .log-card, 
+.is-mobile .review-card, 
+.is-mobile .meta-card, 
+.is-mobile .device-card {
+    box-shadow: none !important;
+    border: 1px solid #ebeef5;
+    margin-bottom: 16px;
 }
 
 .card-title {
@@ -1062,6 +1127,11 @@ onBeforeUnmount(() => {
     gap: 20px;
 }
 
+.is-mobile .info-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
 .info-item {
     display: flex;
     flex-direction: column;
@@ -1070,6 +1140,10 @@ onBeforeUnmount(() => {
 
 .info-item.full-width {
     grid-column: span 2;
+}
+
+.is-mobile .info-item.full-width {
+    grid-column: span 1;
 }
 
 .info-item label {
@@ -1117,6 +1191,33 @@ onBeforeUnmount(() => {
     color: #909399;
     font-size: 13px;
     padding: 10px 0;
+}
+
+/* Mobile Fixed Footer */
+.mobile-footer-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #fff;
+    padding: 12px 16px;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    z-index: 100;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mobile-footer-actions .action-group {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+}
+
+.mobile-footer-actions .el-button {
+    flex: 1;
+    margin: 0;
 }
 
 /* Meta List */
@@ -1292,26 +1393,6 @@ onBeforeUnmount(() => {
 
 :deep(.hide-upload-btn .el-upload--picture-card) {
     display: none;
-}
-
-@media (max-width: 768px) {
-    .main-content {
-        padding: 0 10px;
-    }
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
-    .info-item.full-width {
-        grid-column: span 1;
-    }
-    
-    .upload-options {
-        gap: 10px;
-    }
-    
-    .upload-btn {
-        padding: 15px;
-    }
 }
 </style>
 

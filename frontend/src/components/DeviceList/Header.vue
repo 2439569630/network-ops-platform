@@ -1,7 +1,18 @@
 <template>
-    <div class="device-list-container">
+    <div class="device-list-container" :class="{ 'is-mobile': isMobile }">
         <div class="device-list-header">
-            <div class="header-left">
+            <!-- Mobile Tabs Row (Above Search) -->
+            <div class="header-tabs-row" v-if="isMobile">
+                 <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="mobile-tabs-header">
+                    <el-tab-pane label="全部" name="0"></el-tab-pane>
+                    <el-tab-pane label="路由" name="1"></el-tab-pane>
+                    <el-tab-pane label="交换" name="2"></el-tab-pane>
+                    <el-tab-pane label="防火" name="3"></el-tab-pane>
+                    <el-tab-pane label="服务" name="4"></el-tab-pane>
+                </el-tabs>
+            </div>
+
+            <div class="header-left" v-if="!isMobile">
                 <h1 class="page-title">设备管理</h1>
                 <p class="page-subtitle">管理网络设备</p>
             </div>
@@ -11,7 +22,7 @@
                     <el-input 
                         v-model="searchInput" 
                         class="search-input"
-                        placeholder="搜索设备名称、IP地址或位置..." 
+                        placeholder="搜索设备..." 
                         :prefix-icon="Search"
                         clearable
                         @clear="handleSearch"
@@ -21,6 +32,15 @@
                         type="primary" 
                         @click="handleSearch()" 
                         class="search-btn"
+                        :icon="Search"
+                        circle
+                        v-if="isMobile"
+                    />
+                     <el-button 
+                        type="primary" 
+                        @click="handleSearch()" 
+                        class="search-btn"
+                        v-else
                     >
                         搜索
                     </el-button>
@@ -33,11 +53,12 @@
                     :icon="Plus" 
                     @click="addDevice"
                     class="action-btn primary"
+                    :circle="isMobile"
                 >
-                    添加设备
+                    <span v-if="!isMobile">添加设备</span>
                 </el-button>
                 <el-button
-                    v-if="canRecycle"
+                    v-if="canRecycle && !isMobile"
                     type="warning"
                     :icon="Delete"
                     @click="goRecyclePage"
@@ -45,6 +66,14 @@
                 >
                     回收站
                 </el-button>
+                 <el-button
+                    v-if="canRecycle && isMobile"
+                    type="warning"
+                    :icon="Delete"
+                    @click="goRecyclePage"
+                    class="action-btn"
+                    circle
+                />
                 
             </div>
         </div>
@@ -53,17 +82,18 @@
         <el-dialog 
             v-model="dialogFormVisible" 
             title="添加新设备" 
-            width="600px" 
+            :width="isMobile ? '90%' : '600px'"
             class="device-dialog"
             center
             :close-on-click-modal="false"
             destroy-on-close
+            append-to-body
         >
             <el-form 
                 :model="deviceForm" 
                 :rules="rules" 
                 ref="deviceFormRef" 
-                label-width="90px"
+                :label-width="isMobile ? '70px' : '90px'"
                 label-position="right"
                 class="device-form"
                 status-icon
@@ -169,7 +199,7 @@
                             plain
                             type="warning"
                         >
-                            {{ testing ? '连接测试中...' : '测试连接' }}
+                            {{ testing ? '测试' : (isMobile ? '测试' : '测试连接') }}
                         </el-button>
                     </div>
                     <div class="footer-right">
@@ -179,7 +209,7 @@
                             @click="submitForm"
                             :loading="submitting"
                         >
-                            确定添加
+                            确定
                         </el-button>
                     </div>
                 </div>
@@ -190,16 +220,24 @@
 
 <script setup>
 import { Plus, Upload, Search, Connection, User, Lock, Location, Delete } from '@element-plus/icons-vue'
-import { computed, onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from '@/axios/axios'
 import { ElMessage } from 'element-plus'
-import { useDeviceStore } from './store' // 引入 Store
+import { useDeviceStore } from './store' 
 import { homeDataStore } from '@/components/home/home/data'
 
-const store = useDeviceStore() // 使用 Store
+const store = useDeviceStore() 
 const authStore = homeDataStore()
 const router = useRouter()
+
+// 移动端检测
+const isMobile = ref(false)
+let mobileMediaQuery = null
+let mobileMediaListener = null
+
+// Tab State for Mobile Header
+const activeTab = ref('0')
 
 // 搜索输入
 const searchInput = ref('')
@@ -214,6 +252,28 @@ const canRecycle = computed(() => Boolean(authStore.isSuper) || (Array.isArray(a
 onMounted(() => {
     authStore.syncAuthFromToken()
     authStore.fetchPermissions()
+    
+    // Mobile Check
+    mobileMediaQuery = window.matchMedia('(max-width: 768px)')
+    mobileMediaListener = () => {
+        isMobile.value = mobileMediaQuery.matches
+    }
+    mobileMediaListener()
+    if (mobileMediaQuery.addEventListener) {
+        mobileMediaQuery.addEventListener('change', mobileMediaListener)
+    } else {
+        mobileMediaQuery.addListener(mobileMediaListener)
+    }
+})
+
+onBeforeUnmount(() => {
+    if (mobileMediaQuery && mobileMediaListener) {
+        if (mobileMediaQuery.removeEventListener) {
+            mobileMediaQuery.removeEventListener('change', mobileMediaListener)
+        } else {
+            mobileMediaQuery.removeListener(mobileMediaListener)
+        }
+    }
 })
 
 // 设备表单
@@ -276,6 +336,12 @@ const handleSearch = () => {
     // store.refreshData() // store 内部如果需要自动刷新会在 setSearchQuery 处理，或者这里显式调用
     store.refreshData()
 }
+
+const handleTabClick = (tab) => {
+    store.clearData();
+    store.setdataCardType(0); // Ensure card view
+    store.getServerDveiceData(tab.paneName);
+};
 
 // 打开添加设备弹窗
 const addDevice = () => {
@@ -518,14 +584,133 @@ const testConnect = async () => {
 
 /* 响应式适配 */
 @media (max-width: 768px) {
+    /* Minimalist Mobile Header */
+    .device-list-container.is-mobile {
+        margin-top: 0;
+        background: #fff;
+    }
+
     .device-list-header {
-        flex-direction: column;
+        padding: 12px 16px;
+        box-shadow: 0 4px 12px rgba(255, 255, 255, 0.9); /* Add white shadow/glow to mask underlying content */
+        border-bottom: 1px solid #f0f0f0;
+        border-radius: 0;
+        background: #fff; /* Ensure solid white background */
+        gap: 12px;
+        flex-direction: column; /* Stack tabs and search */
         align-items: stretch;
+        justify-content: flex-start;
+        position: relative;
+        top: auto;
+        z-index: 101; /* High z-index to stay above Tabs */
+    }
+
+    .header-tabs-row {
+        width: 100%;
+        margin-bottom: 4px;
+        border-bottom: 1px solid #f0f0f0;
     }
     
+    .mobile-tabs-header :deep(.el-tabs__header) {
+        margin: 0;
+    }
+
+    .mobile-tabs-header :deep(.el-tabs__nav-wrap::after) {
+        height: 0;
+    }
+
+    .mobile-tabs-header :deep(.el-tabs__item) {
+        font-size: 15px;
+        color: #64748b;
+        font-weight: 500;
+        height: 40px;
+        line-height: 40px;
+        padding: 0 16px;
+    }
+
+    .mobile-tabs-header :deep(.el-tabs__item.is-active) {
+        color: #1e3a8a;
+        font-weight: 600;
+    }
+
+    .mobile-tabs-header :deep(.el-tabs__active-bar) {
+        background-color: #1e3a8a;
+        height: 3px;
+        border-radius: 3px;
+    }
+
     .header-center {
-        order: 3;
+        order: 2;
+        flex: none;
         width: 100%;
+        display: flex;
+        justify-content: space-between; /* Align search and buttons */
+        align-items: center;
+    }
+
+    .search-box {
+        max-width: none;
+        width: auto;
+        flex: 1;
+        gap: 8px;
+        margin-right: 8px;
+    }
+    
+    .header-right {
+        order: 2; /* Same line as search */
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    
+    .action-btn {
+        height: 36px;
+        width: 36px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: #1e3a8a; /* Primary Blue */
+        box-shadow: none;
+    }
+    
+    .action-btn:hover, .action-btn:active {
+        background: rgba(30, 58, 138, 0.05);
+        color: #1e3a8a;
+    }
+
+    .action-btn.primary {
+        background: #1e3a8a;
+        color: #fff;
+        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.3); /* Subtle shadow */
+    }
+
+    /* Dialog Mobile Optimization */
+    .device-dialog :deep(.el-dialog) {
+        border-radius: 20px; /* Modern rounded corners */
+        margin-top: 10vh !important;
+    }
+    
+    .device-dialog :deep(.el-dialog__header) {
+        padding: 20px;
+        background: #fff;
+        border-bottom: none;
+        text-align: left;
+    }
+    
+    .device-dialog :deep(.el-dialog__title) {
+        color: #1e3a8a;
+        font-size: 20px;
+        font-weight: 700;
+    }
+    
+    .device-dialog :deep(.el-dialog__body) {
+        padding: 0 20px 20px;
+    }
+    
+    .form-section-title {
+        color: #1e3a8a;
+        border-left: 3px solid #1e3a8a;
+        font-size: 15px;
+        margin-top: 12px;
     }
     
     .form-row {
@@ -535,7 +720,8 @@ const testConnect = async () => {
     
     .dialog-footer {
         flex-direction: column-reverse;
-        gap: 16px;
+        gap: 12px;
+        padding-top: 10px;
     }
     
     .footer-left, .footer-right {
@@ -546,10 +732,26 @@ const testConnect = async () => {
     .footer-right {
         display: grid;
         grid-template-columns: 1fr 1fr;
+        gap: 12px;
     }
     
     .footer-right button {
         width: 100%;
+        height: 44px; /* Taller for touch */
+        border-radius: 12px;
+        font-weight: 600;
+    }
+    
+    .footer-right button.el-button--primary {
+        background: #1e3a8a;
+        border-color: #1e3a8a;
+        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.25);
+    }
+    
+    .test-btn {
+        width: 100%;
+        border-radius: 12px;
+        height: 40px;
     }
 }
 </style>

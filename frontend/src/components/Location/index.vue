@@ -1,7 +1,7 @@
 <template>
-  <div class="location-container" v-loading="globalLoading">
+  <div class="location-container" :class="{ 'is-mobile': isMobile }" v-loading="globalLoading">
     <!-- 侧边栏：位置树 -->
-    <div class="sidebar-card">
+    <div class="sidebar-card" v-show="!isMobile || !showMobileDetail">
       <div class="sidebar-header">
         <span class="sidebar-title">位置导航</span>
         <el-button-group class="sidebar-actions">
@@ -61,12 +61,15 @@
     </div>
 
     <!-- 主内容区 -->
-    <div class="main-content">
+    <div class="main-content" v-show="!isMobile || showMobileDetail">
       <div v-if="currentNode" class="content-wrapper">
         <!-- 顶部头信息 -->
         <div class="content-header">
             <div class="header-left">
-                <div class="breadcrumb-area">
+                <div class="mobile-back-row" v-if="isMobile">
+                    <el-button link :icon="ArrowLeft" @click="handleMobileBack" class="back-btn">返回列表</el-button>
+                </div>
+                <div class="breadcrumb-area" v-else>
                     <el-breadcrumb separator="/">
                         <el-breadcrumb-item v-for="(item, index) in breadcrumbList" :key="index">{{ item }}</el-breadcrumb-item>
                     </el-breadcrumb>
@@ -216,14 +219,14 @@
     <el-dialog 
         v-model="dialogVisible" 
         :title="dialogTitle" 
-        width="580px"
+        :width="isMobile ? '90%' : '580px'"
         :close-on-click-modal="false"
         destroy-on-close
         class="location-dialog"
         center
         append-to-body
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" class="location-form" hide-required-asterisk>
+      <el-form ref="formRef" :model="form" :rules="rules" :label-width="isMobile ? '70px' : '90px'" class="location-form" hide-required-asterisk>
         <!-- 核心信息 -->
         <div class="form-section">
             <el-row :gutter="20">
@@ -234,7 +237,7 @@
                       </el-input>
                     </el-form-item>
                 </el-col>
-                <el-col :span="12">
+                <el-col :span="isMobile ? 24 : 12">
                     <el-form-item label="类型" prop="type">
                       <el-select v-model="form.type" placeholder="请选择类型" :disabled="formType === 'edit' && form.type === 'school'" style="width: 100%">
                         <template #prefix><el-icon><Menu /></el-icon></template>
@@ -248,7 +251,7 @@
                       </el-select>
                     </el-form-item>
                 </el-col>
-                 <el-col :span="12">
+                 <el-col :span="isMobile ? 24 : 12">
                      <el-form-item label="状态">
                         <el-radio-group v-model="form.status" style="width: 100%">
                             <el-radio-button :label="true">启用</el-radio-button>
@@ -365,8 +368,8 @@
     </el-dialog>
 
     <!-- Add Device Dialog -->
-    <el-dialog v-model="deviceDialogVisible" title="添加设备" width="500px" append-to-body>
-        <el-form :model="deviceForm" label-width="80px">
+    <el-dialog v-model="deviceDialogVisible" title="添加设备" :width="isMobile ? '90%' : '500px'" append-to-body>
+        <el-form :model="deviceForm" :label-width="isMobile ? '70px' : '80px'">
             <el-form-item label="选择设备">
                  <el-select 
                     v-model="deviceForm.deviceId" 
@@ -401,7 +404,7 @@ import {
     Plus, Edit, Delete, Search, Refresh, Sort, 
     School, OfficeBuilding, House, Location,
     CopyDocument, Warning, ArrowDown, User, Monitor, Lock,
-    Menu, Setting, Key, Reading, Management, Place
+    Menu, Setting, Key, Reading, Management, Place, ArrowLeft
 } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { homeDataStore } from '@/components/home/home/data'
@@ -422,6 +425,12 @@ const deviceStore = useDeviceStore()
 store.syncAuthFromToken()
 const nowTick = ref(Date.now())
 let nowTimer = null
+
+// Mobile Logic
+const isMobile = ref(false)
+const showMobileDetail = ref(false)
+let mobileMediaQuery = null
+let mobileMediaListener = null
 
 // Dialogs
 const dialogVisible = ref(false)
@@ -548,6 +557,9 @@ const highlightText = (text) => {
 const handleNodeClick = async (data) => {
     detailLoading.value = true
     currentNode.value = data
+    if (isMobile.value) {
+        showMobileDetail.value = true
+    }
     ensureUsersByIds(currentNode.value?.userIds)
     
     // Fetch real devices
@@ -1026,17 +1038,45 @@ const getDeviceStatusModel = (row) => {
     return found || row
 }
 
+const handleMobileBack = () => {
+    showMobileDetail.value = false
+    currentNode.value = null
+}
+
 onMounted(async () => {
     store.syncAuthFromToken()
     await store.fetchPermissions({ force: false })
     await fetchTree()
     deviceStore.startRealtime()
+    
+    // Mobile Check
+    mobileMediaQuery = window.matchMedia('(max-width: 768px)')
+    mobileMediaListener = () => {
+        isMobile.value = mobileMediaQuery.matches
+        if (!isMobile.value) showMobileDetail.value = false
+    }
+    mobileMediaListener()
+    if (mobileMediaQuery.addEventListener) {
+        mobileMediaQuery.addEventListener('change', mobileMediaListener)
+    } else {
+        mobileMediaQuery.addListener(mobileMediaListener)
+    }
+
+    // Timer
     nowTimer = window.setInterval(() => {
         nowTick.value = Date.now()
     }, 1000)
 })
 
 onBeforeUnmount(() => {
+    if (mobileMediaQuery && mobileMediaListener) {
+        if (mobileMediaQuery.removeEventListener) {
+            mobileMediaQuery.removeEventListener('change', mobileMediaListener)
+        } else {
+            mobileMediaQuery.removeListener(mobileMediaListener)
+        }
+    }
+    
     if (nowTimer) {
         clearInterval(nowTimer)
         nowTimer = null
@@ -1310,6 +1350,79 @@ onBeforeUnmount(() => {
     }
     .details-grid {
         flex-direction: column;
+    }
+}
+
+@media (max-width: 768px) {
+    .location-container.is-mobile {
+        padding: 0;
+        display: block;
+        background: #fff;
+    }
+
+    .sidebar-card, .main-content {
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+    }
+    
+    .stats-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .mobile-back-row {
+        margin-bottom: 12px;
+        border-bottom: 1px solid #f0f0f0;
+        padding-bottom: 8px;
+        width: 100%;
+    }
+    
+    .back-btn {
+        font-size: 16px;
+        padding-left: 0;
+        color: #606266;
+    }
+
+    .content-wrapper {
+        padding: 16px;
+    }
+    
+    .content-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .header-right {
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+    }
+    
+    .node-title {
+        font-size: 20px;
+    }
+    
+    /* Enhance touch targets */
+    .custom-tree-node {
+        padding: 8px 0;
+    }
+    :deep(.el-tree-node__content) {
+        height: 44px;
+    }
+
+    /* Dialog fixes for mobile */
+    .location-dialog .el-dialog__body {
+        padding: 16px !important;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .filter-bar {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 </style>

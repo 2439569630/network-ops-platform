@@ -210,20 +210,6 @@
                 </template>
 
                 <el-form label-position="top">
-                  <el-form-item label="开启 PushPlus">
-                    <el-switch v-model="config.enable_pushplus" :disabled="!canEditConfig" />
-                  </el-form-item>
-                  <el-form-item label="PushPlus Token" v-if="config.enable_pushplus">
-                    <el-row :gutter="12">
-                      <el-col :xs="24" :sm="16">
-                        <el-input v-model="config.pushplus_token" placeholder="PushPlus Token" :disabled="!canEditConfig" />
-                      </el-col>
-                      <el-col :xs="24" :sm="8">
-                        <el-button style="width: 100%" @click="handleTest('pushplus')" :disabled="!canTest">测试</el-button>
-                      </el-col>
-                    </el-row>
-                  </el-form-item>
-
                   <el-form-item label="开启 HTTP 回调">
                     <el-switch v-model="config.enable_http" :disabled="!canEditConfig" />
                   </el-form-item>

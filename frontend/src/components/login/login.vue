@@ -155,6 +155,10 @@ const submitLogin = async () => {
   loading.value = true
   try {
     const res = await axios.post('/api/v1/auth/login', { username, password })
+    try {
+      sessionStorage.removeItem('auth:force_login_at')
+      sessionStorage.removeItem('auth:force_login_reason')
+    } catch {}
 
     if (rememberPassword.value) {
       localStorage.setItem('username', username)

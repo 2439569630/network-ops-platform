@@ -136,7 +136,12 @@
                   <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
                   <el-table-column label="操作" width="120" fixed="right">
                     <template #default="{ row }">
-                      <el-button type="danger" link @click="handleRemoveMember(row)" :disabled="currentRole.id === 'new'">
+                      <el-button
+                        type="danger"
+                        link
+                        @click="handleRemoveMember(row)"
+                        :disabled="currentRole.id === 'new' || (isProtectedRole(currentRole) && currentUserId && Number(row.id) === Number(currentUserId))"
+                      >
                         移除
                       </el-button>
                     </template>
@@ -499,6 +504,11 @@ const selectedUserIds = ref([]);
 const availableUsersQuery = ref('');
 
 const currentUserId = ref(null);
+const protectedRoleCodes = new Set(['superadmin', 'super_admin', 'super-admin']);
+const isProtectedRole = (role) => {
+  const code = String(role?.code || '').trim().toLowerCase();
+  return protectedRoleCodes.has(code);
+};
 
 // --- Computed ---
 

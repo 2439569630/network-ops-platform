@@ -19,18 +19,19 @@ const deviceStore = useDeviceStore()
 
 let authGuardTimer = null
 let authRefreshListener = null
+let authForceLoginListener = null
 let notifyInitialized = false
 const lastNotifiedSiteMessageId = ref('')
 const currentUserId = ref(null)
 
-const syncCurrentUserIdFromSession = async () => {
-  try {
-    const session = await store.ensureSession()
-    const id = Number(session?.id)
-    currentUserId.value = Number.isFinite(id) ? id : null
-  } catch {
-    currentUserId.value = null
-  }
+const isAuthedArea = () => {
+  const p = String(router.currentRoute?.value?.path || '')
+  return p.startsWith('/user')
+}
+
+const setCurrentUserIdFromSession = (session) => {
+  const id = Number(session?.id)
+  currentUserId.value = Number.isFinite(id) ? id : null
 }
 
 const buildSnippet = (content) => {
@@ -116,9 +117,10 @@ const notifyAlert = (alert) => {
 }
 
 const startRealtime = async () => {
+  if (!isAuthedArea()) return
   const session = await store.ensureSession()
   if (!session) return
-  await syncCurrentUserIdFromSession()
+  setCurrentUserIdFromSession(session)
   store.syncAuthFromToken()
   await store.fetchPermissions()
   await msgStore.startSiteMessageRealtime()
@@ -148,34 +150,65 @@ const stopRealtime = () => {
   notifyInitialized = false
 }
 
-onMounted(async () => {
-  await syncCurrentUserIdFromSession()
-  await startRealtime()
+const stopAuthGuard = () => {
+  if (!authGuardTimer) return
+  clearInterval(authGuardTimer)
+  authGuardTimer = null
+}
 
-  authRefreshListener = async () => {
-    await startRealtime()
-  }
-  window.addEventListener('auth:refreshed', authRefreshListener)
-
+const startAuthGuard = () => {
+  stopAuthGuard()
   authGuardTimer = setInterval(async () => {
+    if (!isAuthedArea()) return
     const session = await store.ensureSession()
     if (!session) {
       stopRealtime()
       return
     }
-    await syncCurrentUserIdFromSession()
+    setCurrentUserIdFromSession(session)
     await startRealtime()
-  }, 5000)
+  }, 30000)
+}
+
+onMounted(() => {
+  authRefreshListener = async () => {
+    if (!isAuthedArea()) return
+    await startRealtime()
+  }
+  window.addEventListener('auth:refreshed', authRefreshListener)
+
+  authForceLoginListener = () => {
+    stopAuthGuard()
+    stopRealtime()
+    currentUserId.value = null
+  }
+  window.addEventListener('auth:force-login', authForceLoginListener)
 })
 
+watch(
+  () => String(router.currentRoute?.value?.path || ''),
+  async (path) => {
+    if (String(path).startsWith('/user')) {
+      await startRealtime()
+      startAuthGuard()
+      return
+    }
+    stopAuthGuard()
+    stopRealtime()
+    currentUserId.value = null
+  },
+  { immediate: true }
+)
+
 onBeforeUnmount(() => {
-  if (authGuardTimer) {
-    clearInterval(authGuardTimer)
-    authGuardTimer = null
-  }
+  stopAuthGuard()
   if (authRefreshListener) {
     window.removeEventListener('auth:refreshed', authRefreshListener)
     authRefreshListener = null
+  }
+  if (authForceLoginListener) {
+    window.removeEventListener('auth:force-login', authForceLoginListener)
+    authForceLoginListener = null
   }
   stopRealtime()
 })

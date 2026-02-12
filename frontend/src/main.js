@@ -25,13 +25,32 @@ library.add(faHome, faPlus,faGlobe,faBell,faSitemap,faSync,faServer,faChartLine,
 const app = createApp(App)
 const pinia = createPinia()
 
-import axios from './axios/axios.js'
+import { cancelAllRequests } from './axios/axios.js'
+import { homeDataStore } from '@/components/home/home/data'
+import { useDeviceStore } from '@/components/DeviceList/store'
+import { messageCenterDataStore } from '@/components/MessageCenter/date'
 
 try {
   window.addEventListener('auth:force-login', async (ev) => {
     const reason = ev?.detail?.reason ? String(ev.detail.reason) : ''
     const query = reason ? { reason } : {}
     try {
+      try {
+        cancelAllRequests('force-login')
+      } catch {}
+      try {
+        homeDataStore(pinia).resetForLogout?.()
+      } catch {}
+      try {
+        useDeviceStore(pinia).resetForLogout?.()
+      } catch {}
+      try {
+        messageCenterDataStore(pinia).resetForLogout?.()
+      } catch {}
+      try {
+        sessionStorage.removeItem('auth:session_cache:v1')
+        sessionStorage.removeItem('auth:permissions_cache:v1')
+      } catch {}
       await router.replace({ path: '/login', query })
     } catch {}
   })

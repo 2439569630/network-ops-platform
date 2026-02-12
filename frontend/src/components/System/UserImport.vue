@@ -248,15 +248,19 @@ const importStatus = ref('');
 const importMessage = ref('');
 const importDetail = ref(null);
 const importStartedAt = ref(null);
+const isMobile = ref(false);
 let progressTimer = null;
 let commitAbortController = null;
 let commitCancelledByUser = false;
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768;
+};
 
 const parseMeta = ref(null);
 const commitResult = ref(null);
 
 const roles = ref([]);
-
 const mapping = ref({
   username: '',
   nickname: '',
@@ -423,6 +427,8 @@ const fetchRoles = async () => {
 };
 
 onMounted(async () => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
   restoreState();
   await fetchRoles();
   await refreshProgressFromServer({ allowResultFetch: true });
@@ -444,6 +450,7 @@ const startProgressPolling = () => {
 };
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
   stopProgressPolling();
 });
 
@@ -723,10 +730,13 @@ const resetAll = () => {
   display: flex;
   align-items: center;
   margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .stat {
   border-radius: 12px;
+  margin-bottom: 8px;
 }
 
 .stat-num {
@@ -751,5 +761,43 @@ const resetAll = () => {
 
 .ml-8 {
   margin-left: 8px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .user-import-page {
+    padding: 12px;
+  }
+  
+  .header-main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .actions .el-button {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+  
+  .actions .el-text {
+    margin-left: 0 !important;
+    margin-top: 8px;
+    text-align: center;
+  }
+  
+  .preview-table {
+    overflow-x: auto;
+  }
 }
 </style>

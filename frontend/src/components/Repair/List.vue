@@ -1,6 +1,6 @@
 <template>
-  <div class="repair-list-container">
-    <el-card>
+  <div class="repair-list-container" :class="{ 'is-mobile': isMobile }">
+    <el-card class="list-card" :shadow="isMobile ? 'never' : 'always'">
       <template #header>
         <div class="card-header">
           <div class="left">
@@ -13,7 +13,7 @@
       </template>
 
       <!-- 运维人员视图切换 -->
-      <div v-if="isYunwei" style="margin-bottom: 20px;">
+      <div v-if="isYunwei" class="tab-container">
         <el-tabs v-model="activeTab" @tab-change="handleTabChange">
             <el-tab-pane label="派单列表" name="assigned"></el-tab-pane>
             <el-tab-pane label="我的报修" name="created"></el-tab-pane>
@@ -22,7 +22,16 @@
 
       <!-- 筛选栏 -->
       <div class="filter-bar">
-        <el-radio-group v-model="statusFilter" @change="fetchOrders">
+        <div class="filter-scroll-wrapper" v-if="isMobile">
+            <el-select v-model="statusFilter" @change="fetchOrders" placeholder="状态筛选" style="width: 140px">
+                <el-option :label="isYunwei && activeTab === 'assigned' ? '待办任务' : '全部'" value="" />
+                <el-option label="待受理" value="pending" />
+                <el-option label="处理中" value="processing" />
+                <el-option label="已完成" value="completed" />
+                <el-option label="已取消" value="cancelled" />
+            </el-select>
+        </div>
+        <el-radio-group v-else v-model="statusFilter" @change="fetchOrders">
           <el-radio-button label="">{{ isYunwei && activeTab === 'assigned' ? '待办任务' : '全部' }}</el-radio-button>
           <el-radio-button label="pending">待受理</el-radio-button>
           <el-radio-button label="processing">处理中</el-radio-button>
@@ -31,72 +40,88 @@
         </el-radio-group>
       </div>
 
-      <!-- 运维人员 - 派单列表 - 卡片视图 -->
-      <div v-if="isYunwei && activeTab === 'assigned'" class="order-grid" v-loading="loading">
+      <!-- 卡片视图 (运维派单列表 OR 移动端所有列表) -->
+      <div v-if="(isYunwei && activeTab === 'assigned') || isMobile" class="order-grid" v-loading="loading">
         <el-empty v-if="tableData.length === 0" description="暂无工单"></el-empty>
         <el-row :gutter="20">
             <el-col v-for="order in tableData" :key="order.id" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
-                <el-card class="order-card" :class="{'priority-high': order.priority === 'emergency' || order.priority === 'high'}">
-                    <template #header>
-                        <div class="order-card-header">
-                            <div class="header-top">
-                                <span class="order-id">#{{ order.id }}</span>
-                                <el-tag :type="getStatusType(order)" size="small" effect="dark">{{ getStatusLabel(order) }}</el-tag>
+                <el-card class="order-card" :class="{'priority-high': order.priority === 'emergency' || order.priority === 'high'}" shadow="hover" @click="viewDetail(order.id)">
+                    <div class="order-card-content">
+                        <div class="card-top-row">
+                            <span class="order-id">#{{ order.id }}</span>
+                            <el-tag :type="getStatusType(order)" size="small" effect="dark">{{ getStatusLabel(order) }}</el-tag>
+                        </div>
+                        <div class="card-title-row">{{ order.title }}</div>
+                        
+                        <div class="card-info-grid">
+                            <div class="info-item">
+                                <el-icon><Location /></el-icon>
+                                <span class="text-truncate">{{ order.location_name || '未指定位置' }}</span>
                             </div>
-                            <div class="header-title" :title="order.title" @click="viewDetail(order.id)" style="cursor: pointer;">{{ order.title }}</div>
+                            <div class="info-item">
+                                <el-icon><Clock /></el-icon>
+                                <span>{{ formatDate(order.created_at) }}</span>
+                            </div>
+                             <div class="info-item" v-if="isYunwei">
+                                 <el-icon><User /></el-icon>
+                                 <span>{{ order.submitter_name || '未知用户' }}</span>
+                            </div>
                         </div>
-                    </template>
-                    <div class="order-card-body" @click="viewDetail(order.id)" style="cursor: pointer;">
-                         <div class="info-row">
-                            <el-icon><Location /></el-icon>
-                            <span class="text-truncate">{{ order.location_name || '未指定位置' }}</span>
-                        </div>
-                        <div class="info-row">
-                             <el-icon><User /></el-icon>
-                             <span>{{ order.submitter_name || '未知用户' }}</span>
-                        </div>
-                        <div class="info-row">
-                            <el-icon><Clock /></el-icon>
-                            <span>{{ formatDate(order.created_at) }}</span>
-                        </div>
-                         <div class="info-row priority-row">
-                            <span class="label">优先级:</span>
-                             <el-tag :type="getPriorityType(order.priority)" size="small" effect="plain" round>
+
+                        <div class="card-tags-row">
+                             <el-tag :type="getPriorityType(order.priority)" size="small" effect="plain" round class="priority-tag">
                                 {{ getPriorityLabel(order.priority) }}
                             </el-tag>
                         </div>
                     </div>
-                    <div class="order-card-footer">
-                        <el-button 
-                            v-if="order.status === 'pending'" 
-                            type="primary" 
-                            size="small" 
-                            class="action-btn"
-                            @click="acceptOrder(order.id)"
-                        >
-                            {{ order.assignee_id === currentUserId ? '确认接单' : '快速抢单' }}
-                        </el-button>
-                         <el-button 
-                            v-else-if="order.status === 'processing' && order.assignee_id === currentUserId" 
-                            type="success" 
-                            size="small" 
-                            class="action-btn"
-                            @click="viewDetail(order.id)"
-                        >去处理</el-button>
-                         <el-button 
-                            v-else
-                            plain 
-                            size="small" 
-                            class="action-btn"
-                            @click="viewDetail(order.id)"
-                        >查看详情</el-button>
+                    
+                    <div class="order-card-footer" v-if="(isYunwei && activeTab === 'assigned') || canCancel(order) || canReview(order)">
+                         <!-- 运维操作 -->
+                        <template v-if="isYunwei && activeTab === 'assigned'">
+                            <el-button 
+                                v-if="order.status === 'pending'" 
+                                type="primary" 
+                                size="small" 
+                                class="action-btn"
+                                @click.stop="acceptOrder(order.id)"
+                            >
+                                {{ order.assignee_id === currentUserId ? '确认接单' : '快速接单' }}
+                            </el-button>
+                             <el-button 
+                                v-else-if="order.status === 'processing' && order.assignee_id === currentUserId" 
+                                type="success" 
+                                size="small" 
+                                class="action-btn"
+                                @click.stop="viewDetail(order.id)"
+                            >去处理</el-button>
+                        </template>
+
+                        <!-- 用户操作 -->
+                         <template v-else>
+                            <el-button 
+                                v-if="canCancel(order)" 
+                                type="danger" 
+                                plain
+                                size="small" 
+                                class="action-btn"
+                                @click.stop="cancelOrder(order.id)"
+                            >取消</el-button>
+                            <el-button 
+                                v-if="canReview(order)" 
+                                type="success" 
+                                plain
+                                size="small" 
+                                class="action-btn"
+                                @click.stop="reviewOrder(order.id)"
+                            >评价</el-button>
+                         </template>
                     </div>
                 </el-card>
             </el-col>
         </el-row>
       </div>
 
-      <!-- 列表 (非运维或运维的"我的报修"视图) -->
+      <!-- PC端表格 (非运维或运维的"我的报修"视图) -->
       <el-table 
         v-else
         :data="tableData" 
@@ -168,8 +193,9 @@
           v-model:current-page="page"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
+          :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
           :total="total"
+          :small="isMobile"
           @size-change="fetchOrders"
           @current-change="fetchOrders"
         />
@@ -177,8 +203,8 @@
     </el-card>
 
     <!-- 评价对话框 -->
-    <el-dialog v-model="reviewDialogVisible" title="服务评价" width="500px">
-        <el-form :model="reviewForm" label-width="100px">
+    <el-dialog v-model="reviewDialogVisible" title="服务评价" :width="isMobile ? '90%' : '500px'">
+        <el-form :model="reviewForm" label-width="100px" label-position="top">
             <el-form-item label="总体评分">
                 <el-rate v-model="reviewForm.rating" show-text />
             </el-form-item>
@@ -203,7 +229,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, reactive, computed } from 'vue';
 import { List, Plus, Location, Search, User, Clock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import axios from '@/axios/axios';
@@ -212,6 +238,9 @@ import { homeDataStore } from '@/components/home/home/data';
 
 const router = useRouter();
 const store = homeDataStore();
+
+const isMobile = ref(window.innerWidth < 768)
+const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 const loading = ref(false);
 const tableData = ref([]);
@@ -275,7 +304,7 @@ const getStatusLabel = (val) => {
 
     if (status === 'pending') {
         if (assigneeId) return '待接单'; // Assigned but not accepted
-        return '待抢单'; // Unassigned
+        return '待接单'; // Unassigned
     }
 
     const map = { 
@@ -443,21 +472,56 @@ onMounted(async () => {
 
     fetchOrders();
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 </script>
 
 <style scoped>
+.repair-list-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.repair-list-container.is-mobile {
+    padding: 0;
+}
+
+.list-card {
+    border: none;
+    box-shadow: none;
+}
+
+.repair-list-container:not(.is-mobile) .list-card {
+    margin: 20px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+
 .filter-bar {
     margin-bottom: 20px;
 }
+
+.filter-scroll-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
 .pagination-container {
     margin-top: 20px;
     display: flex;
     justify-content: flex-end;
+}
+
+.is-mobile .pagination-container {
+    justify-content: center;
 }
 
 /* Card View Styles */
@@ -469,72 +533,118 @@ onMounted(async () => {
     transition: all 0.3s;
     border-radius: 8px;
     border: 1px solid #ebeef5;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
 }
+
+/* Mobile specific card tweaks */
+.is-mobile .order-card {
+    margin-bottom: 12px;
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    border-radius: 0;
+    box-shadow: none !important;
+    padding-bottom: 12px;
+}
+
+.is-mobile .order-card:last-child {
+    border-bottom: none;
+}
+
+.is-mobile .el-card__body {
+    padding: 12px;
+}
+
 .order-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
+
+.is-mobile .order-card:hover {
+    transform: none;
+    box-shadow: none;
+    background-color: #fafafa;
+}
+
 .order-card.priority-high {
-    border-top: 3px solid #f56c6c;
+    border-left: 4px solid #f56c6c;
 }
-.order-card-header {
-    padding-bottom: 0;
+
+.is-mobile .order-card.priority-high {
+    border-left: 4px solid #f56c6c;
 }
-.header-top {
+
+.order-card-content {
+    padding: 12px;
+}
+
+.card-top-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
 }
+
 .order-id {
     font-size: 12px;
     color: #909399;
     font-family: monospace;
 }
-.header-title {
+
+.card-title-row {
     font-size: 16px;
     font-weight: 600;
     color: #303133;
+    margin-bottom: 12px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
-.order-card-body {
-    padding: 10px 0;
-    font-size: 14px;
-    color: #606266;
+
+.card-info-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
 }
-.info-row {
+
+.info-item {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
-    gap: 8px;
+    gap: 4px;
+    font-size: 13px;
+    color: #606266;
 }
-.info-row .el-icon {
-    font-size: 16px;
+
+.info-item .el-icon {
     color: #909399;
 }
+
 .text-truncate {
+    max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.priority-row {
-    margin-top: 12px;
-    justify-content: space-between;
-}
-.priority-row .label {
-    font-size: 12px;
-    color: #909399;
-}
-.order-card-footer {
-    border-top: 1px solid #ebeef5;
-    padding-top: 12px;
-    margin-top: 12px;
+
+.card-tags-row {
     display: flex;
     justify-content: flex-end;
 }
+
+.order-card-footer {
+    border-top: 1px solid #ebeef5;
+    padding: 10px 12px 0 12px;
+    margin-bottom: 12px; /* padding-bottom of card body is usually 20px */
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .action-btn {
-    width: 100%;
+    min-width: 80px;
 }
 </style>

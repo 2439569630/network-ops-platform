@@ -750,6 +750,56 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
+  const resetForLogout = () => {
+    stopPolling();
+    stopAlertsRealtime();
+    stopClock();
+    stopEmailCooldown();
+
+    profileLoading.value = false;
+    summaryLoading.value = false;
+    ordersLoading.value = false;
+    historyLoading.value = false;
+    profileSaving.value = false;
+    emailSaving.value = false;
+    pwdLoading.value = false;
+    securityLoading.value = false;
+    isEmailNotify.value = false;
+
+    now.value = new Date();
+    Object.assign(form, {
+      id: null,
+      username: '',
+      nickname: '',
+      email: '',
+      avatar_url: '',
+      created_at: ''
+    });
+    Object.assign(summary, {
+      register_days: 1,
+      device_count: 0,
+      order_total: 0,
+      order_open: 0,
+      order_done: 0
+    });
+    recentOrders.value = [];
+    notificationHistory.value = [];
+    alertsWsStatus.value = 'disconnected';
+    profileForm.nickname = '';
+    emailForm.email = '';
+    resetEmailVerify();
+
+    roleCodes.value = [];
+    isSuper.value = false;
+    sessionUserId.value = null;
+    sessionUsername.value = '';
+    sessionPermVer.value = null;
+    sessionAuthVer.value = null;
+    sessionLoadedAt.value = 0;
+    clearSessionCache();
+    clearAuthCache();
+  };
+
   return {
     profileLoading,
     summaryLoading,
@@ -808,6 +858,7 @@ export const homeDataStore = defineStore('homeData', () => {
     requestEmailVerify,
     changePassword,
     fetchSecuritySettings,
-    updateSecuritySettings
+    updateSecuritySettings,
+    resetForLogout
   };
 });

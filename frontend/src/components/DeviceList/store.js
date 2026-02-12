@@ -11,6 +11,7 @@ export const useDeviceStore = defineStore('device', () => {
     // 状态
     const data = ref([])
     const loading = ref(false)
+    const listError = ref('')
     const dataCard = ref(0) // 0: 卡片视图, 1: 列表视图
     const filterType = ref(0) // 0: 全部, 1: 路由器, 2: 交换机, ...
     const searchQuery = ref('')
@@ -23,6 +24,61 @@ export const useDeviceStore = defineStore('device', () => {
     let reconnectTimer = null
     let reconnectAttempts = 0
     let manualClose = false
+    let listLoadingTimer = null
+    const LIST_LOADING_TIMEOUT_MS = 5000
+    let pingTimer = null
+    const PING_INTERVAL_MS = 25000
+    let permissionDeniedNotified = false
+    let unknownUpdateRefreshTimer = null
+
+    const stopHeartbeat = () => {
+        if (pingTimer) {
+            clearInterval(pingTimer)
+            pingTimer = null
+        }
+    }
+
+    const scheduleListRefresh = () => {
+        if (unknownUpdateRefreshTimer) return
+        unknownUpdateRefreshTimer = setTimeout(() => {
+            unknownUpdateRefreshTimer = null
+            sendGetListCommand()
+        }, 300)
+    }
+
+    const startHeartbeat = () => {
+        stopHeartbeat()
+        pingTimer = setInterval(() => {
+            if (!ws.value || ws.value.readyState !== WebSocket.OPEN) return
+            try {
+                ws.value.send(JSON.stringify({ command: 'ping' }))
+            } catch {}
+        }, PING_INTERVAL_MS)
+    }
+
+    const startListLoading = () => {
+        listError.value = ''
+        loading.value = true
+        if (listLoadingTimer) {
+            clearTimeout(listLoadingTimer)
+            listLoadingTimer = null
+        }
+        listLoadingTimer = setTimeout(() => {
+            if (!loading.value) return
+            loading.value = false
+            if (!data.value || data.value.length === 0) {
+                listError.value = '设备列表加载超时，可尝试重新加载或直接添加设备'
+            }
+        }, LIST_LOADING_TIMEOUT_MS)
+    }
+
+    const stopListLoading = () => {
+        loading.value = false
+        if (listLoadingTimer) {
+            clearTimeout(listLoadingTimer)
+            listLoadingTimer = null
+        }
+    }
 
     // 计算属性
     const dataLength = () => data.value.length
@@ -40,6 +96,10 @@ export const useDeviceStore = defineStore('device', () => {
         if (type === 0 || type === 1) {
             dataCard.value = type
         }
+    }
+    
+    const setPageSize = (size) => {
+        pageSize.value = size
     }
 
     const setSearchQuery = (query) => {
@@ -61,9 +121,9 @@ export const useDeviceStore = defineStore('device', () => {
                 search: searchQuery.value
             }
             ws.value.send(JSON.stringify(command))
-            if (!data.value || data.value.length === 0) loading.value = true
+            if (!data.value || data.value.length === 0) startListLoading()
         } else if (wsStatus.value !== 'connecting') {
-            if (!data.value || data.value.length === 0) loading.value = true
+            if (!data.value || data.value.length === 0) startListLoading()
             startRealtime()
         }
     }
@@ -100,20 +160,29 @@ export const useDeviceStore = defineStore('device', () => {
             clearTimeout(reconnectTimer)
             reconnectTimer = null
         }
+        if (unknownUpdateRefreshTimer) {
+            clearTimeout(unknownUpdateRefreshTimer)
+            unknownUpdateRefreshTimer = null
+        }
         if (ws.value) {
             ws.value.close()
             ws.value = null
         }
         wsStatus.value = 'disconnected'
+        stopListLoading()
+        stopHeartbeat()
     }
 
     const startRealtime = async () => {
         // 防止重复连接
         if (wsStatus.value === 'connected' || wsStatus.value === 'connecting') return
 
-        try {
-            if (!sessionStorage.getItem('auth:session_cache:v1')) return
-        } catch {}
+        const session = await authStore.ensureSession()
+        if (!session) {
+            listError.value = '未登录或会话已失效'
+            stopListLoading()
+            return
+        }
         
         // 简单权限检查 (如果有必要)
         // const hasPerm = authStore.isSuper || (authStore.permissions && authStore.permissions.includes('sys:device:list'))
@@ -121,6 +190,7 @@ export const useDeviceStore = defineStore('device', () => {
 
         manualClose = false
         wsStatus.value = 'connecting'
+        listError.value = ''
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         const wsHost = normalizeHostname(window.location.hostname)
@@ -135,7 +205,10 @@ export const useDeviceStore = defineStore('device', () => {
                 console.log('Device List WebSocket connected')
                 wsStatus.value = 'connected'
                 reconnectAttempts = 0
-                if (!data.value || data.value.length === 0) loading.value = true
+                permissionDeniedNotified = false
+                listError.value = ''
+                startHeartbeat()
+                if (!data.value || data.value.length === 0) startListLoading()
                 sendGetListCommand()
             }
 
@@ -144,15 +217,17 @@ export const useDeviceStore = defineStore('device', () => {
                     const msg = JSON.parse(event.data)
                     if (msg.type === 'list') {
                         data.value = msg.data || []
-                        loading.value = false
+                        listError.value = ''
+                        stopListLoading()
+                    } else if (msg.type === 'pong') {
+                        return
                     } else if (msg.type === 'update') {
                         const updateItem = msg.data
                         const index = data.value.findIndex(d => d.id === updateItem.id)
                         if (index !== -1) {
                             Object.assign(data.value[index], updateItem)
                         } else {
-                            // 如果是新增设备，且符合当前筛选条件，可以考虑添加到列表
-                            // 简单起见，这里只更新已存在的，或者重新获取列表
+                            scheduleListRefresh()
                         }
                     }
                 } catch (e) {
@@ -168,24 +243,31 @@ export const useDeviceStore = defineStore('device', () => {
             socket.onclose = async (e) => {
                 wsStatus.value = 'disconnected'
                 ws.value = null
+                stopHeartbeat()
                 console.log('Device WS closed', e.code, e.reason)
 
                 if (manualClose) return
+                stopListLoading()
 
                 // 4003: 无权限
                 if (e.code === 4003) {
-                    ElMessage.warning('无权限查看设备列表')
+                    listError.value = '无权限查看设备列表'
+                    if (!permissionDeniedNotified) {
+                        permissionDeniedNotified = true
+                        ElMessage.warning('无权限查看设备列表')
+                    }
                     return
                 }
 
                 // 4001: Token 失效
                 if (e.code === 4001) {
+                    listError.value = '会话已失效，正在刷新…'
                     try {
                         await axios.post('/api/v1/auth/refresh')
                         reconnectAttempts = 0
                         startRealtime()
                     } catch (err) {
-                        // 刷新失败，可能需要重新登录
+                        listError.value = '会话已失效，请重新登录'
                         return
                     }
                     return
@@ -194,6 +276,9 @@ export const useDeviceStore = defineStore('device', () => {
                 // 其他情况（网络错误等）：自动重连
                 const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempts))
                 reconnectAttempts++
+                if ((!data.value || data.value.length === 0) && reconnectAttempts >= 2) {
+                    listError.value = `设备列表连接不稳定，正在重连（第${reconnectAttempts}次）…`
+                }
                 console.log(`Reconnecting in ${delay}ms... (Attempt ${reconnectAttempts})`)
                 reconnectTimer = setTimeout(() => {
                     startRealtime()
@@ -203,6 +288,10 @@ export const useDeviceStore = defineStore('device', () => {
         } catch (e) {
             console.error('WS create failed:', e)
             wsStatus.value = 'disconnected'
+            if (!data.value || data.value.length === 0) {
+                listError.value = '无法建立设备列表连接'
+            }
+            stopListLoading()
             // 尝试重连
             const delay = 5000
             reconnectTimer = setTimeout(() => {
@@ -263,9 +352,24 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
+    const resetForLogout = () => {
+        stopRealtime()
+        data.value = []
+        loading.value = false
+        listError.value = ''
+        dataCard.value = 0
+        filterType.value = 0
+        searchQuery.value = ''
+        currentPage.value = 1
+        pageSize.value = 10
+        reconnectAttempts = 0
+        permissionDeniedNotified = false
+    }
+
     return {
         data,
         loading,
+        listError,
         dataCard,
         filterType,
         searchQuery,
@@ -279,10 +383,12 @@ export const useDeviceStore = defineStore('device', () => {
         clearData,
         refreshData,
         setFilterType,
+        setPageSize,
         startRealtime,
         stopRealtime,
         deleteDevice,
         // 兼容旧方法名，建议组件改用 setFilterType 或 refreshData
-        getServerDveiceData
+        getServerDveiceData,
+        resetForLogout
     }
 })

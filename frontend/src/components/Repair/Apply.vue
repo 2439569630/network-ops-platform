@@ -1,5 +1,5 @@
 <template>
-  <div class="repair-apply-wrapper">
+  <div class="repair-apply-wrapper" :class="{ 'is-mobile': isMobile }">
     <div class="apply-content">
       <!-- Header Section -->
       <div class="apply-header">
@@ -8,15 +8,15 @@
       </div>
 
       <!-- Main Form Card -->
-      <el-card class="apply-card" shadow="hover">
+      <el-card class="apply-card" :shadow="isMobile ? 'never' : 'hover'">
         <el-form 
           ref="repairFormRef" 
           :model="form" 
           :rules="rules" 
-          label-position="top"
+          :label-position="isMobile ? 'top' : 'top'"
           class="repair-form"
           v-loading="loading"
-          size="large"
+          :size="isMobile ? 'default' : 'large'"
         >
           <!-- 1. Basic Info -->
           <div class="form-section">
@@ -48,8 +48,9 @@
                       clearable
                       filterable
                       class="location-select"
-                      size="large"
+                      :size="isMobile ? 'default' : 'large'"
                       v-loading="locationLoading"
+                      :show-all-levels="false"
                     >
                       <template #prefix>
                         <el-icon><Location /></el-icon>
@@ -99,7 +100,7 @@
               <el-input 
                 v-model="form.description" 
                 type="textarea" 
-                :rows="6" 
+                :rows="isMobile ? 4 : 6" 
                 placeholder="请详细描述故障现象、复现步骤、报错信息等..." 
                 resize="none"
               />
@@ -107,18 +108,21 @@
           </div>
 
           <!-- Actions -->
-          <div class="form-actions">
-            <el-button @click="resetForm(repairFormRef)" size="large">重置</el-button>
+          <div class="form-actions" :class="{ 'fixed-footer': isMobile }">
+            <el-button @click="resetForm(repairFormRef)" :size="isMobile ? 'default' : 'large'" v-if="!isMobile">重置</el-button>
             <el-button 
               type="primary" 
               @click="submitForm(repairFormRef)" 
               :loading="submitting"
-              size="large"
+              :size="isMobile ? 'large' : 'large'"
               class="submit-btn"
+              :block="isMobile"
             >
               提交工单 <el-icon class="el-icon--right"><Promotion /></el-icon>
             </el-button>
           </div>
+          <!-- Mobile Spacer -->
+          <div v-if="isMobile" style="height: 60px;"></div>
         </el-form>
       </el-card>
     </div>
@@ -126,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { 
   Edit, EditPen, Monitor, InfoFilled, WarningFilled, Document, 
   Promotion, Check, CoffeeCup, Timer, Warning, CircleCloseFilled,
@@ -142,6 +146,9 @@ const loading = ref(false);
 const locationLoading = ref(false);
 const submitting = ref(false);
 const locationOptions = ref([]);
+
+const isMobile = ref(window.innerWidth < 768)
+const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 const form = reactive({
   title: '',
@@ -225,8 +232,13 @@ const submitForm = async (formEl) => {
 };
 
 onMounted(() => {
+    window.addEventListener('resize', checkMobile)
     fetchLocations();
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 </script>
 
 <style scoped>
@@ -236,6 +248,12 @@ onMounted(() => {
   background-color: #f5f7fa;
   display: flex;
   justify-content: center;
+}
+
+.repair-apply-wrapper.is-mobile {
+  padding: 0;
+  display: block;
+  background-color: #fff;
 }
 
 .apply-content {
@@ -248,11 +266,21 @@ onMounted(() => {
   margin-bottom: 30px;
 }
 
+.is-mobile .apply-header {
+  margin-bottom: 20px;
+  padding: 16px 16px 0 16px;
+  text-align: left;
+}
+
 .page-title {
   font-size: 28px;
   font-weight: 600;
   color: #303133;
   margin: 0 0 8px 0;
+}
+
+.is-mobile .page-title {
+  font-size: 24px;
 }
 
 .page-subtitle {
@@ -268,8 +296,17 @@ onMounted(() => {
   background: #ffffff;
 }
 
+.is-mobile .apply-card {
+  box-shadow: none !important;
+  border-radius: 0;
+}
+
 .repair-form {
   padding: 10px;
+}
+
+.is-mobile .repair-form {
+  padding: 0 16px;
 }
 
 .form-section {
@@ -295,6 +332,11 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
+}
+
+.is-mobile .priority-selector {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
 .priority-card {
@@ -395,10 +437,26 @@ onMounted(() => {
   margin-top: 32px;
 }
 
+.form-actions.fixed-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: #fff;
+  padding: 12px 16px;
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+  z-index: 100;
+  margin-top: 0;
+}
+
 .submit-btn {
   padding-left: 32px;
   padding-right: 32px;
   font-weight: 500;
+}
+
+.fixed-footer .submit-btn {
+  width: 100%;
 }
 
 .location-input-group {
@@ -416,82 +474,5 @@ onMounted(() => {
     color: #909399;
     margin-top: 4px;
     line-height: 1.4;
-}
-
-/* Mobile Responsive */
-@media (max-width: 768px) {
-  .repair-apply-wrapper {
-    padding: 0; /* 全宽 */
-    background-color: #f5f7fa;
-    display: block; /* 覆盖 flex */
-  }
-  
-  .apply-content {
-      max-width: 100%;
-  }
-
-  .apply-header {
-      padding: 24px 20px 0 20px;
-      margin-bottom: 20px;
-      text-align: left;
-  }
-  
-  .page-title {
-      font-size: 24px;
-  }
-  
-  .page-subtitle {
-      font-size: 13px;
-  }
-
-  .apply-card {
-      border-radius: 20px 20px 0 0; /* 顶部圆角 */
-      box-shadow: none !important;
-      margin-bottom: 0;
-      min-height: calc(100vh - 100px); /* 确保内容区填满 */
-  }
-
-  .repair-form {
-      padding: 10px 16px 40px 16px; /* 底部留白，增加左右内边距 */
-  }
-
-  .form-section {
-      margin-bottom: 20px;
-  }
-
-  /* Priority Selector 2 columns on mobile */
-  .priority-selector {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-  
-  .priority-card {
-      padding: 12px;
-      border-radius: 10px;
-  }
-  
-  .icon-wrapper {
-      font-size: 24px;
-      margin-bottom: 6px;
-  }
-  
-  .text-content .p-label {
-      font-size: 14px;
-  }
-  
-  .text-content .p-desc {
-      font-size: 11px;
-  }
-  
-  /* Buttons */
-  .form-actions {
-      flex-direction: column-reverse; /* 提交按钮在上方 */
-      gap: 12px;
-  }
-  
-  .submit-btn, .form-actions .el-button {
-      width: 100%;
-      margin-left: 0 !important;
-  }
 }
 </style>

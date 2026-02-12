@@ -1,13 +1,13 @@
 <template>
-    <div class="leftbox">
-        <el-row class="tac" :style="{ height: '100%' }">
+    <div :class="['leftbox', props.variant]">
+        <el-row class="tac" :style="{ height: props.variant === 'mobile' ? 'auto' : '100%' }">
             <el-col :span="24" class="tac">
                 <el-menu 
-                    active-text-color="#ffd04b" 
+                    :active-text-color="isMobile ? '#1e3a8a' : '#ffd04b'" 
                     background-color="transparent" 
                     class="el-menu-vertical-demo" 
                     :default-active="activeMenu"
-                    text-color="#fff"
+                    :text-color="isMobile ? '#303133' : '#fff'"
                     :unique-opened="true"
                 >
                     <!-- 1. 系统概览 (所有人可见) -->
@@ -96,9 +96,9 @@
                             <el-icon><User /></el-icon>
                             <span>批量导入用户</span>
                         </el-menu-item>
-                         <el-menu-item index="config" @click="goto('/user/config')" v-if="hasPerm('sys:config:view')">
+                        <el-menu-item index="config" @click="goto('/user/config')" v-if="hasPerm('sys:config:view')">
                             <el-icon><Tools /></el-icon>
-                            <span>全局配置</span>
+                            <span>通知与图床配置</span>
                         </el-menu-item>
                     </el-sub-menu>
                     
@@ -125,10 +125,16 @@ import {
     Memo, EditPen, List
 } from '@element-plus/icons-vue';
 
+const props = defineProps({
+  variant: { type: String, default: 'sidebar' }
+})
+const isMobile = computed(() => props.variant === 'mobile')
+
 const router = useRouter();
 const route = useRoute();
 const store = homeDataStore();
 const msgStore = messageCenterDataStore();
+const emit = defineEmits(['navigated'])
 const isSuper = computed(() => Boolean(store.isSuper));
 const roleCodes = computed(() => store.roleCodes || []);
 const isAdmin = computed(() => isSuper.value || roleCodes.value.includes('admin') || roleCodes.value.includes('superadmin'));
@@ -239,7 +245,11 @@ const goto = async (path) => {
             await axios.post('/api/v1/auth/logout');
         } catch {}
     }
-    router.push(path);
+    try {
+        await router.push(path);
+    } finally {
+        emit('navigated')
+    }
 }
 </script>
 
@@ -252,6 +262,15 @@ const goto = async (path) => {
     display: flex;
     background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.leftbox.mobile {
+    height: auto;
+    overflow: visible;
+    box-shadow: none;
+    background: transparent;
+    color: #303133;
 }
 
 .tac {
@@ -278,5 +297,11 @@ const goto = async (path) => {
 :deep(.menu-badge-text .el-badge__content) {
     top: 12px;
     right: -6px;
+}
+
+@media (max-width: 900px) {
+    .leftbox {
+        padding: 6px 4px;
+    }
 }
 </style>

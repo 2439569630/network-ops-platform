@@ -206,6 +206,20 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
     }
   };
 
+  const resetForLogout = () => {
+    stopSiteMessageRealtime();
+    siteMessageErrorRefreshAt = 0;
+    siteMessageUnreadCount.value = 0;
+    siteMessages.value = [];
+    siteMessagesOffset.value = 0;
+    siteMessagesHasMore.value = true;
+    siteMessagesLoading.value = false;
+    siteMessagesLoadingMore.value = false;
+    siteMessagesUnreadOnly.value = false;
+    siteMessageLastSeq.value = 0;
+    siteMessageLastCreated.value = null;
+  };
+
   return {
     siteMessageUnreadCount,
     siteMessages,
@@ -225,5 +239,6 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
     applySiteMessageReadState,
     startSiteMessageRealtime,
     stopSiteMessageRealtime,
+    resetForLogout,
   };
 });

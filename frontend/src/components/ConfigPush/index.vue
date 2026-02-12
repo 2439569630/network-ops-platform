@@ -1,23 +1,25 @@
 <template>
-  <div class="page">
+  <div class="page" :class="{ 'is-mobile': isMobile }">
     <el-card class="card">
       <template #header>
         <div class="header">
           <div class="header-left">
             <span class="title">配置下发</span>
-            <el-tag v-if="jobId" class="job-tag" effect="dark">{{ `任务 #${jobId}` }}</el-tag>
-            <el-tag v-if="jobStatus" class="job-tag" :type="jobStatusType" effect="dark">{{ statusText(jobStatus) }}</el-tag>
+            <div class="tags-group">
+              <el-tag v-if="jobId" class="job-tag" effect="dark">{{ `任务 #${jobId}` }}</el-tag>
+              <el-tag v-if="jobStatus" class="job-tag" :type="jobStatusType" effect="dark">{{ statusText(jobStatus) }}</el-tag>
+            </div>
           </div>
           <div class="header-actions">
-            <el-button type="primary" :disabled="running" @click="startJob">开始下发</el-button>
-            <el-button type="warning" :disabled="!jobId" @click="cancelJob">取消任务</el-button>
-            <el-button @click="resetAll">清空</el-button>
+            <el-button type="primary" :disabled="running" @click="startJob" :size="isMobile ? 'small' : 'default'">{{ isMobile ? '开始' : '开始下发' }}</el-button>
+            <el-button type="warning" :disabled="!jobId" @click="cancelJob" :size="isMobile ? 'small' : 'default'">{{ isMobile ? '取消' : '取消任务' }}</el-button>
+            <el-button @click="resetAll" :size="isMobile ? 'small' : 'default'">清空</el-button>
           </div>
         </div>
       </template>
 
       <div class="form">
-        <el-form label-width="90px">
+        <el-form :label-width="isMobile ? 'auto' : '90px'" :label-position="isMobile ? 'top' : 'right'">
           <el-form-item label="任务标题">
             <el-input v-model="title" placeholder="可选，默认：配置下发任务" />
           </el-form-item>
@@ -46,14 +48,14 @@
               accept=".txt"
               :on-change="handleFileChange"
             >
-              <el-button type="info">选择 txt 文件</el-button>
+              <el-button type="info" :size="isMobile ? 'small' : 'default'">选择 txt 文件</el-button>
             </el-upload>
           </el-form-item>
           <el-form-item label="命令列表">
             <el-input
               v-model="commandsText"
               type="textarea"
-              :rows="8"
+              :rows="isMobile ? 5 : 8"
               placeholder="每行一条命令；空行会被忽略；以 # 开头的行会被忽略"
             />
           </el-form-item>
@@ -61,7 +63,7 @@
       </div>
 
       <div class="outputs" v-if="jobId">
-        <el-tabs v-model="activeTab" type="border-card">
+        <el-tabs v-model="activeTab" type="border-card" class="device-tabs">
           <el-tab-pane
             v-for="d in selectedDevices"
             :key="d.id"
@@ -69,7 +71,7 @@
             :name="String(d.id)"
           >
             <div class="output-meta">
-              <el-tag :type="deviceStatusType(deviceState[d.id]?.status)" effect="dark">
+              <el-tag :type="deviceStatusType(deviceState[d.id]?.status)" effect="dark" size="small">
                 {{ statusText(deviceState[d.id]?.status || 'pending') }}
               </el-tag>
               <span class="meta-text">{{ `${d.device_name}  ${d.ipv4 || ''}` }}</span>
@@ -86,6 +88,9 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import axios from '@/axios/axios'
 import { ElNotification } from 'element-plus'
+
+const isMobile = ref(window.innerWidth < 768)
+const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 const devices = ref([])
 const selectedDeviceIds = ref([])
@@ -320,6 +325,7 @@ const handleFileChange = async (file) => {
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', checkMobile)
   try {
     const res = await axios.get('/api/v1/user/device/get')
     devices.value = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : [])
@@ -329,6 +335,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
   closeWs()
 })
 </script>
@@ -341,10 +348,28 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
+.page.is-mobile {
+  padding: 8px;
+}
+
 .card {
   width: 100%;
   height: calc(100vh - 32px);
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.page.is-mobile .card {
+  height: calc(100vh - 16px);
+}
+
+/* Ensure card body takes remaining space if needed, though el-card structure is specific */
+.card :deep(.el-card__body) {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -358,19 +383,43 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tags-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .title {
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .job-tag {
-  margin-left: 6px;
+  margin-left: 0;
 }
 
 .outputs {
   margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* important for flex nesting */
+}
+
+.device-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.device-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
 }
 
 .output-meta {
@@ -378,10 +427,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
 .meta-text {
   color: #666;
+  font-size: 14px;
 }
 
 .output-box {
@@ -395,5 +446,45 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+
+  .header-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .tags-group {
+    margin-top: 0;
+  }
+
+  .output-box {
+    font-size: 12px;
+    padding: 8px;
+    min-height: 200px;
+  }
+  
+  .card :deep(.el-card__header) {
+    padding: 10px;
+  }
+  
+  .card :deep(.el-card__body) {
+    padding: 10px;
+  }
 }
 </style>
