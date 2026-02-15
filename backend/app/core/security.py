@@ -374,8 +374,19 @@ async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
     return data
 
 async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> list[str]:
-    """获取用户权限列表（带缓存）"""
+    """
+    获取用户权限列表（带缓存）
+    
+    采用多级缓存策略：
+    1. 内存/Redis 缓存 (短期)
+    2. 数据库查询 (长期)
+    
+    同时引入版本号控制 (perm_ver)，当用户权限变更时版本号增加，
+    强制后续请求重新加载权限，实现权限变更的即时生效。
+    """
     uid = int(user_id)
+    # 1. 获取权限版本号
+    # 如果未提供或版本号无效，强制从 Redis 获取最新版本
     ver = perm_ver
     if ver is None:
         ver = await _get_or_init_user_perm_version(uid)
@@ -392,6 +403,8 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
     except Exception:
         redis_client = None
 
+    # 2. 尝试从 Redis 缓存获取
+    # Key 格式包含版本号，版本变更后 Key 自动失效
     cache_key = f"authz:perms:user:{uid}:v{int(ver)}"
     if redis_client is not None:
         try:
@@ -407,18 +420,28 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
             except Exception:
                 cached = None
 
+    # 3. 缓存未命中，从数据库加载
+    # 3.1 获取用户直接分配的权限
     user_row = await db.fetch_one("SELECT permissions FROM users WHERE id = $1", uid)
     direct_perms = _normalize_permissions(user_row.get("permissions") if user_row else None)
+    
+    # 3.2 获取用户角色包含的权限
     role_perms = await RbacService.get_user_permission_codes(uid)
+    
+    # 3.3 合并并去重
     merged = sorted(list({str(p) for p in (direct_perms + role_perms) if str(p).strip()}))
+    
+    # 3.4 展开通配符权限 (如 'sys:user:*' -> 'sys:user:view', 'sys:user:edit')
     merged = RbacService.expand_permission_codes(merged)
 
+    # 4. 写入缓存
     if redis_client is not None:
         try:
             await redis_client.set(cache_key, json.dumps(merged), ex=3600)
         except Exception:
             pass
     return await apply_disabled_permissions(merged)
+
 
 async def user_has_permission(user: dict, perm: str) -> bool:
     """检查用户是否拥有指定权限"""
@@ -430,8 +453,19 @@ async def user_has_permission(user: dict, perm: str) -> bool:
     perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
     return str(perm) in {str(p) for p in (perms or [])}
 
+
 async def verify_token(token: Optional[str] = Cookie(None)):
-    """验证访问令牌依赖"""
+    """
+    验证访问令牌依赖
+    
+    作为 FastAPI 的 Depends 依赖项，用于保护 API 接口。
+    执行以下检查：
+    1. Token 签名有效性 (JWT Decode)
+    2. Token 是否过期
+    3. 强制单点登录/会话失效检查 (auth_ver)
+    4. 强制权限刷新检查 (perm_ver)
+    5. 账号封禁/删除状态检查
+    """
     if token is None:
         raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
 
@@ -443,6 +477,11 @@ async def verify_token(token: Optional[str] = Cookie(None)):
         user_id = payload.get("id")
         if user_id is not None:
             uid = int(user_id)
+            
+            # 3. 检查认证版本号 (Auth Version)
+            # 用于实现"踢人下线"或"修改密码后强制登出"
+            # 当用户修改密码或管理员强制下线时，Redis 中的 auth_ver 会增加
+            # 此时旧 Token 中的 auth_ver 将小于 Redis 中的值，导致验证失败
             redis_auth_ver = await get_or_init_user_auth_version(uid)
             token_auth_ver = payload.get("auth_ver")
             if token_auth_ver is None:
@@ -461,6 +500,10 @@ async def verify_token(token: Optional[str] = Cookie(None)):
                 new_login = await get_user_auth_session_info(uid)
                 raise UnicornException(401, "会话已失效，请重新登录", error_code="AUTH_SESSION_REVOKED", data={"new_login": new_login})
 
+            # 4. 检查权限版本号 (Perm Version)
+            # 用于实现"权限变更即时生效"
+            # 当管理员修改用户角色/权限时，Redis 中的 perm_ver 会增加
+            # 客户端检测到版本不一致，会提示用户刷新页面以获取新 Token
             redis_ver = await _get_or_init_user_perm_version(uid)
             token_ver = payload.get("perm_ver")
             if token_ver is None:

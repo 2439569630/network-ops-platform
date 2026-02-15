@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+#
+# 设备管理 API 接口
+#
+# 此模块负责处理所有与网络设备相关的操作，包括：
+# 1. 设备增删改查 (CRUD)
+# 2. 设备状态监控 (通过 WebSocket 实时推送)
+# 3. 设备配置管理 (获取/更新配置)
+# 4. SSH 远程连接 (通过 WebSocket 代理)
+# 5. 资源同步 (接口/路由/VLAN)
+#
 
 import asyncio
 import logging
@@ -17,12 +28,28 @@ from app.core.redis import redis_manager
 from app.drivers.ssh_retry import classify_ssh_failure
 from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
+from app.services.network_resource_service import network_resource_service
 
+# 主设备管理路由
 router = APIRouter()
+# SSH 专用路由 (为了避免前缀冲突或逻辑分离)
 ssh_router = APIRouter()
 logger = logging.getLogger(__name__)
 
+
 async def _ws_auth_guard(websocket: WebSocket, user: dict):
+    """
+    WebSocket 连接守护协程。
+    
+    用于定期检查用户会话是否失效（例如被强制登出、修改密码）。
+    WebSocket 是长连接，无法像 HTTP 请求那样每次都通过 Middleware 检查 Token 有效性。
+    因此需要启动一个后台任务，定期轮询用户的 auth_ver (认证版本号)。
+    如果发现版本号变更，说明用户已在其他地方登录或被强制下线，需主动关闭 WebSocket。
+    
+    Args:
+        websocket: WebSocket 连接对象
+        user: 当前用户信息
+    """
     uid = user.get("id")
     if uid is None:
         return
@@ -30,6 +57,8 @@ async def _ws_auth_guard(websocket: WebSocket, user: dict):
         uid = int(uid)
     except Exception:
         return
+    
+    # 获取连接时的认证版本号
     token_auth_ver = user.get("auth_ver")
     try:
         token_auth_ver = int(token_auth_ver) if token_auth_ver is not None else None
@@ -37,24 +66,32 @@ async def _ws_auth_guard(websocket: WebSocket, user: dict):
         token_auth_ver = None
     if token_auth_ver is None:
         return
+        
     while True:
         try:
             if websocket.client_state != WebSocketState.CONNECTED:
                 return
         except Exception:
             return
+        
+        # 每 2 秒检查一次
         await asyncio.sleep(2.0)
+        
+        # 获取当前最新的认证版本号
         current_ver = await get_or_init_user_auth_version(int(uid))
         if int(current_ver) != int(token_auth_ver):
             try:
+                # 版本号不一致，关闭连接 (Code 4001: 会话失效)
                 await websocket.close(code=4001, reason="会话已失效")
             except Exception:
                 pass
             return
 
+
 class DeviceRecycleActionRequest(BaseModel):
     """设备回收站操作请求参数"""
     device_id: int
+
 
 class DeviceUpdateRequest(BaseModel):
     """设备更新请求参数"""
@@ -64,7 +101,9 @@ class DeviceUpdateRequest(BaseModel):
     location: Optional[str] = None
     ssh_port: Optional[int] = None
 
-# 获取设备列表
+
+# --- 设备基本管理接口 ---
+
 @router.get("/get", response_model=List[DeviceResponse])
 async def get_device(
     response: Response, 
@@ -75,24 +114,33 @@ async def get_device(
     user_data: dict = Depends(PermissionChecker(["sys:device:list"]))
 ):
     """
-    获取设备列表
+    获取设备列表。
+    
+    支持多种过滤条件：类型、搜索关键字、位置名称、位置节点ID。
     
     Args:
-        type: 设备类型过滤
-        search: 搜索关键字
-        location: 位置过滤
-        location_node_id: 位置节点ID过滤
+        type: 设备类型过滤 (0表示全部，具体定义参考 frontend/enums)
+        search: 搜索关键字 (匹配名称或IP)
+        location: 位置名称过滤
+        location_node_id: 位置节点ID过滤 (递归查询该节点下的所有设备)
+        
+    Returns:
+        List[DeviceResponse]: 设备列表
     """
     return await device_service.get_device_list(type, search_query=search, location_filter=location, location_node_id=location_node_id)
 
-# 添加设备
+
 @router.post("/add")
 async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionChecker(["sys:device:add"]))):
     """
-    添加新设备
+    添加新设备。
     
     Args:
-        device: 设备创建信息
+        device: 设备创建信息 (IP, 端口, 账号密码等)
+        user_data: 当前操作用户
+        
+    Returns:
+        dict: 包含新设备ID
     """
     try:
         user_id = user_data.get('id')
@@ -107,14 +155,17 @@ async def add_device(device: DeviceCreate, user_data: dict = Depends(PermissionC
         logger.error(f"添加设备失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# 删除设备
+
 @router.post("/delete")
 async def delete_device(data: DeviceDelete, user_data: dict = Depends(PermissionChecker(["sys:device:del"]))):
     """
-    删除设备（移入回收站）
+    删除设备（移入回收站）。
+    
+    注意：此操作是软删除，设备会被标记为已删除并移入回收站。
+    不会立即从数据库物理删除。
     
     Args:
-        data: 删除请求参数
+        data: 删除请求参数 (ID, IP)
     """
     try:
         deleted_by = str(user_data.get("id") or "")
@@ -126,34 +177,50 @@ async def delete_device(data: DeviceDelete, user_data: dict = Depends(Permission
         logger.error(f"删除设备失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/recycle/list")
 async def list_recycled_devices(
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
-    """获取回收站中的设备列表"""
+    """
+    获取回收站中的设备列表。
+    
+    普通用户只能看到自己删除的设备，超级管理员可以看到所有。
+    """
     is_super = user_is_super(user_data)
     user_id = user_data.get("id")
     # 注意: get_deleted_devices 是 DeviceService 的实例方法，需要通过 device_service 实例调用
     # 并且需要确保 user_id 类型正确（int）
     return {"code": 200, "data": await device_service.get_deleted_devices(user_id=int(user_id) if user_id else None, is_super=is_super)}
 
+
 @router.post("/recycle/restore")
 async def restore_recycled_device(
     data: DeviceRecycleActionRequest,
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
-    """恢复回收站中的设备"""
+    """
+    恢复回收站中的设备。
+    
+    将设备从回收站还原到正常列表。
+    """
     await device_service.restore_device(int(data.device_id), restored_by=str(user_data.get("id") or ""))
     return {"code": 200}
+
 
 @router.post("/recycle/purge")
 async def purge_recycled_device(
     data: DeviceRecycleActionRequest,
     user_data: dict = Depends(PermissionChecker(["sys:device:del"])),
 ):
-    """彻底删除回收站中的设备"""
+    """
+    彻底删除回收站中的设备。
+    
+    此操作不可逆，将从数据库中物理删除设备记录。
+    """
     await device_service.purge_device(int(data.device_id))
     return {"code": 200}
+
 
 @router.post("/update")
 async def update_device(
@@ -161,7 +228,9 @@ async def update_device(
     user_data: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
     """
-    更新设备信息
+    更新设备基本信息。
+    
+    如名称、类型、位置、SSH端口等。
     
     Args:
         data: 更新请求参数
@@ -175,14 +244,17 @@ async def update_device(
     await device_service.update_device(int(data.device_id), patch, updated_by=str(user_data.get("id") or ""))
     return {"code": 200}
 
-# 测试连接
+
 @router.post("/test_connect")
 async def test_connect(device: DeviceTest, user_data: dict = Depends(PermissionChecker(["sys:device:add", "sys:device:edit"]))):
     """
-    测试设备连接
+    测试设备 SSH 连接性。
+    
+    尝试使用提供的参数连接设备，验证网络和账号密码是否正确。
+    此操作会实际发起 SSH 连接，可能会耗时几秒钟。
     
     Args:
-        device: 连接测试参数
+        device: 连接测试参数 (IP, 端口, 账号, 密码, 类型)
     """
     try:
         await device_service.test_connect(device)
@@ -191,15 +263,21 @@ async def test_connect(device: DeviceTest, user_data: dict = Depends(PermissionC
         logger.error(f"连接测试失败: {e}")
         return {"message": f"连接失败: {str(e)}", "code": 500}
 
+
 @router.get("/status/{device_id}")
 async def get_device_status(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    """获取设备实时状态"""
+    """
+    获取设备单次实时状态快照。
+    
+    从监控缓存中读取最新的运行时状态（如 CPU、内存、在线状态）。
+    """
     monitor = MonitorManager()
     snap = await monitor.get_runtime_snapshot_async(int(device_id))
     return format_ws_data(snap)
+
 
 @router.get("/detail/{device_id}")
 async def get_device_detail(
@@ -207,14 +285,14 @@ async def get_device_detail(
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
     """
-    获取设备详细信息
+    获取设备详细信息。
     
     返回数据包含两部分：
-    1. 数据库中的静态配置信息（如 IP、位置、端口等）
+    1. 数据库中的静态配置信息（如 IP、位置、端口、厂商型号等）
     2. 内存/Redis 中的实时运行时状态（如 CPU、内存、在线状态、OS版本等）
     """
     # 1. 查询数据库静态信息
-    # 使用 CTE 递归查询位置全路径
+    # 使用 CTE 递归查询位置全路径 (例如: "校区A / 教学楼B / 机房C")
     sql = """
         WITH RECURSIVE location_path AS (
             SELECT id, parent_id, name, 1 as level, name as full_path
@@ -285,12 +363,18 @@ async def get_device_detail(
     return data
 
 
+# --- 设备配置管理 ---
+
 @router.get("/config/{device_id}")
 async def get_device_config(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    """获取设备配置信息"""
+    """
+    获取设备连接配置。
+    
+    包括 SSH 超时时间、重试次数等高级配置。
+    """
     data = await device_service.get_device_config(int(device_id))
     return {"code": 200, "data": data}
 
@@ -300,7 +384,9 @@ async def update_device_config(
     payload: DeviceConfigUpdate,
     user: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
-    """更新设备配置"""
+    """
+    更新设备连接配置。
+    """
     updated = await device_service.update_device_config(
         int(payload.device_id), 
         payload.model_dump(exclude_unset=True),
@@ -309,14 +395,18 @@ async def update_device_config(
     return {"code": 200, "data": updated}
 
 
-from app.services.network_resource_service import network_resource_service
+# --- 资源同步管理 (接口/路由/VLAN) ---
 
 @router.get("/interfaces/{device_id}")
 async def get_device_interfaces(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:interface:view"]))
 ):
-    """获取设备接口列表"""
+    """
+    获取设备接口列表。
+    
+    数据来源于上次同步的结果（存储在数据库/Redis中）。
+    """
     data = await network_resource_service.get_interfaces(int(device_id))
     return {"code": 200, "data": data}
 
@@ -326,7 +416,12 @@ async def get_device_interfaces_detail(
     slot: int = Query(0, ge=0),
     user: dict = Depends(PermissionChecker(["sys:device:interface:view"]))
 ):
-    """获取设备接口详细数据（默认插槽0，仅Redis）"""
+    """
+    获取设备接口详细数据。
+    
+    Args:
+        slot: 插槽号 (默认为0)
+    """
     data = await network_resource_service.get_interfaces_detailed(int(device_id), slot_id=int(slot))
     return {"code": 200, "data": data}
 
@@ -335,7 +430,9 @@ async def get_device_routes(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:route:view"]))
 ):
-    """获取设备路由表"""
+    """
+    获取设备路由表。
+    """
     data = await network_resource_service.get_routes(int(device_id))
     return {"code": 200, "data": data}
 
@@ -344,7 +441,9 @@ async def get_device_vlans(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:vlan:view"]))
 ):
-    """获取设备 VLAN 列表"""
+    """
+    获取设备 VLAN 列表。
+    """
     data = await network_resource_service.get_vlans(int(device_id))
     return {"code": 200, "data": data}
 
@@ -353,9 +452,15 @@ async def sync_device_resources(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:edit"]))
 ):
-    """手动触发设备资源同步（接口、路由、VLAN）"""
+    """
+    手动触发设备资源同步。
+    
+    异步执行：会立即返回，后台 Worker 会连接设备并拉取最新接口、路由、VLAN 信息。
+    """
     await network_resource_service.sync_device_resources(int(device_id))
     return {"code": 200, "message": "同步任务已触发"}
+
+# --- 审计日志 ---
 
 @router.get("/audit/logs/{device_id}")
 async def get_device_audit_logs(
@@ -364,7 +469,11 @@ async def get_device_audit_logs(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(PermissionChecker(["sys:device:audit"])),
 ):
-    """获取设备变更审计日志"""
+    """
+    获取设备变更审计日志。
+    
+    记录了设备的增删改操作、配置变更等。
+    """
     result = await device_service.get_device_change_logs(int(device_id), page=int(page), page_size=int(page_size))
     return {"code": 200, "data": result}
 
@@ -375,7 +484,11 @@ async def get_device_ssh_command_audit_logs(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(PermissionChecker(["sys:device:audit"])),
 ):
-    """获取设备 SSH 命令审计日志"""
+    """
+    获取设备 SSH 命令审计日志。
+    
+    记录了用户通过 Web SSH 执行的所有命令。
+    """
     result = await device_service.get_ssh_command_audit_logs(int(device_id), page=int(page), page_size=int(page_size))
     return {"code": 200, "data": result}
 
@@ -384,23 +497,39 @@ async def sync_device_monitor(
     device_id: int,
     user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
 ):
-    """同步设备监控状态"""
+    """
+    手动同步设备监控状态。
+    
+    强制刷新设备的实时状态快照。
+    """
     monitor = MonitorManager()
     snap = await monitor.sync_device_snapshot(int(device_id))
     return {"code": 200, "data": snap}
 
+
+# --- WebSocket 接口 ---
+
+def format_ws_data(data: Any) -> Any:
+    """Helper: 格式化 WebSocket 发送的数据"""
+    if isinstance(data, dict):
+        return data
+    return data
+
 @router.websocket("/ws/detail/{device_id}")
 async def websocket_device_detail(websocket: WebSocket, device_id: int):
     """
-    WebSocket 设备详情实时更新
+    WebSocket: 设备详情实时推送。
     
-    提供设备状态、配置变更等实时推送
+    订阅单个设备的详细状态变更，包括 CPU/内存/流量/日志等高频数据。
+    用于设备详情页的实时展示。
     """
     await websocket.accept()
     token = websocket.query_params.get("token")
     user = await verify_token_ws(websocket, token)
     if not user:
         return
+        
+    # 权限检查
     if not user_is_super(user):
         allowed = await user_has_permission(user, "sys:device:list")
         if not allowed:
@@ -410,9 +539,11 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
             return
 
     monitor = MonitorManager()
+    # 1. 订阅内存队列 (处理本机产生的监控数据)
     q = monitor.subscribe_detail(int(device_id))
     guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
 
+    # 2. 订阅 Redis PubSub (处理其他 Worker 节点产生的监控数据，用于多实例扩展)
     async def redis_listener():
         try:
             redis_client = redis_manager.get_pubsub_client()
@@ -451,8 +582,11 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
     redis_task = asyncio.create_task(redis_listener()) if not monitor.running else None
 
     try:
+        # 发送初始快照
         snap = await monitor.sync_device_snapshot(int(device_id))
         await websocket.send_json(format_ws_data(snap))
+        
+        # 循环发送队列中的更新
         while True:
             payload = await q.get()
             await websocket.send_json(format_ws_data(payload))
@@ -474,7 +608,10 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
 @router.websocket("/ws/list")
 async def websocket_device_list(websocket: WebSocket):
     """
-    WebSocket 设备列表实时更新 (双向通信)
+    WebSocket: 设备列表实时推送。
+    
+    订阅所有设备的基础状态变更（如在线/离线、CPU使用率概览）。
+    用于设备列表页的实时刷新。支持双向通信，前端可发送指令获取列表。
     """
     logger.info("New WebSocket connection request to /ws/list")
     await websocket.accept()
@@ -491,7 +628,7 @@ async def websocket_device_list(websocket: WebSocket):
             return
     logger.info(f"WebSocket authenticated for user: {user.get('id')}")
     
-    # WebSocket 发送锁
+    # WebSocket 发送锁，防止并发写入冲突
     ws_lock = asyncio.Lock()
 
     async def send_safe_json(data):
@@ -502,6 +639,7 @@ async def websocket_device_list(websocket: WebSocket):
     q = monitor.subscribe_list()
     guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
 
+    # 1. 监听内存队列
     async def monitor_listener():
         try:
             while True:
@@ -516,6 +654,7 @@ async def websocket_device_list(websocket: WebSocket):
 
     listener_task = asyncio.create_task(monitor_listener())
 
+    # 2. 监听 Redis PubSub
     async def redis_listener():
         try:
             redis_client = redis_manager.get_pubsub_client()
@@ -561,13 +700,14 @@ async def websocket_device_list(websocket: WebSocket):
     try:
         logger.info("Entering WS main loop")
         while True:
-            # 接收前端指令
+            # 3. 接收前端指令 (支持双向通信)
             logger.info("Waiting for WS message...")
             data = await websocket.receive_json()
             logger.info(f"Received WS message: {data}")
             command = data.get("command")
             
             if command == "get_list":
+                # 前端主动请求列表刷新
                 req_type = int(data.get("type", 0))
                 search_kw = data.get("search", "")
                 logger.info(f"WS Command: get_list type={req_type}, search='{search_kw}'")
@@ -581,6 +721,7 @@ async def websocket_device_list(websocket: WebSocket):
                     logger.error(f"Error processing get_list: {e}", exc_info=True)
                 
             elif command == "ping":
+                # 心跳保活
                 await send_safe_json({"type": "pong"})
                 
     except WebSocketDisconnect:
@@ -599,12 +740,19 @@ async def websocket_device_list(websocket: WebSocket):
 
 @router.websocket("/ws/resources/{device_id}")
 async def websocket_device_resources(websocket: WebSocket, device_id: int):
+    """
+    WebSocket: 设备资源实时推送。
+    
+    订阅设备接口、路由、VLAN 等资源的变更通知。
+    通常用于资源详情页，当后台完成资源同步时自动刷新页面。
+    """
     await websocket.accept()
     token = websocket.query_params.get("token")
     user = await verify_token_ws(websocket, token)
     if not user:
         return
 
+    # 权限检查
     if not user_is_super(user):
         allowed = False
         for perm in (
@@ -635,6 +783,8 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
     try:
         await pubsub.subscribe(channel)
         await websocket.send_json({"type": "ready", "device_id": did})
+        
+        # 发送初始数据
         try:
             interfaces = await network_resource_service.get_interfaces(did)
             routes = await network_resource_service.get_routes(did)
@@ -654,6 +804,8 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
             )
         except Exception:
             pass
+            
+        # 监听更新
         async for msg in pubsub.listen():
             if msg and msg.get("type") == "message":
                 raw = msg.get("data")
@@ -682,7 +834,11 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
         if guard_task:
             guard_task.cancel()
 
+
+# --- SSH WebSocket ---
+
 def _pick_netmiko_device_type(value) -> str:
+    """Helper: 根据数据库存储的类型推断 netmiko device_type"""
     s = str(value or "").strip().lower()
     if not s:
         return "linux"
@@ -706,6 +862,21 @@ def _pick_netmiko_device_type(value) -> str:
 
 @ssh_router.websocket("/ws/ssh/{ip}")
 async def ssh_websocket(websocket: WebSocket, ip: str):
+    """
+    WebSocket: Web SSH 终端连接。
+    
+    实现浏览器端的 SSH 终端。
+    后端充当 WebSocket 和 SSH 连接之间的代理，负责数据转发。
+    
+    Process:
+    1. WebSocket 握手与鉴权
+    2. 查找设备信息 (账号、密码、端口、类型)
+    3. 建立 SSH 连接 (使用 Netmiko，在线程池中执行)
+    4. 启动两个后台任务：
+       - ws_to_ssh: 读取 WebSocket 输入 -> 写入 SSH Channel
+       - ssh_to_ws: 读取 SSH Channel 输出 -> 发送 WebSocket
+    5. 记录审计日志 (连接、断开、命令)
+    """
     await websocket.accept()
     token = websocket.query_params.get("token")
     port_q = websocket.query_params.get("port")
@@ -715,6 +886,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     user_id = str(user.get("id") or "")
     guard_task = None
 
+    # 1. 权限检查
     if not user_is_super(user):
         if not await user_has_permission(user, "sys:ssh:connect"):
             try:
@@ -724,6 +896,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
             await websocket.close(code=4003, reason="权限不足")
             return
 
+    # 2. 查找设备信息 (账号密码)
     row = None
     if port_q:
         try:
@@ -741,6 +914,8 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
                 str(ip),
                 int(port_val),
             )
+            
+    # 如果没指定端口或没找到，尝试只用 IP 找
     if row is None:
         count_row = await db.fetch_one(
             """
@@ -801,6 +976,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
 
     await websocket.send_text(f"系统: 正在连接 {ip}...\r\n")
 
+    # 3. 获取连接配置 (超时、重试等)
     cfg = None
     try:
         cfg = await db.fetch_one(
@@ -844,8 +1020,10 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     try:
         last_err: Exception | None = None
         conn = None
+        # 4. 执行连接 (带重试)
         for attempt in range(connect_max_retries):
             try:
+                # 使用 asyncio.to_thread 在线程池中执行阻塞的 SSH 连接
                 conn = await asyncio.to_thread(ConnectHandler, **device_params)
                 break
             except Exception as e:
@@ -884,6 +1062,8 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
         except Exception:
             pass
         return
+    
+    # 记录连接成功日志
     try:
         if device_id:
             await device_service.log_device_action(
@@ -918,6 +1098,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
             pass
 
         async def ws_to_ssh():
+            """Task: 读取 WebSocket 输入并写入 SSH"""
             while True:
                 try:
                     data = await websocket.receive_text()
@@ -925,6 +1106,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
                     return
                 try:
                     if device_id:
+                        # 记录命令审计日志
                         await device_service.log_ssh_command(
                             device_id=int(device_id),
                             device_ip=str(ip),
@@ -936,6 +1118,7 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
                 await asyncio.to_thread(conn.write_channel, f"{data}\n")
 
         async def ssh_to_ws():
+            """Task: 读取 SSH 输出并发送到 WebSocket"""
             while True:
                 try:
                     out = await asyncio.to_thread(conn.read_channel)
@@ -1000,27 +1183,3 @@ def _parse_usage(value) -> float:
         return float(s)
     except Exception:
         return 0.0
-
-def format_ws_data(status_data: dict) -> dict:
-    base = status_fields_from_snapshot(status_data)
-    connectivity = str(base.get("connectivity") or "offline")
-    fsm_reason = str(base.get("fsm_reason") or status_data.get("offline_reason") or "")
-    result = status_data.copy()
-    result.update(base)
-    result.update(
-        {
-            "status": connectivity,
-            "rawStatus": base.get("fsm_state") or "",
-            "fsmState": base.get("fsm_state") or "",
-            "fsmReason": fsm_reason,
-            "fsmUpdated": base.get("fsm_updated") or "",
-            "displayStatus": base.get("display_status") or "",
-            "cpuUsage": _parse_usage(status_data.get("cpu_usage", 0)),
-            "memoryUsage": _parse_usage(status_data.get("memory_usage", 0)),
-            "diskUsage": _parse_usage(status_data.get("disk_usage", 0)),
-            "uptime": status_data.get("uptime", "未知"),
-            "lastConnect": status_data.get("last_updated", ""),
-            "osVersion": status_data.get("os_version", status_data.get("kernel", "Unknown")),
-        }
-    )
-    return result

@@ -99,6 +99,16 @@ class MonitorManager:
         return cls._instance
 
     def _ensure_postprocess_worker(self, device_id: int) -> None:
+        """
+        确保指定设备的后处理工作协程已启动。
+        
+        每个设备拥有独立的后处理队列和消费者协程，用于异步处理：
+        1. 告警规则检查 (CPU/内存/在线状态等)
+        2. 资源数据变更推送 (接口/路由/VLAN)
+        3. 离线状态处理
+        
+        避免在主监控循环中执行耗时的数据库或 Redis 操作。
+        """
         did = int(device_id)
         if did in self._postprocess_tasks:
             task = self._postprocess_tasks.get(did)
@@ -106,16 +116,22 @@ class MonitorManager:
                 return
         q = self._postprocess_queues.get(did)
         if q is None:
+            # 创建大小为 1 的队列，积压时丢弃旧数据，保证处理最新状态
             q = asyncio.Queue(maxsize=1)
             self._postprocess_queues[did] = q
         task = asyncio.create_task(self._postprocess_worker(did))
         self._postprocess_tasks[did] = task
 
     async def _stop_postprocess_worker(self, device_id: int) -> None:
+        """
+        停止指定设备的后处理工作协程。
+        通常在设备被移除或重载时调用。
+        """
         did = int(device_id)
         q = self._postprocess_queues.get(did)
         if q is not None:
             try:
+                # 发送 None 作为停止信号
                 q.put_nowait(None)
             except Exception:
                 pass
@@ -132,6 +148,10 @@ class MonitorManager:
         self._postprocess_queues.pop(did, None)
 
     def _enqueue_postprocess_latest(self, device_id: int, item: dict) -> None:
+        """
+        将后处理任务推送到设备队列。
+        如果队列已满，则丢弃旧任务（LIFO 策略），确保总是处理最新的数据。
+        """
         did = int(device_id)
         q = self._postprocess_queues.get(did)
         if q is None:
@@ -140,18 +160,21 @@ class MonitorManager:
         if q is None:
             return
         try:
+            # 尝试直接放入
             q.put_nowait(item)
             return
         except asyncio.QueueFull:
             pass
         except Exception:
             return
+        # 队列已满，尝试取出旧数据
         try:
             old = q.get_nowait()
             try:
                 q.task_done()
             except Exception:
                 pass
+            # 如果取出的是停止信号(None)，放回去并停止
             if old is None:
                 try:
                     q.put_nowait(None)
@@ -160,12 +183,17 @@ class MonitorManager:
                 return
         except Exception:
             pass
+        # 再次尝试放入新数据
         try:
             q.put_nowait(item)
         except Exception:
             return
 
     async def _postprocess_worker(self, device_id: int) -> None:
+        """
+        设备后处理消费者循环。
+        从队列中获取数据并执行相应的处理逻辑（告警检查、资源推送等）。
+        """
         did = int(device_id)
         q = self._postprocess_queues.get(did)
         if q is None:
@@ -179,6 +207,8 @@ class MonitorManager:
                     if int(did) not in self.devices:
                         return
                     t = str(item.get("type") or "").strip()
+                    
+                    # 1. 指标采集后处理：检查告警规则
                     if t == "metrics_postprocess":
                         check_data = item.get("check_data")
                         if isinstance(check_data, dict):
@@ -186,6 +216,8 @@ class MonitorManager:
                         await self._publish_list_update(did)
                         await self._publish_detail_update(did)
                         continue
+                    
+                    # 2. 离线状态后处理：检查离线告警
                     if t == "offline_postprocess":
                         check_data = item.get("check_data")
                         if isinstance(check_data, dict):
@@ -193,6 +225,8 @@ class MonitorManager:
                         await self._publish_list_update(did)
                         await self._publish_detail_update(did)
                         continue
+                    
+                    # 3. 资源同步后处理：推送资源变更通知
                     if t == "resources_postprocess":
                         data = item.get("data")
                         if isinstance(data, dict):
@@ -207,6 +241,9 @@ class MonitorManager:
             return
 
     async def _publish_resources(self, device_id: int, data: dict[str, Any]) -> None:
+        """
+        将同步到的资源数据（接口/路由/VLAN等）写入 Redis 并发布变更通知。
+        """
         if not data:
             return
         try:
@@ -221,6 +258,7 @@ class MonitorManager:
             pipe = None
         if pipe is None:
             return
+        
         for name, items in data.items():
             if items is None:
                 continue
@@ -228,18 +266,23 @@ class MonitorManager:
             if not n:
                 continue
             updated_names.append(n)
+            # 存储资源数据到 Redis
             key = f"device:{int(device_id)}:{n}"
             payload = json.dumps(items, ensure_ascii=False)
             pipe.set(key, payload, ex=ttl)
+            # 同时更新 :last 键，用于增量对比（当前版本可能未使用）
             pipe.set(f"{key}:last", payload)
+            
         if not updated_names:
             return
         try:
             await pipe.execute()
+            # 广播资源更新消息（供后端其他服务订阅）
             await redis.publish(
                 "device:resource:update",
                 json.dumps({"device_id": int(device_id), "resources": sorted(updated_names)}, ensure_ascii=False),
             )
+            # 广播 WebSocket 消息（供前端订阅）
             await redis.publish(
                 f"ws:devices:resources:{int(device_id)}",
                 json.dumps(
@@ -1375,7 +1418,15 @@ class MonitorManager:
 
     async def _monitor_device_loop(self, device_id: int, device: BaseDevice):
         """
-        设备监控主循环
+        设备监控主循环。
+        
+        负责单个设备的整个生命周期管理，包括：
+        1. 初始连接与重试机制
+        2. 静态信息采集（一次性）
+        3. 周期性任务调度（指标、接口、路由、VLAN等）
+        4. 异常处理与状态机维护
+        
+        采用 Tickless（无固定 tick）调度模式，通过优先队列管理任务执行时间。
         """
         # 随机抖动启动时间，避免并发高峰（惊群效应）
         jitter = random.uniform(0, 2)
@@ -1385,6 +1436,7 @@ class MonitorManager:
         await self._update_runtime_status(device_id, "checking", "loop_start")
 
         async def _connect_progress(phase: str, reason: str) -> None:
+            """连接进度回调，用于实时更新设备状态"""
             p = str(phase or "").strip().lower()
             if p in {"loading", "checking"}:
                 await self._update_runtime_status(device_id, "checking", reason)
@@ -1393,6 +1445,7 @@ class MonitorManager:
 
         offline_retry_at = 0.0
         def _clear_retry_schedule() -> None:
+            """清除重试计划"""
             try:
                 setattr(device, "next_retry_at", "")
                 setattr(device, "next_retry_at_epoch", 0.0)
@@ -1402,6 +1455,7 @@ class MonitorManager:
                 pass
 
         def _set_retry_schedule(delay_seconds: float, phase: str, reset_attempt: bool = False) -> None:
+            """设置下一次重试时间"""
             nonlocal offline_retry_at
             try:
                 d = float(delay_seconds or 0.0)
@@ -1409,6 +1463,7 @@ class MonitorManager:
                 d = 0.0
             if d < 0:
                 d = 0.0
+            # 检查是否启用了静默重试策略（指数退避或固定间隔）
             try:
                 silent_after = int(getattr(device.config, "offline_retry_silent_after_attempts", 0) or 0)
             except Exception:
@@ -1439,6 +1494,14 @@ class MonitorManager:
         jobs: list[tuple[float, int, str, float]] = []
 
         def _push_job(name: str, period: float, start_at: float = 0.0) -> None:
+            """
+            添加周期性任务到优先队列。
+            
+            Args:
+                name: 任务名称 (metrics, interfaces, etc.)
+                period: 执行周期 (秒)
+                start_at: 首次执行延迟 (秒)
+            """
             nonlocal job_seq
             try:
                 p = float(period or 0.0)
@@ -1447,9 +1510,11 @@ class MonitorManager:
             if p <= 0:
                 return
             job_seq += 1
+            # 使用 heapq 维护任务队列，按执行时间排序
             heapq.heappush(jobs, (time.monotonic() + float(start_at or 0.0), job_seq, str(name), p))
 
         async def _run_metrics_job() -> None:
+            """执行指标采集任务 (CPU, Mem, Disk, Uptime等)"""
             nonlocal offline_retry_at
             if not getattr(device, "connected", False):
                 return
@@ -1469,8 +1534,10 @@ class MonitorManager:
                     pass
 
             try:
+                # 执行实际的采集逻辑 (Driver 层)
                 data = await device.collect_status()
             except Exception as e:
+                # 异常处理：分类错误类型，决定是否断开连接或重试
                 reason = str(e).splitlines()[0] if str(e) else "采集异常"
                 raw_exc = compact_exception_message(e)
                 cost_ms = int((time.monotonic() - start_at) * 1000)
@@ -1489,6 +1556,8 @@ class MonitorManager:
                 changed, _ = device.record_failure(decision.reason or reason)
                 if changed:
                     await self._update_fsm_meta(device_id, device.fsm_state, device.fsm_reason)
+                
+                # 判断是否需要强制离线 (例如认证失败、网络不可达)
                 force_offline = (not getattr(device, "connected", False)) or str(decision.category or "") in {
                     "auth",
                     "not_ssh",
@@ -1502,6 +1571,8 @@ class MonitorManager:
                     await self._set_device_offline(device_id, decision.reason or reason)
                 else:
                     await self._update_runtime_status(device_id, device.fsm_state, "collect_exception")
+                
+                # 日志记录
                 if self._is_full_monitor_log():
                     retry_in_s = max(0, int(float(offline_retry_at or 0.0) - time.monotonic()))
                     logger.warning(
@@ -1516,6 +1587,7 @@ class MonitorManager:
                 return
 
             if device.connected and data:
+                # 采集成功：记录状态，重置重试计数，保存数据
                 changed = device.record_success()
                 if changed:
                     await self._update_fsm_meta(device_id, device.fsm_state, device.fsm_reason)
@@ -1527,6 +1599,7 @@ class MonitorManager:
                 _clear_retry_schedule()
                 await self._save_data_redis(device_id, data, fsm_state=device.fsm_state)
                 await self._update_heartbeat(device_id, fsm_state=device.fsm_state)
+                
                 cost_ms = int((time.monotonic() - start_at) * 1000)
                 extras_text = self._format_metrics_extras(data)
                 cmds = []
@@ -1549,6 +1622,7 @@ class MonitorManager:
                 return
 
             if not device.connected:
+                # 采集过程中连接断开
                 cost_ms = int((time.monotonic() - start_at) * 1000)
                 cmds = []
                 if hasattr(device, "end_inspection"):
@@ -1566,6 +1640,7 @@ class MonitorManager:
                 await self._set_device_offline(device_id, "采集过程中断开")
                 return
 
+            # 采集结果为空
             changed, should_offline = device.record_failure("采集无数据")
             cost_ms = int((time.monotonic() - start_at) * 1000)
             cmds = []
@@ -1588,10 +1663,12 @@ class MonitorManager:
             logger.warning(f"巡检无数据 inspect_id={inspect_id} job=metrics what={what} cost_ms={cost_ms} ok=0{cmds_text}")
 
         async def _run_resource_job(name: str) -> None:
+            """执行资源同步任务 (Interfaces, Routes, VLANs)"""
             nonlocal offline_retry_at
             n = str(name or "").strip()
             if not n:
                 return
+            # 如果设备不在线，跳过资源同步
             if str(device.fsm_state or "").strip() in {"offline", "backoff", "retrying"}:
                 return
             inspect_id = self._next_inspect_id(device_id, n)
@@ -1613,9 +1690,11 @@ class MonitorManager:
                 except Exception:
                     pass
             try:
+                # 根据任务名称调用相应的采集方法
                 if n == "interfaces" and hasattr(device, "collect_interfaces"):
                     items = await device.collect_interfaces()
                     if items is not None:
+                        # 放入后处理队列，异步写入 Redis
                         self._enqueue_postprocess_latest(int(device_id), {"type": "resources_postprocess", "data": {"interfaces": items}})
                         cost_ms = int((time.monotonic() - start_at) * 1000)
                         count = self._safe_len(items)
@@ -1747,6 +1826,7 @@ class MonitorManager:
                     )
 
         def _next_offline_delay_seconds(exc: BaseException | None) -> float:
+            """计算下一次重连等待时间（指数退避）"""
             base = float(getattr(device.config, "offline_retry_delay_seconds", 30.0) or 30.0)
             decision = classify_ssh_failure(
                 exc,
@@ -1795,6 +1875,7 @@ class MonitorManager:
         local_schedule_rev = int(getattr(device, "schedule_rev", 0) or 0)
 
         def _rebuild_jobs() -> None:
+            """重建任务队列（当配置变更或启动时调用）"""
             jobs.clear()
             try:
                 heapq.heapify(jobs)
@@ -1850,6 +1931,7 @@ class MonitorManager:
         while self.running:
             try:
                 now = time.monotonic()
+                # A. 离线状态处理：等待重试时间
                 if not getattr(device, "connected", False):
                     if now < float(offline_retry_at or 0.0):
                         await asyncio.sleep(min(30.0, max(0.0, float(offline_retry_at) - now)))
@@ -1858,6 +1940,7 @@ class MonitorManager:
                         setattr(device, "retry_attempt", int(getattr(device, "retry_attempt", 0) or 0) + 1)
                     except Exception:
                         pass
+                    # 尝试重连
                     ok = await device.connect(progress_cb=_connect_progress, purpose="steady")
                     if ok:
                         offline_retry_at = 0.0
@@ -1870,6 +1953,7 @@ class MonitorManager:
                         await self._publish_list_update(device_id)
                         await self._publish_detail_update(device_id)
                         continue
+                    # 重连失败
                     exc = getattr(device, "last_connect_error", None)
                     decision = classify_ssh_failure(
                         exc,
@@ -1882,6 +1966,7 @@ class MonitorManager:
                     await self._set_device_offline(device_id, decision.reason or "连接失败")
                     continue
 
+                # B. 在线状态处理：检查配置版本是否变更
                 current_rev = int(getattr(device, "schedule_rev", 0) or 0)
                 if current_rev != local_schedule_rev:
                     local_schedule_rev = current_rev
@@ -1893,6 +1978,7 @@ class MonitorManager:
                     await asyncio.sleep(0.1)
                     continue
 
+                # C. 执行到期任务
                 executed = 0
                 while executed < 5 and jobs:
                     now = time.monotonic()
@@ -1906,12 +1992,14 @@ class MonitorManager:
                         await _run_resource_job(name)
                     executed += 1
 
+                    # 计算下一次执行时间并放回队列
                     new_next = float(next_run) + float(period)
                     if new_next <= now:
                         new_next = now
                     heapq.heappush(jobs, (new_next, job_seq + 1, name, period))
                     job_seq += 1
 
+                # D. 休眠直到下一个任务到期
                 now = time.monotonic()
                 if jobs:
                     next_run, _, _, _ = jobs[0]

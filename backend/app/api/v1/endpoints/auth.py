@@ -1,4 +1,7 @@
-
+"""
+认证模块
+处理用户登录、注册、密码重置、Token 刷新等认证相关逻辑。
+"""
 
 import asyncio
 import logging
@@ -8,6 +11,7 @@ import hmac
 import re
 import secrets
 from typing import Optional
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Cookie
 from fastapi.responses import JSONResponse
@@ -16,28 +20,47 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.core.redis import redis_manager
-from app.core.security import create_access_token, create_refresh_token, verify_password, get_password_hash, verify_token, user_is_super, get_user_permissions_cached, decode_access_token, decode_refresh_token, get_disabled_permission_codes_cached, get_or_init_user_auth_version, bump_user_auth_version, set_user_auth_session_info, get_user_auth_session_info
+from app.core.security import (
+    create_access_token, 
+    create_refresh_token, 
+    verify_password, 
+    get_password_hash, 
+    verify_token, 
+    user_is_super, 
+    get_user_permissions_cached, 
+    decode_access_token, 
+    decode_refresh_token, 
+    get_disabled_permission_codes_cached, 
+    get_or_init_user_auth_version, 
+    bump_user_auth_version, 
+    set_user_auth_session_info, 
+    get_user_auth_session_info
+)
 from app.core.config import settings
 from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
 from app.services.notification_service import NotificationService
 from app.utils.notification_sender import send_email
 from app.utils.pg_json import jsonb_param
-import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Redis Key 前缀定义
 REFRESH_JTI_REDIS_KEY_PREFIX = "auth:refresh:jti:"
 
 def _refresh_jti_key(jti: str) -> str:
+    """生成 Refresh Token JTI 的 Redis Key"""
     return f"{REFRESH_JTI_REDIS_KEY_PREFIX}{str(jti or '').strip()}"
 
 def _refresh_ttl_seconds() -> int:
+    """获取 Refresh Token 的过期时间 (秒)，默认 30 天"""
+    # 优先使用配置中的过期时间，如果没有配置则默认 30 天
     minutes = int(getattr(settings, "REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30) or (60 * 24 * 30))
     return max(60, minutes * 60)
 
-#登录表单
+# --- Pydantic 模型定义 ---
+
 class LoginForm(BaseModel):
     """登录表单数据"""
     username: str
@@ -62,16 +85,20 @@ class PasswordResetConfirmForm(BaseModel):
     new_password: str
 
 class UpdateSecurityForm(BaseModel):
+    """更新安全设置表单"""
     is_email_notify: Optional[bool] = None
 
 
+# --- 辅助函数 ---
+
 def _is_valid_email(email: str) -> bool:
-    """验证邮箱格式"""
+    """验证邮箱格式是否合法"""
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", str(email or "")))
 
 def _get_request_ip(request: Request) -> Optional[str]:
-    """获取请求 IP"""
+    """获取请求 IP 地址，优先尝试 X-Forwarded-For (用于反向代理后的真实 IP)"""
     xff = request.headers.get("x-forwarded-for")
+    # 如果有 XFF 头，取第一个 IP，否则取直连 IP
     return (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
 
 def _captcha_key(captcha_id: str) -> str:
@@ -79,11 +106,11 @@ def _captcha_key(captcha_id: str) -> str:
     return f"captcha:{str(captcha_id or '').strip()}"
 
 def _hash_text(value: str) -> str:
-    """计算文本哈希"""
+    """计算文本的 SHA256 哈希"""
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
 
 def _infer_device_label(user_agent: Optional[str]) -> str:
-    """根据 User-Agent 推断设备类型"""
+    """根据 User-Agent 推断设备类型和浏览器"""
     ua = str(user_agent or "").strip()
     if not ua:
         return "未知设备"
@@ -114,13 +141,18 @@ def _infer_device_label(user_agent: Optional[str]) -> str:
     return f"{os_name} · {browser}"
 
 async def _send_login_notification_task(email: str, username: str, ip: str, device: str):
+    """
+    后台任务：发送登录提醒邮件
+    """
     try:
+        # 获取邮件配置
         host = SystemConfig.get("email_host")
         port = SystemConfig.get("email_port")
         username_smtp = SystemConfig.get("email_username")
         password = SystemConfig.get("email_password")
         nickname = SystemConfig.get("email_nickname")
         
+        # 如果内存中没有配置，尝试从数据库重新加载 (防止配置更新后未生效)
         if not all([host, port, username_smtp, password]):
             logger.info("Email config not found in memory, reloading from DB...")
             await SystemConfig.load()
@@ -155,13 +187,20 @@ async def _send_login_notification_task(email: str, username: str, ip: str, devi
 
 @router.get("/captcha")
 async def get_captcha():
-    """获取图形验证码"""
+    """
+    获取图形验证码 (简单的数学题)
+    """
     redis_client = redis_manager.get_client()
     ttl_seconds = SystemConfig.get_int("auth:captcha:ttl_seconds", 300)
+    
+    # 生成两个 1-9 的随机数
     a = secrets.randbelow(9) + 1
     b = secrets.randbelow(9) + 1
     captcha_id = secrets.token_urlsafe(16)
+    
+    # 存储答案的哈希值到 Redis，防止明文存储
     await redis_client.set(_captcha_key(captcha_id), _hash_text(str(a + b)), ex=int(ttl_seconds))
+    
     return {
         "code": 200,
         "data": {
@@ -172,6 +211,7 @@ async def get_captcha():
     }
 
 def _normalize_permissions(value) -> list[str]:
+    """标准化权限字段，确保返回字符串列表"""
     if value is None:
         return []
     if isinstance(value, list):
@@ -181,6 +221,7 @@ def _normalize_permissions(value) -> list[str]:
         if not s:
             return []
         try:
+            # 尝试解析 JSON 字符串
             parsed = json.loads(s)
             if isinstance(parsed, list):
                 return [str(x) for x in parsed if x is not None]
@@ -189,39 +230,53 @@ def _normalize_permissions(value) -> list[str]:
     return []
 
 def _looks_like_bcrypt_hash(value: str) -> bool:
+    """检查字符串是否看起来像 bcrypt 哈希"""
     s = str(value or "")
     return s.startswith("$2a$") or s.startswith("$2b$") or s.startswith("$2y$")
 
 def _verify_password_compat(plain_password: str, stored_password: str) -> bool:
+    """验证密码 (兼容明文和哈希)"""
     if stored_password is None:
         return False
     stored = str(stored_password)
+    
+    # 如果是 bcrypt 哈希，使用 passlib 验证
     if _looks_like_bcrypt_hash(stored):
         try:
             return bool(verify_password(plain_password, stored))
         except Exception:
             return False
+            
+    # 如果不是 bcrypt 哈希，尝试明文比较 (旧数据兼容)
+    # 注意：这只是为了兼容老旧数据，登录成功后应立即升级为哈希
     return stored == str(plain_password)
 
 async def _get_or_init_perm_ver(user_id: int) -> int:
+    """获取或初始化用户权限版本号 (用于强制刷新权限)"""
     redis_client = redis_manager.get_client()
     key = f"authz:ver:user:{int(user_id)}"
     raw = await redis_client.get(key)
+    
+    # 如果没有版本号，初始化为 1
     if raw is None:
         await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
         return 1
     try:
         v = int(raw)
+        # 延长有效期
         await redis_client.expire(key, 60 * 60 * 24 * 30)
         return v if v > 0 else 1
     except Exception:
+        # 解析失败重置为 1
         await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
         return 1
 
 async def _get_or_init_auth_ver(user_id: int) -> int:
+    """获取或初始化用户认证版本号 (用于单点登录控制)"""
     try:
         return await get_or_init_user_auth_version(int(user_id))
     except Exception:
+        # 降级处理：直接操作 Redis
         redis_client = redis_manager.get_client()
         key = f"auth:ver:user:{int(user_id)}"
         raw = await redis_client.get(key)
@@ -236,36 +291,44 @@ async def _get_or_init_auth_ver(user_id: int) -> int:
             await redis_client.set(key, "1", ex=60 * 60 * 24 * 30)
             return 1
 
+# --- API 路由 ---
+
 @router.post("/login")
 async def login(data: LoginForm, response: Response, request: Request):
     """
     用户登录
     
-    验证用户名和密码，返回访问令牌
+    验证用户名和密码，返回访问令牌 (Token)。
+    如果密码是明文，会自动升级为哈希存储。
+    会记录登录日志，并根据设置发送登录提醒。
     """
-    # 1. 查询用户
+    # 1. 查询用户基础信息
     sql = "SELECT id, username, password, is_approved, permissions, email, is_email_notify FROM users WHERE username = $1"
     user = await db.fetch_one(sql, data.username)
 
     if not user:
+        # 用户不存在，返回统一的错误提示，防止用户名枚举
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
         )
 
-    # 检查账户是否被封禁
+    # 检查账户是否被封禁或未审核
     if user['is_approved'] is False:
         return JSONResponse(
             status_code=403,
             content={"code": 403, "message": "账户未审核或已封禁，请联系管理员", "status": "error"}
         )
 
+    # 2. 验证密码 (兼容明文和哈希)
     if not _verify_password_compat(data.password, user.get("password")):
          return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
         )
 
+    # 如果数据库中存储的是明文密码，自动升级为 bcrypt 哈希
+    # 这是一个渐进式迁移策略，用户登录一次即可自动升级安全性
     stored_pw = user.get("password")
     if stored_pw and not _looks_like_bcrypt_hash(stored_pw):
         try:
@@ -276,17 +339,26 @@ async def login(data: LoginForm, response: Response, request: Request):
         
     # 3. 生成 Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    # 3.1 权限合并
     user_permissions = _normalize_permissions(user.get("permissions"))
     user_roles: list[str] = []
     try:
+        # 获取角色权限和角色列表
         role_permissions = await RbacService.get_user_permission_codes(user["id"])
         user_roles = await RbacService.get_user_role_codes(user["id"])
+        
+        # 合并用户个人权限和角色权限，去重
         merged = set(user_permissions) | set(role_permissions)
         user_permissions = sorted(list(merged))
     except Exception:
         pass
     
+    # 3.2 超级管理员判断
     is_super = user_is_super({"roles": user_roles})
+    
+    # 3.3 检查是否有登录权限 (sys:auth:login)
+    # 如果系统配置禁用了登录功能，且用户不是超级管理员，则拒绝登录
     if not is_super:
         try:
             disabled = await get_disabled_permission_codes_cached()
@@ -298,21 +370,27 @@ async def login(data: LoginForm, response: Response, request: Request):
         except Exception:
             pass
 
+    # 3.4 获取权限版本和认证版本
     perm_ver = await _get_or_init_perm_ver(user["id"])
     try:
+        # 增加认证版本号 (auth_ver)，使该用户之前的 Token 全部失效
+        # 实现了单点登录 (SSO) 的效果：新登录踢掉旧登录
         auth_ver = await bump_user_auth_version(int(user["id"]))
     except Exception:
         auth_ver = await _get_or_init_auth_ver(user["id"])
 
+    # 4. 记录日志和会话信息
     ip = _get_request_ip(request)
     ua = request.headers.get("user-agent")
     device = _infer_device_label(ua)
+    
+    # 记录当前会话信息到 Redis (用于展示"当前在线设备")
     try:
         await set_user_auth_session_info(int(user["id"]), auth_ver=int(auth_ver), ip=ip, user_agent=ua, device=device)
     except Exception:
         pass
     
-    # 记录登录日志
+    # 记录持久化登录日志到数据库
     try:
         await db.execute(
             "INSERT INTO login_logs (user_id, ip, user_agent, device) VALUES ($1, $2, $3, $4)",
@@ -321,11 +399,12 @@ async def login(data: LoginForm, response: Response, request: Request):
     except Exception as e:
         logger.error(f"Failed to record login log: {e}")
 
-    # 发送登录提醒邮件
+    # 5. 发送通知
+    # 5.1 发送邮件提醒 (如果开启了邮件通知)
     enabled, reason = await NotificationService._is_email_globally_enabled()
     if enabled and user.get("is_email_notify") and user.get("email"):
-        # 调试日志
         logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
+        # 异步发送邮件，不阻塞登录响应
         asyncio.create_task(_send_login_notification_task(
             str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
         ))
@@ -336,12 +415,12 @@ async def login(data: LoginForm, response: Response, request: Request):
             f"is_email_notify={user.get('is_email_notify')}, email={user.get('email')}"
         )
 
-    # 发送站内信通知 (始终发送，不依赖邮件开关)
+    # 5.2 发送站内信通知 (始终发送，作为安全审计记录)
     try:
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         site_msg_content = f"你的账号于 {current_time} 在 {ip or '未知IP'} ({device}) 登录。如非本人操作，请立即修改密码。"
         await NotificationService.create_site_message(
-            sender_id=None,  # 系统发送
+            sender_id=None,  # None 表示系统发送
             sender_name="安全中心",
             title="登录提醒",
             content=site_msg_content,
@@ -352,20 +431,23 @@ async def login(data: LoginForm, response: Response, request: Request):
     except Exception as e:
         logger.error(f"发送站内信失败: {e}")
 
+    # 6. 构建并返回 Token
     token_data = {
         "id": user['id'],
         "username": user['username'],
         "roles": user_roles,
         "is_super": bool(is_super),
-        "perm_ver": int(perm_ver),
-        "auth_ver": int(auth_ver),
+        "perm_ver": int(perm_ver), # 权限版本，变更时 Token 失效
+        "auth_ver": int(auth_ver), # 认证版本，重新登录时 Token 失效
     }
     
+    # 创建 JWT Access Token
     access_token = create_access_token(
         subject=token_data,
         expires_delta=access_token_expires
     )
 
+    # 创建 Refresh Token (用于获取新的 Access Token)
     refresh_jti = secrets.token_urlsafe(32)
     refresh_token = create_refresh_token(
         subject={"id": user["id"], "auth_ver": int(auth_ver)},
@@ -373,18 +455,19 @@ async def login(data: LoginForm, response: Response, request: Request):
         jti=refresh_jti,
     )
 
+    # 存储 Refresh Token 的 JTI 到 Redis，用于撤销和验证
     try:
         redis_client = redis_manager.get_client()
         await redis_client.set(_refresh_jti_key(refresh_jti), str(int(user["id"])), ex=_refresh_ttl_seconds())
     except Exception:
         pass
     
-    # 设置 Cookie
+    # 设置 HTTP Only Cookie，防止 XSS 攻击窃取 Token
     response.set_cookie(
         key='token',
         value=access_token,
         httponly=True,
-        secure=False,
+        secure=False, # 生产环境建议为 True
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
@@ -408,7 +491,8 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     """
     请求重置密码
     
-    验证邮箱和验证码，发送重置邮件
+    验证邮箱和验证码，发送重置邮件。
+    包含多重防刷机制 (冷却时间、每小时邮箱限制、每小时IP限制)。
     """
     email = str(data.email or "").strip()
     if not _is_valid_email(email):
@@ -422,13 +506,18 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     email_norm = email.strip().lower()
     redis_client = redis_manager.get_client()
 
+    # 1. 校验图形验证码
     captcha_raw = await redis_client.get(_captcha_key(captcha_id))
     if not captcha_raw:
         return JSONResponse(status_code=400, content={"code": 400, "message": "验证码已过期，请刷新"})
+    
+    # 比较哈希值，防止时序攻击
     if not hmac.compare_digest(str(captcha_raw), _hash_text(captcha_answer)):
         return JSONResponse(status_code=400, content={"code": 400, "message": "验证码不正确"})
+    # 验证通过后立即删除验证码，防止重放
     await redis_client.delete(_captcha_key(captcha_id))
 
+    # 2. 频率限制检查 (Rate Limiting)
     cooldown_seconds = SystemConfig.get_int("auth:pwdreset:cooldown_seconds", 60)
     email_hour_limit = SystemConfig.get_int("auth:pwdreset:email_hour_limit", 5)
     ip_hour_limit = SystemConfig.get_int("auth:pwdreset:ip_hour_limit", 30)
@@ -437,9 +526,11 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     cooldown_key = f"pwdreset:cooldown:{email_norm}"
     hour_email_key = f"pwdreset:email:{email_norm}:h"
 
+    # 2.1 检查单邮箱冷却时间
     if await redis_client.exists(cooldown_key):
         return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
 
+    # 2.2 检查单邮箱每小时发送次数
     raw_hour_email = await redis_client.get(hour_email_key)
     try:
         hour_email_cnt = int(raw_hour_email or 0)
@@ -448,6 +539,7 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     if hour_email_cnt >= int(email_hour_limit):
         return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
 
+    # 2.3 检查单 IP 每小时发送次数 (防止 IP 滥用)
     ip = _get_request_ip(request)
     if ip:
         hour_ip_key = f"pwdreset:ip:{ip}:h"
@@ -458,20 +550,27 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
             hour_ip_cnt = 0
         if hour_ip_cnt >= int(ip_hour_limit):
             return JSONResponse(status_code=429, content={"code": 429, "message": "发送过于频繁，请稍后再试"})
+        # 计数 +1
         ip_next = await redis_client.incr(hour_ip_key)
         if int(ip_next) == 1:
             await redis_client.expire(hour_ip_key, 3600)
 
+    # 增加邮箱计数
     email_next = await redis_client.incr(hour_email_key)
     if int(email_next) == 1:
         await redis_client.expire(hour_email_key, 3600)
 
+    # 设置冷却时间
     await redis_client.set(cooldown_key, "1", ex=int(cooldown_seconds))
 
+    # 3. 检查用户是否存在
     user = await db.fetch_one("SELECT id, is_approved FROM users WHERE lower(email) = lower($1)", email_norm)
     if not user or user.get("is_approved") is False:
+        # 安全策略：即使邮箱不存在，也返回成功提示。
+        # 这样可以防止恶意用户通过接口响应差异来枚举已注册的邮箱地址。
         return {"code": 200, "message": "如果邮箱已绑定，将发送重置链接", "data": {"cooldown_seconds": int(cooldown_seconds)}}
 
+    # 4. 获取邮件配置
     host = SystemConfig.get("email_host")
     port = SystemConfig.get("email_port")
     username = SystemConfig.get("email_username")
@@ -487,11 +586,14 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
     if not all([host, port, username, password]):
         return JSONResponse(status_code=500, content={"code": 500, "message": "系统未配置邮箱服务，无法发送邮件"})
 
+    # 5. 生成重置 Token 和链接
     origin = request.headers.get("origin")
     base_url = (str(origin).rstrip("/") if origin else str(request.base_url).rstrip("/"))
     token = secrets.token_urlsafe(32)
     token_key = f"pwdreset:token:{token}"
     token_payload = {"user_id": int(user["id"]), "email": email_norm}
+    
+    # 将 Token 存储到 Redis，设置过期时间
     await redis_client.set(token_key, json.dumps(token_payload, ensure_ascii=False), ex=int(token_ttl_minutes) * 60)
 
     reset_url = f"{base_url}/forgot-password?token={token}"
@@ -502,8 +604,11 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
         f"{reset_url}\n\n"
         "如非本人操作，请忽略本邮件。"
     )
+    
+    # 6. 发送邮件
     ok, msg = await send_email(host, port, username, password, email_norm, subject, content, nickname=nickname)
     if not ok:
+        # 发送失败则删除 Token，允许用户重试
         await redis_client.delete(token_key)
         return JSONResponse(status_code=500, content={"code": 500, "message": f"邮件发送失败: {msg}"})
 
@@ -514,7 +619,8 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
     """
     确认重置密码
     
-    使用邮件中的令牌重置密码
+    验证邮件中的 Token，并更新用户密码。
+    更新后会使该用户所有已登录的设备失效 (SSO 登出)。
     """
     token = str(data.token or "").strip()
     new_password = str(data.new_password or "")
@@ -526,6 +632,8 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
 
     redis_client = redis_manager.get_client()
     token_key = f"pwdreset:token:{token}"
+    
+    # 1. 验证 Token 是否存在
     raw = await redis_client.get(token_key)
     if not raw:
         return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
@@ -542,30 +650,46 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
         await redis_client.delete(token_key)
         return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
 
+    # 2. 再次确认用户一致性
     user = await db.fetch_one("SELECT id FROM users WHERE id = $1 AND lower(email) = lower($2)", int(user_id), email_norm)
     if not user:
         await redis_client.delete(token_key)
         return JSONResponse(status_code=400, content={"code": 400, "message": "链接无效或已过期"})
 
+    # 3. 更新密码
     hashed_pw = get_password_hash(new_password)
     await db.execute("UPDATE users SET password = $1 WHERE id = $2", hashed_pw, int(user_id))
+    
+    # 4. 强制下线所有设备
     try:
+        # 增加认证版本号，之前的 Token 将全部失效
         await bump_user_auth_version(int(user_id))
     except Exception:
         pass
+    
+    # 5. 销毁 Token (一次性使用)
     await redis_client.delete(token_key)
+    
     return {"code": 200, "message": "密码已重置"}
 
 @router.post("/refresh")
 async def refresh_token(response: Response, refresh_token: Optional[str] = Cookie(None)):
+    """
+    刷新 Access Token
+    
+    使用 Refresh Token 换取新的 Access Token 和 Refresh Token (Token 轮换)。
+    检查 Token 有效性、版本号一致性以及 JTI 是否有效。
+    """
     if refresh_token is None:
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "未登录", "status": "error", "error": "AUTH_NOT_LOGGED_IN"},
         )
 
+    # 1. 解析 Refresh Token (校验签名和过期时间)
     token_payload = decode_refresh_token(refresh_token)
     if not token_payload:
+        # Token 无效，清除 Cookie
         response.delete_cookie(key="token")
         response.delete_cookie(key="refresh_token")
         return JSONResponse(
@@ -592,6 +716,8 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
             content={"code": 401, "message": "Token无效", "status": "error", "error": "AUTH_TOKEN_INVALID"},
         )
 
+    # 2. 验证 Auth Version (单点登录检查)
+    # 检查 Token 中的 auth_ver 是否与 Redis 中的一致。如果不一致，说明用户已重新登录或修改密码。
     token_auth_ver = token_payload.get("auth_ver")
     if token_auth_ver is None:
         response.delete_cookie(key="token")
@@ -614,7 +740,9 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
         redis_auth_ver = await get_or_init_user_auth_version(uid)
     except Exception:
         redis_auth_ver = 1
+    
     if int(token_auth_ver_int) != int(redis_auth_ver):
+        # 版本不一致，强制登出
         response.delete_cookie(key="token")
         response.delete_cookie(key="refresh_token")
         new_login = None
@@ -627,6 +755,8 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
             content={"code": 401, "message": "会话已失效，请重新登录", "status": "error", "error": "AUTH_SESSION_REVOKED", "data": {"new_login": new_login}},
         )
 
+    # 3. 验证 JTI (Token 撤销检查)
+    # Refresh Token 是有状态的，其 ID (JTI) 存储在 Redis 中。如果 Redis 中没有该 JTI，说明 Token 已失效或被轮换。
     jti = str(token_payload.get("jti") or "").strip()
     if not jti:
         response.delete_cookie(key="token")
@@ -649,6 +779,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
             content={"code": 401, "message": "会话已失效，请重新登录", "status": "error", "error": "AUTH_SESSION_REVOKED"},
         )
 
+    # 4. 检查用户状态 (二次确认用户未被封禁)
     user = await db.fetch_one(
         "SELECT id, username, permissions, is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1",
         uid,
@@ -672,6 +803,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
             content={"code": 401, "message": "账户未审核或已封禁，请联系管理员", "status": "error", "error": "AUTH_ACCOUNT_DISABLED"},
         )
 
+    # 5. 权限检查 (是否允许登录)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_permissions = _normalize_permissions(user.get("permissions"))
     user_roles: list[str] = []
@@ -697,6 +829,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
         except Exception:
             pass
 
+    # 6. 生成新 Token (Token 轮换)
     perm_ver = await _get_or_init_perm_ver(user["id"])
     auth_ver = await _get_or_init_auth_ver(user["id"])
     token_data = {
@@ -710,6 +843,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
 
     access_token = create_access_token(subject=token_data, expires_delta=access_token_expires)
 
+    # 生成新的 Refresh Token
     next_refresh_jti = secrets.token_urlsafe(32)
     next_refresh_token = create_refresh_token(
         subject={"id": uid, "auth_ver": int(auth_ver)},
@@ -717,6 +851,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
         jti=next_refresh_jti,
     )
 
+    # 7. 更新 Redis 状态 (删除旧 JTI，保存新 JTI)
     try:
         await redis_client.delete(_refresh_jti_key(jti))
     except Exception:
@@ -726,6 +861,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
     except Exception:
         pass
 
+    # 8. 更新 Cookie
     response.set_cookie(
         key="token",
         value=access_token,
@@ -744,6 +880,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
     )
 
     return {"code": 200, "status": "success"}
+
 @router.post("/logout")
 async def logout(response: Response, refresh_token: Optional[str] = Cookie(None)):
     """
@@ -771,7 +908,13 @@ async def logout(response: Response, refresh_token: Optional[str] = Cookie(None)
 
 @router.post("/register")
 async def register(data: RegisterForm):
-    """用户注册"""
+    """
+    用户注册
+    
+    创建新用户，默认需要管理员审核。
+    会赋予默认角色。
+    """
+    # 1. 检查注册权限
     try:
         disabled = await get_disabled_permission_codes_cached()
         if "sys:auth:register" in {str(c) for c in (disabled or [])}:
@@ -781,6 +924,7 @@ async def register(data: RegisterForm):
             )
     except Exception:
         pass
+    
     username = (data.username or "").strip()
     password = str(data.password or "")
     if not username or not password:
@@ -789,6 +933,7 @@ async def register(data: RegisterForm):
             content={"code": 400, "status": "error", "message": "用户名与密码不能为空"},
         )
 
+    # 2. 检查用户名是否已存在
     exists = await db.fetch_val("SELECT id FROM users WHERE username = $1", username)
     if exists:
         return JSONResponse(
@@ -799,8 +944,10 @@ async def register(data: RegisterForm):
     nickname = (data.nickname or "").strip() or username
     email = (data.email or "").strip() or None
     hashed_pw = get_password_hash(password)
-    perms_json = jsonb_param(["sys:monitor:view"])
+    perms_json = jsonb_param(["sys:monitor:view"]) # 赋予基础默认权限
 
+    # 3. 创建用户记录
+    # is_approved 默认为 false，需要管理员审核
     user_id = await db.fetch_val(
         """
         INSERT INTO users (username, password, nickname, email, is_approved, permissions)
@@ -814,12 +961,15 @@ async def register(data: RegisterForm):
         perms_json,
     )
 
+    # 4. 赋予默认角色
     role_id: Optional[int] = None
     try:
+        # 优先使用标记为 'is_default' 的角色
         role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
     except Exception:
         role_id = None
 
+    # 如果没有默认角色，尝试使用 'shisheng' (师生)
     if role_id is None:
         try:
             role_id = await db.fetch_val("SELECT id FROM roles WHERE lower(code) = 'shisheng' LIMIT 1")
@@ -836,6 +986,7 @@ async def register(data: RegisterForm):
         except Exception:
             pass
 
+    # 5. 初始化权限版本
     try:
         await _get_or_init_perm_ver(int(user_id))
     except Exception:
@@ -852,11 +1003,13 @@ async def get_my_permissions(token_payload: dict = Depends(verify_token)):
             status_code=401,
             content={"code": 401, "message": "未登录", "status": "error"},
         )
+    # 使用缓存获取用户权限，减少数据库查询
     perms = await get_user_permissions_cached(int(user_id), perm_ver=token_payload.get("perm_ver"))
     return {"code": 200, "status": "success", "data": {"perm_ver": token_payload.get("perm_ver"), "permissions": perms}}
 
 @router.get("/me")
 async def get_my_session(token_payload: dict = Depends(verify_token)):
+    """获取当前会话信息 (Token Payload)"""
     data = {
         "id": token_payload.get("id"),
         "username": token_payload.get("username"),
@@ -869,12 +1022,13 @@ async def get_my_session(token_payload: dict = Depends(verify_token)):
 
 @router.post("/users/me")
 async def read_current_user(token_payload: dict = Depends(verify_token)):
+    """获取当前用户详细信息 (同 /me)"""
     return {"code": 200, "status": "success", "data": token_payload}
 
 @router.get("/users/me/security")
 async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
     """
-    获取用户安全设置
+    获取用户安全设置 (邮箱、密码存在状态、通知设置)
     """
     user_id = token_payload.get("id")
     if not user_id:
@@ -890,92 +1044,5 @@ async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
             "email": row.get("email"),
             "has_password": bool(row.get("password")),
             "is_email_notify": bool(row.get("is_email_notify") or False)
-        }
-    }
-
-class UserSecurityUpdate(BaseModel):
-    email: Optional[str] = None
-    old_password: Optional[str] = None
-    new_password: Optional[str] = None
-    is_email_notify: Optional[bool] = None
-
-@router.put("/users/me/security")
-async def update_my_security_settings(
-    settings: UserSecurityUpdate,
-    token_payload: dict = Depends(verify_token)
-):
-    """
-    更新用户安全设置 (邮箱、密码、通知)
-    """
-    user_id = token_payload.get("id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="未登录")
-
-    user = await db.fetch_one("SELECT id, password, email FROM users WHERE id = $1", int(user_id))
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
-    # Update email
-    if settings.email is not None:
-        # Check if email is used by other users
-        if settings.email:
-            exists = await db.fetch_val("SELECT id FROM users WHERE email = $1 AND id != $2", settings.email, int(user_id))
-            if exists:
-                return {"code": 400, "message": "该邮箱已被其他用户使用"}
-        await db.execute("UPDATE users SET email = $1 WHERE id = $2", settings.email, int(user_id))
-    
-    # Update notification setting
-    if settings.is_email_notify is not None:
-        await db.execute("UPDATE users SET is_email_notify = $1 WHERE id = $2", settings.is_email_notify, int(user_id))
-        
-    # Update password
-    if settings.new_password:
-        if not _verify_password_compat(str(settings.old_password or ""), user.get("password")):
-             return {"code": 400, "message": "原密码错误"}
-        hashed_pw = get_password_hash(settings.new_password)
-        await db.execute("UPDATE users SET password = $1 WHERE id = $2", hashed_pw, int(user_id))
-    
-    return {"code": 200, "message": "设置更新成功"}
-
-@router.get("/users/me/login-logs")
-async def get_my_login_logs(
-    page: int = 1, 
-    page_size: int = 10, 
-    token_payload: dict = Depends(verify_token)
-):
-    user_id = token_payload.get("id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="未登录")
-    
-    offset = (page - 1) * page_size
-    limit = page_size
-    
-    total = await db.fetch_val(
-        "SELECT COUNT(*) FROM login_logs WHERE user_id = $1", 
-        int(user_id)
-    )
-    
-    rows = await db.fetch_all(
-        "SELECT id, ip, device, created_at FROM login_logs WHERE user_id = $1 ORDER BY id DESC OFFSET $2 LIMIT $3",
-        int(user_id), offset, limit
-    )
-    
-    items = []
-    for r in rows:
-        items.append({
-            "id": r["id"],
-            "ip": r["ip"],
-            "device": r["device"],
-            "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else None
-        })
-        
-    return {
-        "code": 200, 
-        "status": "success", 
-        "data": {
-            "total": total,
-            "items": items,
-            "page": page,
-            "page_size": page_size
         }
     }

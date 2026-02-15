@@ -1,3 +1,8 @@
+"""
+用户管理模块
+处理用户增删改查、批量导入、个人资料管理、头像上传、邮箱验证等业务逻辑。
+"""
+
 import csv
 import io
 import json
@@ -29,41 +34,58 @@ from pydantic import BaseModel
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# 密码哈希线程池配置
+# 用于批量导入时并行计算哈希，避免阻塞主线程
 _HASH_MAX_WORKERS = max(4, min(32, int(os.cpu_count() or 4)))
 _HASH_EXECUTOR = ThreadPoolExecutor(max_workers=_HASH_MAX_WORKERS)
+
+# 导入任务数据的 Redis 过期时间 (30分钟)
 _IMPORT_TTL_SECONDS = 1800
 
+# --- Redis Key 辅助函数 ---
+
 def _import_data_key(token: str) -> str:
+    """导入文件解析后的临时存储 Key"""
     return f"user_import:{token}"
 
 def _import_progress_key(token: str) -> str:
+    """导入进度信息的 Key"""
     return f"user_import_progress:{token}"
 
 def _import_cancel_key(token: str) -> str:
+    """导入取消信号的 Key"""
     return f"user_import_cancel:{token}"
 
 def _import_result_key(token: str) -> str:
+    """导入最终结果的 Key"""
     return f"user_import_result:{token}"
 
+# --- 导入任务辅助函数 ---
+
 async def _is_user_import_cancelled(redis_client: Any, token: str) -> bool:
+    """检查是否有取消导入的信号"""
     try:
         return bool(await redis_client.exists(_import_cancel_key(token)))
     except Exception:
         return False
 
 async def _set_user_import_cancel(redis_client: Any, token: str) -> None:
+    """设置取消信号"""
     await redis_client.set(_import_cancel_key(token), "1", ex=_IMPORT_TTL_SECONDS)
 
 async def _clear_user_import_cancel(redis_client: Any, token: str) -> None:
+    """清除取消信号"""
     try:
         await redis_client.delete(_import_cancel_key(token))
     except Exception:
         pass
 
 async def _set_user_import_result(redis_client: Any, token: str, data: dict) -> None:
+    """保存导入结果"""
     await redis_client.set(_import_result_key(token), json.dumps(data, ensure_ascii=False), ex=_IMPORT_TTL_SECONDS)
 
 async def _get_user_import_result(redis_client: Any, token: str) -> Optional[dict]:
+    """获取导入结果"""
     raw = await redis_client.get(_import_result_key(token))
     if not raw:
         return None
@@ -80,6 +102,7 @@ async def _set_user_import_progress(
     message: Optional[str] = None,
     detail: Optional[dict] = None,
 ):
+    """更新导入进度"""
     payload = {
         "token": token,
         "percent": max(0, min(100, int(percent))),
@@ -91,10 +114,12 @@ async def _set_user_import_progress(
         payload["detail"] = detail
     await redis_client.set(_import_progress_key(token), json.dumps(payload, ensure_ascii=False), ex=_IMPORT_TTL_SECONDS)
 
+# 受保护的角色代码 (不可随意操作)
 _PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
 
 
 async def _get_user_role_codes(user_id: int) -> list[str]:
+    """获取用户的角色代码列表"""
     rows = await db.fetch_all(
         """
         SELECT r.code
@@ -113,20 +138,28 @@ async def _get_user_role_codes(user_id: int) -> list[str]:
 
 
 async def _require_actor_superadmin_when_target_protected(target_user_id: int, actor: dict) -> None:
+    """
+    安全检查：如果目标用户是超级管理员，则要求操作者也必须是超级管理员。
+    防止普通管理员篡改超级管理员账号。
+    """
     if user_is_super(actor):
         return
     codes = {str(c).strip().lower() for c in (await _get_user_role_codes(int(target_user_id))) if str(c).strip()}
+    # 检查目标用户是否拥有受保护的角色
     if codes & _PROTECTED_ROLE_CODES:
         raise HTTPException(status_code=403, detail="仅超级管理员可操作该用户")
 
 
 def _get_request_ip(request: Request) -> Optional[str]:
+    """获取请求 IP，支持 X-Forwarded-For"""
     try:
         xff = request.headers.get("x-forwarded-for") if request else None
         ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else None)
         return str(ip).strip() or None
     except Exception:
         return None
+
+# --- API 路由 ---
 
 @router.post("/batch/delete", response_model=dict)
 async def delete_users_batch(
@@ -135,14 +168,28 @@ async def delete_users_batch(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
-    """批量删除用户 (仅管理员)"""
+    """
+    批量删除用户 (仅管理员)
+    
+    一次性删除多个用户。
+    会自动跳过超级管理员或受保护的用户。
+    
+    Args:
+        user_ids: 用户 ID 列表
+    """
+    # 1. 自我保护检查
     if current_user.get("id") in user_ids:
         return {"code": 400, "message": "不能删除自己"}
         
     try:
+        # 2. 权限检查：确保操作者有权删除每一个目标用户
         for uid in user_ids or []:
             await _require_actor_superadmin_when_target_protected(int(uid), current_user)
+            
+        # 3. 执行批量删除
         await UserService.admin_delete_users(user_ids, actor_id=current_user.get("id"))
+        
+        # 4. 记录审计日志
         await UserAdminAuditService.log(
             action="user.batch_delete",
             actor=current_user,
@@ -162,10 +209,20 @@ async def reset_user_password(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
-    """管理员重置用户密码"""
+    """
+    管理员重置用户密码
+    
+    强制修改指定用户的密码。
+    无需旧密码验证。
+    """
     try:
+        # 1. 权限检查
         await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
+        
+        # 2. 执行重置
         await UserService.reset_password(user_id, password)
+        
+        # 3. 记录审计日志
         await UserAdminAuditService.log(
             action="user.reset_password",
             actor=current_user,
@@ -186,15 +243,28 @@ async def update_user_perms(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
-    """更新用户细粒度权限 (仅管理员)"""
+    """
+    更新用户细粒度权限 (仅管理员)
+    
+    直接修改用户个人的权限列表 (覆盖原有权限)。
+    注意：这不同于角色授权，是用户级别的特殊权限设置。
+    
+    Args:
+        user_id: 目标用户 ID
+        permissions: 权限代码列表
+    """
     try:
+        # 1. 权限检查
         await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
         from app.services.rbac_service import RbacService
 
         raw = [str(p).strip() for p in (permissions or []) if str(p).strip()]
+        
+        # 2. 验证权限代码有效性
         all_codes = await RbacService.get_all_permission_codes()
         existing = {str(c).strip() for c in (all_codes or []) if str(c).strip()}
 
+        # 检查是否包含禁用的权限
         disabled_raw = await get_disabled_permission_codes_cached()
         disabled = {str(c).strip() for c in (disabled_raw or []) if str(c).strip()}
 
@@ -202,12 +272,16 @@ async def update_user_perms(
         if invalid:
             return {"code": 400, "message": "包含不存在的权限码", "data": {"invalid": invalid}}
 
+        # 3. 展开权限 (支持通配符展开，虽然此处传入的通常是具体权限)
         selected = [p for p in raw if p in existing and p not in disabled]
         expanded = RbacService.expand_permission_codes(selected)
         expanded = [c for c in expanded if c in existing and c not in disabled]
 
+        # 4. 更新用户权限字段
         data = RoleUpdate(permissions=expanded)
         await UserService.update_user_role(int(user_id), data)
+        
+        # 5. 记录审计日志
         await UserAdminAuditService.log(
             action="user.update_permissions",
             actor=current_user,
@@ -227,13 +301,23 @@ async def update_user_status(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
-    """封禁/解封用户 (仅管理员)"""
+    """
+    封禁/解封用户 (仅管理员)
+    
+    修改用户的审核状态 (is_approved)。
+    如果设为 False，用户将无法登录。
+    """
     if user_id == current_user.get("id"):
         return {"code": 400, "message": "不能封禁自己"}
         
     try:
+        # 1. 权限检查
         await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
+        
+        # 2. 更新状态
         await UserService.update_status(user_id, is_approved)
+        
+        # 3. 记录审计日志
         await UserAdminAuditService.log(
             action="user.update_status",
             actor=current_user,
@@ -245,11 +329,15 @@ async def update_user_status(
     except Exception as e:
         return {"code": 500, "message": f"更新状态失败: {str(e)}"}
 
-# Profile routes (Merged from profile.py)
+# --- Profile routes (个人中心相关) ---
 
 @router.get("/profile", response_model=dict)
 async def get_profile(current_user: dict = Depends(deps.get_current_user)):
-    """获取个人信息"""
+    """
+    获取个人信息
+    
+    获取当前登录用户的完整资料。
+    """
     try:
         user = await UserService.get_user_by_id(current_user.get("id"))
         if not user:
@@ -263,7 +351,11 @@ async def update_profile(
     data: UserUpdate,
     current_user: dict = Depends(deps.get_current_user)
 ):
-    """更新个人信息"""
+    """
+    更新个人信息
+    
+    用户自助修改昵称、密码、邮箱等。
+    """
     try:
         await UserService.update_profile(current_user.get("id"), data)
         return {"code": 200, "message": "更新成功"}
@@ -278,16 +370,26 @@ async def upload_avatar(
     file: UploadFile = File(...),
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """
+    上传头像
+    
+    上传并更新用户头像。
+    支持图片格式校验，会调用远程图片存储服务。
+    """
     try:
+        # 1. 调用头像服务处理上传 (包含格式校验、压缩、转存)
         result = await AvatarService.upload_avatar(file)
         avatar_url = str(result.url or "").strip()
         if not avatar_url:
             return {"code": 500, "message": "头像上传失败: 返回链接为空"}
+            
+        # 2. 更新数据库记录
         await User.filter(id=int(current_user.get("id"))).update(avatar_url=avatar_url)
         return {"code": 200, "data": {"avatar_url": avatar_url}}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
     except RemoteImageApiError as e:
+        # 处理远程图片 API 的特定错误
         http_status = getattr(e, "status_code", None)
         if http_status == 429:
             return {"code": 429, "message": str(e)}
@@ -299,6 +401,12 @@ async def upload_avatar(
 
 @router.get("/profile/summary", response_model=dict)
 async def get_profile_summary(current_user: dict = Depends(deps.get_current_user)):
+    """
+    获取个人概况
+    
+    返回用户的工单统计、消息未读数等摘要信息。
+    用于首页展示。
+    """
     try:
         user_id = current_user.get("id")
         username = current_user.get("username") or ""
@@ -314,6 +422,11 @@ class EmailVerifyRequest(BaseModel):
 
 @router.get("/profile/email/pending", response_model=dict)
 async def get_email_verify_pending(current_user: dict = Depends(deps.get_current_user)):
+    """
+    获取待验证的邮箱
+    
+    查询当前用户是否发起了邮箱验证请求。
+    """
     try:
         try:
             disabled = await get_disabled_permission_codes_cached()
@@ -332,16 +445,26 @@ async def request_email_verify(
     request: Request,
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """
+    发起邮箱验证
+    
+    发送验证邮件到指定邮箱。
+    """
     try:
+        # 1. 功能开关检查
         try:
             disabled = await get_disabled_permission_codes_cached()
             if "sys:email:verify" in {str(c) for c in (disabled or [])}:
                 return {"code": 403, "message": "邮箱验证权限已关闭"}
         except Exception:
             pass
+            
+        # 2. 获取客户端信息
         xff = request.headers.get("x-forwarded-for")
         ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
         base_url = str(request.base_url).rstrip("/")
+        
+        # 3. 发送验证邮件
         payload = await UserService.request_email_verification(
             user_id=int(current_user.get("id")),
             email=data.email,
@@ -356,10 +479,17 @@ async def request_email_verify(
 
 @router.get("/profile/email/confirm", response_class=HTMLResponse)
 async def confirm_email_verify(token: str):
+    """
+    确认邮箱验证 (HTML)
+    
+    处理验证链接点击，返回 HTML 页面展示结果。
+    """
     try:
+        # 1. 功能开关检查
         try:
             disabled = await get_disabled_permission_codes_cached()
             if "sys:email:verify" in {str(c) for c in (disabled or [])}:
+                # 返回 HTML 错误页
                 html = """
                 <!doctype html>
                 <html lang="zh-CN">
@@ -385,8 +515,12 @@ async def confirm_email_verify(token: str):
                 return HTMLResponse(content=html, status_code=403)
         except Exception:
             pass
+            
+        # 2. 执行验证
         result = await UserService.confirm_email_verification(token)
         email = result.get("email") or ""
+        
+        # 3. 返回成功 HTML
         html = f"""
         <!doctype html>
         <html lang="zh-CN">
@@ -413,6 +547,7 @@ async def confirm_email_verify(token: str):
         """
         return HTMLResponse(content=html, status_code=200)
     except ValueError as e:
+        # 返回业务错误 HTML
         html = f"""
         <!doctype html>
         <html lang="zh-CN">
@@ -437,6 +572,7 @@ async def confirm_email_verify(token: str):
         """
         return HTMLResponse(content=html, status_code=400)
     except Exception as e:
+        # 返回系统错误 HTML
         html = f"""
         <!doctype html>
         <html lang="zh-CN">
@@ -461,6 +597,8 @@ async def confirm_email_verify(token: str):
         """
         return HTMLResponse(content=html, status_code=500)
 
+
+# --- 批量导入相关模型 ---
 
 class UserImportParseResponse(BaseModel):
     token: str
@@ -497,6 +635,7 @@ class UserImportCancelRequest(BaseModel):
 
 
 def _normalize_cell_value(v: Any) -> Optional[str]:
+    """标准化单元格值 (去空、转字符串)"""
     if v is None:
         return None
     if isinstance(v, (int, float)):
@@ -507,6 +646,7 @@ def _normalize_cell_value(v: Any) -> Optional[str]:
     return s if s else None
 
 def _looks_like_password_hash(s: str) -> bool:
+    """检查字符串是否已经是哈希值"""
     v = str(s or "").strip()
     if not v:
         return False
@@ -522,6 +662,7 @@ def _looks_like_password_hash(s: str) -> bool:
 
 
 def _normalize_headers(raw_headers: list[Any]) -> list[str]:
+    """标准化表头 (处理重复列名)"""
     headers: list[str] = []
     seen: dict[str, int] = {}
     for h in raw_headers:
@@ -538,6 +679,7 @@ def _normalize_headers(raw_headers: list[Any]) -> list[str]:
 
 
 async def _read_import_rows_from_file(file: UploadFile) -> tuple[list[str], list[dict[str, Any]]]:
+    """读取上传文件 (CSV/Excel) 并返回行数据"""
     filename = str(file.filename or "")
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     raw = await file.read()
@@ -546,8 +688,10 @@ async def _read_import_rows_from_file(file: UploadFile) -> tuple[list[str], list
     if len(raw) > 10 * 1024 * 1024:
         raise ValueError("文件过大（最大 10MB）")
 
+    # 处理 CSV
     if ext in {"csv"}:
         text = None
+        # 尝试多种编码
         for enc in ("utf-8-sig", "utf-8", "gbk"):
             try:
                 text = raw.decode(enc)
@@ -569,6 +713,7 @@ async def _read_import_rows_from_file(file: UploadFile) -> tuple[list[str], list
             data_rows.append(obj)
         return headers, data_rows
 
+    # 处理 Excel
     if ext in {"xlsx"}:
         try:
             from openpyxl import load_workbook  # type: ignore
@@ -600,9 +745,22 @@ async def parse_user_import_file(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
+    """
+    解析用户导入文件
+    
+    上传 CSV 或 Excel 文件，解析并预览数据。
+    返回导入 Token，用于后续的进度查询和确认导入。
+    
+    Args:
+        file: 用户数据文件 (.csv 或 .xlsx)
+    """
     try:
+        # 1. 解析文件
         columns, rows = await _read_import_rows_from_file(file)
+        # 限制预览行数，防止 Redis 爆炸
         limited_rows = rows[:5000]
+        
+        # 2. 生成 Token 并缓存解析结果
         token = secrets.token_urlsafe(16)
         redis_client = redis_manager.get_client()
         payload = {
@@ -612,11 +770,15 @@ async def parse_user_import_file(
             "rows": limited_rows,
         }
         await redis_client.set(_import_data_key(token), json.dumps(payload, ensure_ascii=False), ex=_IMPORT_TTL_SECONDS)
+        
+        # 3. 初始化状态
         await _clear_user_import_cancel(redis_client, token)
         try:
             await redis_client.delete(_import_result_key(token))
         except Exception:
             pass
+            
+        # 4. 设置初始进度
         await _set_user_import_progress(
             redis_client,
             token,
@@ -632,6 +794,8 @@ async def parse_user_import_file(
                 "failed": 0,
             },
         )
+        
+        # 5. 返回预览数据 (前 20 行)
         preview = []
         for r in limited_rows[:20]:
             preview.append({k: _normalize_cell_value(v) for k, v in r.items()})
@@ -656,6 +820,11 @@ async def get_user_import_progress(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
+    """
+    获取导入进度
+    
+    根据 Token 查询当前的导入状态和进度百分比。
+    """
     try:
         t = str(token or "").strip()
         if not t:
@@ -678,6 +847,11 @@ async def cancel_user_import(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
+    """
+    取消导入任务
+    
+    中断正在进行的导入过程。
+    """
     try:
         t = str(data.token or "").strip()
         if not t:
@@ -694,7 +868,11 @@ async def cancel_user_import(
                     return {"code": 200, "message": "导入已停止"}
             except Exception:
                 pass
+        
+        # 设置取消标志
         await _set_user_import_cancel(redis_client, t)
+        
+        # 更新状态为 canceled
         await _set_user_import_progress(
             redis_client,
             t,
@@ -713,6 +891,11 @@ async def get_user_import_result(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
+    """
+    获取导入结果
+    
+    导入完成后，获取详细的统计信息 (成功数、失败数、错误详情等)。
+    """
     try:
         t = str(token or "").strip()
         if not t:
@@ -732,6 +915,22 @@ async def commit_user_import(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:import"])),
 ):
+    """
+    提交导入任务
+    
+    确认字段映射关系，开始执行后台导入任务。
+    这是一个长耗时操作，建议配合进度接口轮询。
+    
+    Process:
+    1. 检查任务状态和取消信号
+    2. 加载解析后的临时数据
+    3. 加载系统角色列表
+    4. 遍历数据行，校验字段，构建候选数据
+    5. 检查数据库中已存在的用户名 (查重)
+    6. 并行计算密码哈希 (耗时操作)
+    7. 批量写入用户数据 (事务保护)
+    8. 批量绑定用户角色
+    """
     token_for_progress = ""
     phase_for_log = ""
     timing_ms: dict[str, int] = {}
@@ -739,6 +938,7 @@ async def commit_user_import(
     last_sql = ""
     last_sql_params: dict[str, Any] = {}
     try:
+        # --- 阶段 1: 初始化检查 ---
         phase_for_log = "parse_request"
         token = str(data.token or "").strip()
         token_for_progress = token
@@ -746,6 +946,7 @@ async def commit_user_import(
             return {"code": 400, "message": "缺少 token"}
 
         redis_client = redis_manager.get_client()
+        # 如果已有结果，直接返回
         existing_result = await _get_user_import_result(redis_client, token)
         if existing_result:
             return {"code": 200, "data": existing_result}
@@ -770,6 +971,7 @@ async def commit_user_import(
                 detail={"phase": "canceled"},
             )
             return {"code": 200, "message": "已停止导入", "data": result}
+        
         phase_for_log = "prepare"
         await _set_user_import_progress(
             redis_client,
@@ -780,6 +982,7 @@ async def commit_user_import(
             detail={"phase": "prepare"},
         )
 
+        # 解析字段映射
         mapping = {str(k): (str(v).strip() if v is not None and str(v).strip() else None) for k, v in (data.mapping or {}).items()}
         username_col = mapping.get("username")
         if not username_col:
@@ -799,6 +1002,7 @@ async def commit_user_import(
         if on_duplicate not in {"skip"}:
             on_duplicate = "skip"
 
+        # --- 阶段 2: 加载数据 ---
         phase_for_log = "load_rows"
         raw = await redis_client.get(_import_data_key(token))
         if not raw:
@@ -816,6 +1020,7 @@ async def commit_user_import(
             await _set_user_import_progress(redis_client, token, 100, "error", "导入数据为空")
             return {"code": 400, "message": "导入数据为空"}
 
+        # --- 阶段 3: 加载角色 ---
         phase_for_log = "load_roles"
         await _set_user_import_progress(
             redis_client,
@@ -828,6 +1033,8 @@ async def commit_user_import(
         t_roles_start = time.perf_counter()
         roles_rows = await db.fetch_all("SELECT id, code, is_default FROM roles")
         timing_ms["load_roles"] = int((time.perf_counter() - t_roles_start) * 1000)
+        
+        # 建立角色代码到 ID 的映射
         role_id_by_code = {str(r["code"]).strip().lower(): int(r["id"]) for r in (roles_rows or []) if r and r.get("code")}
         role_id_fallback = role_id_by_code.get(default_role_code) if default_role_code else None
         system_default_role_id = None
@@ -847,6 +1054,7 @@ async def commit_user_import(
         candidates: list[dict] = []
         seen_usernames: set[str] = set()
 
+        # --- 阶段 4: 校验并构建数据 ---
         phase_for_log = "validate"
         await _set_user_import_progress(
             redis_client,
@@ -869,6 +1077,7 @@ async def commit_user_import(
                 errors.append({"row": idx, "reason": "用户名为空"})
                 continue
 
+            # 文件内查重
             if username in seen_usernames:
                 skipped += 1
                 errors.append({"row": idx, "username": username, "reason": "文件内用户名重复"})
@@ -886,6 +1095,7 @@ async def commit_user_import(
             nickname = _normalize_cell_value(r.get(nickname_col)) if nickname_col else None
             email = _normalize_cell_value(r.get(email_col)) if email_col else None
 
+            # 确定角色
             target_role_code = _normalize_cell_value(r.get(role_col)).lower() if role_col else None
             role_id = role_id_by_code.get(target_role_code) if target_role_code else None
             if role_id is None:
@@ -903,6 +1113,7 @@ async def commit_user_import(
                     "role_id": role_id,
                 }
             )
+            # 定期更新进度
             if idx % 200 == 0 or idx == total_rows:
                 if await _is_user_import_cancelled(redis_client, token):
                     timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
@@ -935,6 +1146,7 @@ async def commit_user_import(
         timing_ms["build_candidates"] = int((time.perf_counter() - t_build_start) * 1000)
 
         if not candidates:
+            # 没有有效数据
             timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
             result = UserImportCommitResponse(
                 created=created,
@@ -957,6 +1169,7 @@ async def commit_user_import(
                 "data": result,
             }
 
+        # --- 阶段 5: 数据库查重 ---
         phase_for_log = "check_existing"
         await _set_user_import_progress(
             redis_client,
@@ -968,6 +1181,7 @@ async def commit_user_import(
         )
         t_dup_start = time.perf_counter()
         usernames = [c["username"] for c in candidates]
+        # 批量查询已存在的用户
         existing_rows = await db.fetch_all(
             "SELECT username FROM users WHERE username = ANY($1::text[])",
             usernames,
@@ -979,10 +1193,12 @@ async def commit_user_import(
         for c in candidates:
             if c["username"] in existing:
                 skipped += 1
+                # 目前仅支持跳过，未来可支持 overwrite
                 continue
             to_insert.append(c)
 
         if not to_insert:
+            # 全部重复
             await _set_user_import_progress(redis_client, token, 100, "done", "导入完成")
             timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
             result = UserImportCommitResponse(
@@ -998,6 +1214,7 @@ async def commit_user_import(
                 "data": result,
             }
 
+        # --- 阶段 6: 密码哈希 (CPU 密集型) ---
         phase_for_log = "hash_passwords"
         await _set_user_import_progress(redis_client, token, 55, "importing", "生成密码")
         t_hash_start = time.perf_counter()
@@ -1017,6 +1234,7 @@ async def commit_user_import(
         batch_size = 200
 
         loop = asyncio.get_running_loop()
+        # 分批处理，避免长时间占用 CPU
         for start in range(0, len(to_insert), batch_size):
             if await _is_user_import_cancelled(redis_client, token):
                 timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
@@ -1039,6 +1257,7 @@ async def commit_user_import(
                 return {"code": 200, "message": "已停止导入", "data": result}
             batch = to_insert[start : start + batch_size]
 
+            # 筛选需要计算哈希的密码
             needs_hash: list[str] = []
             needs_hash_idx: list[int] = []
             for i, c in enumerate(batch):
@@ -1050,6 +1269,7 @@ async def commit_user_import(
                 needs_hash.append(pw)
                 needs_hash_idx.append(i)
 
+            # 使用线程池并行计算哈希
             hashed_results: list[Any] = []
             if needs_hash:
                 futures = [loop.run_in_executor(_HASH_EXECUTOR, get_password_hash, pw) for pw in needs_hash]
@@ -1059,6 +1279,7 @@ async def commit_user_import(
             for pos, i in enumerate(needs_hash_idx):
                 hashed_by_i[i] = hashed_results[pos]
 
+            # 组装最终写入数据
             for i, c in enumerate(batch):
                 pw_raw = str(c["password"] or "")
                 if password_is_hashed:
@@ -1121,26 +1342,7 @@ async def commit_user_import(
                 "data": result,
             }
 
-        if await _is_user_import_cancelled(redis_client, token):
-            timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
-            result = UserImportCommitResponse(
-                created=created,
-                skipped=skipped,
-                failed=failed,
-                errors=errors,
-                timing_ms=timing_ms,
-            ).model_dump()
-            await _set_user_import_result(redis_client, token, result)
-            await _set_user_import_progress(
-                redis_client,
-                token,
-                100,
-                "canceled",
-                "已停止导入",
-                detail={"phase": "canceled", "total": len(to_insert), "processed": len(usernames_ins) + failed, "created": created, "skipped": skipped, "failed": failed},
-            )
-            return {"code": 200, "message": "已停止导入", "data": result}
-
+        # --- 阶段 7: 批量写入数据库 ---
         phase_for_log = "db_insert"
         await _set_user_import_progress(
             redis_client,
@@ -1160,6 +1362,7 @@ async def commit_user_import(
                 for start in range(0, total_ins, chunk_size):
                     phase_for_log = "db_insert"
                     if await _is_user_import_cancelled(redis_client, token):
+                        # 处理事务中的取消
                         timing_ms["db_insert_and_roles"] = int((time.perf_counter() - t_insert_start) * 1000)
                         timing_ms["total"] = int((time.perf_counter() - t_total_start) * 1000)
                         result = UserImportCommitResponse(
@@ -1188,6 +1391,7 @@ async def commit_user_import(
                     chunk_approved = approved_ins[start:end]
                     chunk_perms = perms_ins[start:end]
 
+                    # 记录最后执行的 SQL 用于错误诊断
                     last_sql = """
                         INSERT INTO users (username, password, nickname, email, is_approved, permissions)
                         SELECT x.username, x.password, x.nickname, x.email, x.is_approved, x.permissions::jsonb
@@ -1219,6 +1423,8 @@ async def commit_user_import(
                         "permissions_sample_parsed_kind": parsed_perm_kind,
                         "permissions_sample_len": int(len(sample_perm)) if isinstance(sample_perm, str) else None,
                     }
+                    
+                    # 执行批量插入
                     inserted = await conn.fetch(
                         """
                         INSERT INTO users (username, password, nickname, email, is_approved, permissions)
@@ -1257,6 +1463,7 @@ async def commit_user_import(
                         detail={"phase": "db_insert", "total": total_ins, "processed": processed_ins, "created": created, "skipped": skipped, "failed": failed},
                     )
 
+                    # --- 阶段 8: 绑定角色 ---
                     role_pairs: list[tuple[int, int]] = []
                     for uname, uid in inserted_map.items():
                         rid = role_by_username.get(uname)
@@ -1287,6 +1494,8 @@ async def commit_user_import(
             errors=errors,
             timing_ms=timing_ms,
         ).model_dump()
+        
+        # 9. 导入完成，保存结果
         await _set_user_import_result(redis_client, token, result)
         await _set_user_import_progress(
             redis_client,
@@ -1301,6 +1510,7 @@ async def commit_user_import(
             "data": result,
         }
     except Exception as e:
+        # 异常处理：记录日志并保存错误状态
         try:
             logger.exception(
                 "user_import commit failed token=%s phase=%s err=%s",
@@ -1355,6 +1565,7 @@ async def commit_user_import(
 
 
 def _is_valid_email(email: str) -> bool:
+    """验证邮箱格式"""
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", str(email or "").strip()))
 
 
@@ -1369,6 +1580,19 @@ async def admin_list_users(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:view"])),
 ):
+    """
+    用户列表管理
+    
+    管理员查看系统用户列表。
+    支持按用户名/昵称/邮箱搜索，按状态筛选。
+    
+    Args:
+        q: 搜索关键字
+        is_approved: 审核状态筛选 (True/False)
+        include_deleted: 是否包含已删除用户 (默认 False)
+        page: 页码
+        page_size: 每页数量
+    """
     try:
         result = await UserService.admin_list_users(
             q=str(q or ""),
@@ -1392,6 +1616,11 @@ async def admin_get_user_detail(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:view"])),
 ):
+    """
+    获取用户详情 (管理端)
+    
+    管理员获取指定用户的完整信息，包括角色、权限等。
+    """
     try:
         data = await UserService.admin_get_user_detail(int(user_id))
         if not data:
@@ -1409,6 +1638,12 @@ async def admin_create_user(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"])),
 ):
+    """
+    创建用户 (管理端)
+    
+    管理员手动创建用户。
+    可设置用户名、密码、昵称、邮箱等信息。
+    """
     try:
         user_id = await UserService.create_user(user_in)
         await UserAdminAuditService.log(
@@ -1433,22 +1668,34 @@ async def admin_update_user(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"])),
 ):
+    """
+    更新用户信息 (管理端)
+    
+    管理员更新用户的基本信息、封禁状态、密码等。
+    """
     try:
         uid = int(user_id)
+        # 1. 安全检查：防止越权修改
         await _require_actor_superadmin_when_target_protected(uid, current_user)
+        
+        # 2. 自我保护：不能封禁自己
         if uid == int(current_user.get("id") or 0) and data.is_approved is False:
             return {"code": 400, "message": "不能封禁自己"}
 
+        # 3. 校验邮箱
         if data.email is not None:
             email = str(data.email or "").strip()
             if email and not _is_valid_email(email):
                 return {"code": 400, "message": "邮箱格式不正确"}
 
+        # 4. 执行更新
         result = await UserService.admin_update_user(uid, data)
         if not result.get("updated") and result.get("reason") == "empty":
             return {"code": 200, "message": "无更新内容"}
         if not result.get("updated"):
             return {"code": 404, "message": "用户不存在"}
+            
+        # 5. 记录审计日志
         await UserAdminAuditService.log(
             action="user.update",
             actor=current_user,
@@ -1470,6 +1717,12 @@ async def admin_delete_user(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"])),
 ):
+    """
+    删除用户 (管理端)
+    
+    管理员删除用户。
+    注意：通常是软删除，保留数据记录但不可登录。
+    """
     if int(user_id) == int(current_user.get("id") or 0):
         return {"code": 400, "message": "不能删除自己"}
     try:

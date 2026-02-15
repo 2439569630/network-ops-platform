@@ -50,6 +50,14 @@ async def _is_protected_role_id(role_id: int) -> bool:
 
 
 async def _count_protected_role_users(*, exclude_user_id: int | None = None) -> int:
+    """
+    Helper: 计算拥有受保护角色 (超级管理员) 的有效用户数量。
+    
+    用于在删除或降级管理员时进行安全检查，防止系统中没有任何超级管理员。
+    
+    Args:
+        exclude_user_id: 可选，排除指定用户 ID (模拟该用户被移除后的情况)
+    """
     codes = sorted(list(_PROTECTED_ROLE_CODES))
     if exclude_user_id is None:
         sql = """
@@ -76,6 +84,11 @@ async def _count_protected_role_users(*, exclude_user_id: int | None = None) -> 
 
 
 async def _target_has_protected_role(user_id: int) -> bool:
+    """
+    Helper: 检查指定用户是否拥有受保护角色 (超级管理员)。
+    
+    用于权限控制：普通管理员不能操作超级管理员。
+    """
     rows = await db.fetch_all(
         """
         SELECT r.code
@@ -92,7 +105,12 @@ async def _target_has_protected_role(user_id: int) -> bool:
 
 @router.get("/roles/with_users", response_model=dict)
 async def get_roles_with_users(current_user: dict = Depends(deps.get_current_user)):
-    """获取所有角色及其关联用户"""
+    """
+    获取所有角色及其关联用户
+    
+    返回角色列表，每个角色包含其关联的用户列表。
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -103,7 +121,12 @@ async def get_roles_with_users(current_user: dict = Depends(deps.get_current_use
 
 @router.get("/roles", response_model=dict)
 async def list_roles(current_user: dict = Depends(deps.get_current_user)):
-    """获取角色列表"""
+    """
+    获取角色列表
+    
+    返回系统中的所有角色基本信息 (ID, 名称, 代码, 描述)。
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -115,7 +138,16 @@ async def list_roles(current_user: dict = Depends(deps.get_current_user)):
 
 @router.post("/roles", response_model=dict)
 async def create_role(role_in: RoleCreate, current_user: dict = Depends(deps.get_current_user)):
-    """创建新角色"""
+    """
+    创建新角色
+    
+    Args:
+        name: 角色名称
+        code: 角色唯一代码 (英文)
+        description: 描述信息
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -127,7 +159,13 @@ async def create_role(role_in: RoleCreate, current_user: dict = Depends(deps.get
 
 @router.put("/roles/{role_id}", response_model=dict)
 async def update_role(role_id: int, role_in: RoleUpdate, current_user: dict = Depends(deps.get_current_user)):
-    """更新角色信息"""
+    """
+    更新角色信息
+    
+    更新角色的名称、描述等。
+    注意：系统保留角色 (如 superadmin) 可能有修改限制。
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -139,7 +177,16 @@ async def update_role(role_id: int, role_in: RoleUpdate, current_user: dict = De
 
 @router.delete("/roles/{role_id}", response_model=dict)
 async def delete_role(role_id: int, current_user: dict = Depends(deps.get_current_user)):
-    """删除角色"""
+    """
+    删除角色
+    
+    删除指定 ID 的角色。
+    注意：
+    1. 系统保留角色不允许删除。
+    2. 删除角色会自动解除其与用户和权限的关联。
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -151,7 +198,14 @@ async def delete_role(role_id: int, current_user: dict = Depends(deps.get_curren
 
 @router.get("/permissions", response_model=dict)
 async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
-    """获取所有权限列表"""
+    """
+    获取所有权限列表
+    
+    返回系统中定义的所有权限点 (ID, 名称, 代码, 描述)。
+    包括系统内置权限和用户自定义权限。
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -162,7 +216,18 @@ async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
 
 @router.get("/permissions/directory", response_model=dict)
 async def list_permission_directory(current_user: dict = Depends(deps.get_current_user)):
-    """获取权限目录结构"""
+    """
+    获取权限目录结构
+    
+    返回按模块分组的权限树形结构。
+    用于前端权限选择器展示 (如角色授权界面)。
+    
+    包含：
+    1. 系统内置模块权限
+    2. 自定义权限 (通常归类在 'custom' 模块下)
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -174,6 +239,14 @@ async def list_permission_directory(current_user: dict = Depends(deps.get_curren
 
 @router.get("/permissions/dependencies", response_model=dict)
 async def get_permission_dependencies(current_user: dict = Depends(deps.get_current_user)):
+    """
+    获取权限依赖关系
+    
+    返回权限之间的依赖映射 (例如：查看详情 -> 列表查看)。
+    前端在勾选权限时，可根据依赖关系自动勾选前置权限。
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     deps_map = {str(k): [str(x) for x in (v or [])] for k, v in (RbacService.PERMISSION_DEPENDENCIES or {}).items()}
@@ -182,7 +255,14 @@ async def get_permission_dependencies(current_user: dict = Depends(deps.get_curr
 
 @router.get("/permissions/disabled", response_model=dict)
 async def get_disabled_permissions(current_user: dict = Depends(deps.get_current_user)):
-    """获取已禁用的权限列表"""
+    """
+    获取已禁用的权限列表
+    
+    返回被系统管理员临时禁用的权限代码。
+    被禁用的权限即使被授权给用户，也不会生效。
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -197,7 +277,17 @@ async def set_disabled_permissions(
     data: DisabledPermissionsSet,
     current_user: dict = Depends(deps.get_current_user),
 ):
-    """设置禁用权限列表"""
+    """
+    设置禁用权限列表
+    
+    全量更新被禁用的权限代码列表。
+    操作立即生效 (更新 Redis 缓存和数据库配置)。
+    
+    Args:
+        codes: 需要禁用的权限代码列表
+    
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -222,6 +312,16 @@ async def restore_system_permission(
     data: PermissionRestore,
     current_user: dict = Depends(deps.get_current_user),
 ):
+    """
+    恢复系统默认权限
+    
+    如果在数据库中误删了系统内置权限，可使用此接口尝试恢复。
+    
+    Args:
+        code: 需要恢复的权限代码
+        
+    需要 sys:role:manage 权限。
+    """
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
@@ -299,7 +399,14 @@ async def get_users_distribution(
     page_size: int = Query(20, ge=1, le=200),
     current_user: dict = Depends(deps.get_current_user),
 ):
-    """获取用户角色分布列表"""
+    """
+    获取用户角色分布列表
+    
+    查看每个用户的角色分配情况。
+    支持按用户名/角色筛选。
+    
+    需要 sys:role:distribution 权限。
+    """
     # 允许 superadmin 或拥有 sys:role:distribution 权限的用户
     has_perm = await user_has_permission(current_user, "sys:role:distribution")
     if not has_perm:
@@ -412,14 +519,22 @@ async def remove_user_from_role(
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        # 1. 检查是否涉及受保护角色 (超级管理员)
         if await _is_protected_role_id(int(role_id)):
+            # 只有超级管理员才能管理超级管理员角色
             if not user_is_super(current_user):
                 return {"code": 403, "message": "仅超级管理员可管理该角色成员"}
+            
+            # 禁止移除自己 (防止把自己踢出管理员组后无法恢复)
             if int(user_id) == int(current_user.get("id") or 0):
                 return {"code": 400, "message": "不允许将自己从超级管理员角色移除"}
+            
+            # 确保系统中至少保留一个超级管理员
             remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
             if remaining <= 0:
                 return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
+        
+        # 2. 执行移除操作
         await RbacService.remove_user_from_role(role_id, user_id)
         return {"code": 200, "message": "移除成功"}
     except Exception as e:
@@ -433,37 +548,59 @@ async def set_user_roles(
     request: Request,
     current_user: dict = Depends(deps.get_current_user),
 ):
-    """设置用户的角色"""
+    """
+    设置用户的角色
+    
+    全量替换用户的角色列表。
+    会检查是否涉及超级管理员角色的变更（防止权限逃逸或误操作）。
+    
+    需要 sys:role:assign 或 sys:role:distribution 权限。
+    """
     # 允许 superadmin 或拥有 sys:role:distribution 权限的用户 (认为管理分布包含分配角色)
     # 或者我们应该定义一个 sys:role:assign? 暂时复用 distribution
     has_perm = await user_has_permission(current_user, "sys:role:assign") or await user_has_permission(current_user, "sys:role:distribution")
     if not has_perm:
         return {"code": 403, "message": "权限不足"}
     try:
+        # 1. 权限边界检查
+        # 如果目标用户已经是超级管理员，则只有超级管理员能修改其角色
         if await _target_has_protected_role(int(user_id)) and not check_super_admin(current_user):
             return {"code": 403, "message": "仅超级管理员可操作该用户"}
+            
         actor_id = int(current_user.get("id") or 0)
         new_role_ids = [int(rid) for rid in (data.role_ids or []) if rid is not None]
         new_role_ids = sorted(list(set(new_role_ids)))
 
+        # 2. 检查是否涉及超级管理员权限的变更
         old_has_protected = await _target_has_protected_role(int(user_id))
         new_has_protected = False
+        
+        # 检查新角色列表中是否包含受保护角色 (superadmin)
         if new_role_ids:
             rows = await db.fetch_all("SELECT code FROM roles WHERE id = ANY($1::int[])", new_role_ids)
             codes = {str((r or {}).get("code") or "").strip().lower() for r in (rows or [])}
             codes = {c for c in codes if c}
             new_has_protected = bool(codes & _PROTECTED_ROLE_CODES)
 
+        # 3. 防止自我降级和误删最后一个管理员
+        # 如果用户原本是超管，现在要去掉超管角色
         if old_has_protected and not new_has_protected:
+            # 不允许自己取消自己的超管权限
             if int(user_id) == actor_id:
                 return {"code": 400, "message": "不允许将自己降级为非超级管理员"}
+                
+            # 确保还有其他超管存在
             remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
             if remaining <= 0:
                 return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
 
+        # 4. 执行角色更新
         await RbacService.set_user_roles(user_id, data.role_ids)
+        
+        # 5. 记录关键操作审计日志
         xff = request.headers.get("x-forwarded-for") if request else None
         ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else None)
+        
         await UserAdminAuditService.log(
             action="user.set_roles",
             actor=current_user,

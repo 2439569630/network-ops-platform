@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+#
+# 位置管理 API 接口
+#
+# 此模块负责处理位置（区域/楼栋/机房等）的层级结构管理。
+# 支持位置树的增删改查、节点移动、以及设备和用户的绑定管理。
+#
+
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
@@ -21,7 +29,11 @@ class DeviceBindRequest(BaseModel):
 
 @router.get("/tree", response_model=dict)
 async def get_location_tree(user: dict = Depends(PermissionChecker(["sys:location:view"]))):
-    """获取位置树结构"""
+    """
+    获取完整的位置树结构。
+    
+    返回嵌套的 JSON 结构，包含所有层级的节点。
+    """
     try:
         data = await LocationService.get_tree()
         return {"code": 200, "data": data}
@@ -33,7 +45,12 @@ async def get_location_tree(user: dict = Depends(PermissionChecker(["sys:locatio
 async def create_location_node(
     payload: LocationNodeCreate, user: dict = Depends(PermissionChecker(["sys:location:add"]))
 ):
-    """创建位置节点"""
+    """
+    创建新的位置节点。
+    
+    Args:
+        payload: 节点创建信息（名称、类型、父节点ID等）
+    """
     try:
         node = await LocationService.create_node(payload.model_dump())
         return {"code": 200, "message": "创建成功", "data": node}
@@ -45,7 +62,13 @@ async def create_location_node(
 async def update_location_node(
     node_id: int, payload: LocationNodeUpdate, user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
-    """更新位置节点"""
+    """
+    更新位置节点信息。
+    
+    Args:
+        node_id: 节点ID
+        payload: 更新信息
+    """
     try:
         updated = await LocationService.update_node(int(node_id), payload.model_dump(exclude_unset=True))
         if not updated:
@@ -59,7 +82,11 @@ async def update_location_node(
 async def delete_location_node(
     node_id: int, user: dict = Depends(PermissionChecker(["sys:location:del"]))
 ):
-    """删除位置节点"""
+    """
+    删除位置节点。
+    
+    注意：通常需要先清空该节点下的子节点和关联设备/用户才能删除。
+    """
     try:
         ok = await LocationService.delete_node(int(node_id))
         if not ok:
@@ -73,7 +100,11 @@ async def delete_location_node(
 async def move_location_node(
     node_id: int, payload: LocationNodeMove, user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
-    """移动位置节点"""
+    """
+    移动位置节点。
+    
+    修改节点的父级ID，实现树结构的调整。
+    """
     try:
         moved = await LocationService.move_node(int(node_id), payload.parent_id)
         if not moved:
@@ -85,7 +116,11 @@ async def move_location_node(
 
 @router.get("/bind/roles", response_model=dict)
 async def list_bind_roles(user: dict = Depends(PermissionChecker(["sys:location:bind"]))):
-    """获取可绑定角色列表"""
+    """
+    获取可绑定到位置的角色列表。
+    
+    用于在位置节点上配置基于角色的权限（例如：某角色可管理该位置）。
+    """
     try:
         rows = await db.fetch_all("SELECT id, name, code FROM roles ORDER BY id")
         data = [{"id": int(r["id"]), "name": r.get("name"), "code": r.get("code")} for r in (rows or [])]
@@ -103,7 +138,9 @@ async def search_bind_users(
     user: dict = Depends(PermissionChecker(["sys:location:bind"])),
 ):
     """
-    搜索可绑定用户
+    搜索可绑定到位置的用户。
+    
+    支持按用户名/昵称/邮箱搜索，或按角色筛选。
     
     Args:
         q: 搜索关键字
@@ -121,11 +158,15 @@ async def search_bind_users(
         params = []
         idx = 1
 
+        # 1. 关键字搜索条件
+        # 支持按 username, nickname, email 模糊匹配 (ILIKE)
         if q_norm:
             where_parts.append(f"(username ILIKE ${idx} OR nickname ILIKE ${idx} OR email ILIKE ${idx})")
             params.append(f"%{q_norm}%")
             idx += 1
         
+        # 2. 角色筛选条件
+        # 仅筛选拥有指定角色的用户 (例如：只看"运维人员")
         if role_id:
             where_parts.append(f"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ${idx})")
             params.append(role_id)
@@ -133,10 +174,14 @@ async def search_bind_users(
 
         where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
+        # 3. 计算总数 (用于分页)
         if role_id and not q_norm:
+            # 优化：如果只按角色筛选且无关键字，直接查 user_roles 表更快
             total = await db.fetch_val("SELECT COUNT(1) FROM user_roles ur WHERE ur.role_id = $1", int(role_id))
         else:
             total = await db.fetch_val(f"SELECT COUNT(1) FROM users {where_sql}", *params)
+            
+        # 4. 分页查询用户列表
         rows = await db.fetch_all(
             f"""
             SELECT id, username, nickname, email
@@ -165,17 +210,23 @@ async def add_devices_to_location(
     payload: DeviceBindRequest,
     user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
-    """将设备添加到位置节点"""
+    """
+    将设备绑定到指定位置节点。
+    
+    注意：
+    1. 一个设备只能属于一个位置节点。
+    2. 如果设备之前绑定了其他节点，会自动转移到新节点。
+    3. 某些宽泛类型的节点（如学校/校区/部门）可能不允许直接绑定设备，需绑定到具体位置（如机房）。
+    """
     try:
-        # Get location node info (need name for the device location field)
+        # 1. 获取目标节点信息
         node = await LocationNode.filter(id=node_id).first()
         if not node:
             return {"code": 404, "message": "位置不存在"}
         
-        # Check node type
-        # Allow binding only for specific types or deny broad types
-        # Policy: Deny 'school', 'campus', 'department'
-        # Let's deny broad types.
+        # 2. 业务规则检查：
+        # 某些类型的节点 (如学校、校区、部门) 仅作为逻辑分组，不允许直接绑定物理设备。
+        # 设备必须绑定到具体的物理位置 (如机房、办公室、弱电井)。
         if node.type in ('school', 'campus', 'department'):
             return {"code": 400, "message": f"无法在[{node.type}]类型的节点上直接绑定设备，请选择更具体的下级位置"}
 
@@ -183,14 +234,14 @@ async def add_devices_to_location(
         if not device_ids:
              return {"code": 200, "message": "未选择设备"}
 
-        # Update devices
-        # 1. Clear existing mappings for these devices (enforce 1:1)
+        # 3. 清除这些设备已有的绑定关系
+        # 系统设计为：一个设备只能属于一个位置 (1:1 或 N:1，但 device 侧只能指向一个 location)
+        # 如果设备之前绑定了其他位置，这里会自动解绑，实现"抢占式"绑定。
         await LocationNodeDevice.filter(device_id__in=device_ids).delete()
         
-        # 2. Add new mappings
-        # Using bulk create? Or simple loop? Loop is safer for small batches.
+        # 4. 创建新的绑定关系
+        # 批量插入设备与当前节点的关联记录
         for did in device_ids:
-            # Upsert not needed since we deleted above.
             await LocationNodeDevice.create(node_id=node.id, device_id=did)
         
         return {"code": 200, "message": "设备添加成功"}
@@ -204,9 +255,12 @@ async def remove_devices_from_location(
     payload: DeviceBindRequest = Body(...),
     user: dict = Depends(PermissionChecker(["sys:location:edit"]))
 ):
-    """从位置节点移除设备"""
+    """
+    从位置节点移除设备。
+    
+    移除后，设备将不属于任何位置。
+    """
     try:
-        # Get location node info
         node = await LocationNode.filter(id=node_id).first()
         if not node:
             return {"code": 404, "message": "位置不存在"}
@@ -215,7 +269,7 @@ async def remove_devices_from_location(
         if not device_ids:
              return {"code": 200, "message": "未选择设备"}
 
-        # Remove devices from THIS location
+        # 仅移除当前节点的绑定关系
         await LocationNodeDevice.filter(node_id=node.id, device_id__in=device_ids).delete()
         
         return {"code": 200, "message": "设备移除成功"}
@@ -228,7 +282,11 @@ async def list_bind_users_by_ids(
     ids: list[int] = Query(default=[]),
     user: dict = Depends(PermissionChecker(["sys:location:bind"])),
 ):
-    """根据ID获取用户列表"""
+    """
+    根据ID列表批量获取用户信息。
+    
+    用于前端回显已绑定的用户列表。
+    """
     try:
         norm = [int(x) for x in (ids or []) if x is not None]
         if not norm:

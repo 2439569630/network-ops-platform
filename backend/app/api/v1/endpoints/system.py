@@ -70,6 +70,13 @@ async def _ensure_default_configs_exist(keys: list[str]) -> None:
 
 @router.get("/config/list", response_model=dict)
 async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]))):
+    """
+    获取系统配置列表
+    
+    返回所有可配置的系统参数 (如邮件服务、图片服务配置等)。
+    会自动初始化缺失的默认配置项。
+    过滤掉废弃、隐藏或受保护的配置组。
+    """
     try:
         await _ensure_default_configs_exist([
             "email_enabled",
@@ -99,7 +106,18 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
 
 @router.post("/config/update", response_model=dict)
 async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionChecker(["sys:config:edit"]))):
+    """
+    更新系统配置
+    
+    修改指定的配置项值。
+    更新后会自动刷新系统内存中的配置缓存。
+    
+    Args:
+        key: 配置键名
+        value: 配置值
+    """
     try:
+        # 1. 检查是否为废弃或禁止修改的配置项
         if data.key == "trap_autostart":
             return {"code": 400, "message": "trap_autostart 已废弃，无法更新"}
         if str(data.key) in _REMOVED_CONFIG_KEYS:
@@ -107,25 +125,32 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
         if str(data.key) in _HIDDEN_CONFIG_KEYS:
             return {"code": 400, "message": "该配置项不在全局配置中维护，请使用 RBAC 管理接口"}
 
+        # 2. 获取配置项元数据 (默认组名和描述)
         meta = _DEFAULT_CONFIG_META.get(str(data.key)) or {}
         next_group = str(meta.get("group_name") or "system")
         next_desc = meta.get("description")
 
+        # 3. 检查数据库中是否存在该配置项
         existing = await db.fetch_one(
             "SELECT group_name, description FROM system_settings WHERE key = $1",
             str(data.key),
         )
         if existing:
+            # 如果存在，保留原有的分组
             exist_group = str(existing.get("group_name") or "system")
+            # 检查分组是否被锁定 (如 monitor 组配置禁止在此修改)
             if exist_group in _BLOCKED_GROUPS:
                 return {"code": 400, "message": "该配置项属于设备/监控配置，禁止在全局配置中维护"}
             next_group = exist_group
+            # 如果元数据没有描述，使用数据库中的描述
             if next_desc is None:
                 next_desc = existing.get("description")
         else:
+            # 如果是新配置，检查目标分组是否被锁定
             if next_group in _BLOCKED_GROUPS:
                 return {"code": 400, "message": "该配置项属于设备/监控配置，禁止在全局配置中维护"}
 
+        # 4. 执行更新或插入 (Upsert)
         await db.execute(
             """
             INSERT INTO system_settings (key, value, description, group_name)
@@ -138,6 +163,7 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
             next_group,
         )
 
+        # 5. 刷新系统配置缓存，使更改立即生效
         await SystemConfig.refresh()
         return {"code": 200, "message": "配置更新成功"}
     except Exception as e:
@@ -156,6 +182,21 @@ async def list_user_admin_audit_logs(
     end_at: Optional[datetime] = Query(None),
     user: dict = Depends(PermissionChecker(["sys:audit:view"])),
 ):
+    """
+    获取用户管理审计日志
+    
+    查询管理员对用户的操作记录 (如修改密码、角色变更、封禁等)。
+    支持按操作人、动作类型、目标用户、时间范围筛选。
+    
+    Args:
+        page: 页码
+        page_size: 每页数量
+        actor_username: 操作人用户名 (模糊匹配)
+        action: 动作类型 (如 user.set_roles)
+        target_user_id: 目标用户 ID
+        start_at: 开始时间
+        end_at: 结束时间
+    """
     try:
         where = ["1=1"]
         args: list = []

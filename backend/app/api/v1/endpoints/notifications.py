@@ -74,13 +74,20 @@ async def create_site_message(
     仅限管理员使用
     """
     try:
+        # 1. 权限检查：仅超级管理员可发送全站/定向消息
         if not user_is_super(user):
             return {"code": 403, "message": "权限不足"}
 
         title = str(data.title or "").strip()
         content = str(data.content or "").strip()
         target_user_id = int(data.target_user_id) if data.target_user_id is not None else None
+        
+        # 2. 确定消息范围
+        # 如果未指定 target_user_id，则视为全局消息 (is_global=True)
+        # 全局消息对所有用户可见
         is_global = bool(data.is_global) if target_user_id is None else False
+        
+        # 3. 创建消息记录
         row = await NotificationService.create_site_message(
             sender_id=int(user.get("id")) if user.get("id") is not None else None,
             sender_name=str(user.get("username") or user.get("name") or ""),
@@ -189,7 +196,15 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
     """
     SSE 站内信实时推送
     
-    使用 Server-Sent Events 推送站内消息
+    使用 Server-Sent Events (SSE) 技术推送站内消息。
+    客户端建立连接后，服务端会保持连接开启，并通过 Redis PubSub 监听消息。
+    
+    推送内容包括：
+    1. 新消息通知 (message)
+    2. 消息已读状态变更 (read_state)
+    3. 未读数更新 (unread)
+    
+    包含心跳检测 (ping) 和认证状态检查 (auth_ver)。
     """
     user_id = int(user.get("id"))
     token_auth_ver = user.get("auth_ver")
@@ -199,8 +214,13 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
         token_auth_ver = None
 
     async def event_stream():
+        # 1. 建立 Redis PubSub 连接
+        # 使用独立的连接，避免阻塞主连接池
         redis_client = redis_manager.get_pubsub_client()
         pubsub = redis_client.pubsub()
+        
+        # 2. 订阅频道
+        # 订阅全局消息频道和用户专属频道 (用于定向消息)
         channels = [
             NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL,
             NotificationService.get_site_messages_user_channel(user_id),
@@ -209,19 +229,27 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
         try:
             await pubsub.subscribe(*channels)
 
+            # 3. 发送 SSE 重连时间设置
             yield "retry: 3000\n\n"
 
+            # 4. 首次推送：发送当前未读数
             init_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
             yield f"event: unread\ndata: {json.dumps({'count': int(init_count)}, ensure_ascii=False)}\n\n"
 
             last_auth_check = 0.0
             while True:
                 now = asyncio.get_running_loop().time()
+                
+                # 5. 定期检查用户认证状态 (每3秒)
+                # 防止用户注销或密码变更后 SSE 仍保持连接
                 if token_auth_ver is not None and now - last_auth_check >= 3.0:
                     last_auth_check = now
                     current_ver = await get_or_init_user_auth_version(int(user_id))
                     if int(current_ver) != int(token_auth_ver):
+                        # 认证失效，断开连接
                         return
+                        
+                # 6. 等待 Redis 消息 (非阻塞，带超时)
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
                 if message and message.get("type") == "message":
                     payload = None
@@ -235,14 +263,18 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
 
                     if isinstance(payload, dict):
                         msg_type = str(payload.get("type") or "")
+                        # 7. 根据消息类型推送不同事件
                         if msg_type == "site_message_created":
                             yield f"event: message\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                         elif msg_type == "site_message_read_state":
                             yield f"event: read_state\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
+                    # 8. 每次收到消息后，推送最新的未读数
                     next_count = await NotificationService.get_site_message_unread_count(user_id=user_id)
                     yield f"event: unread\ndata: {json.dumps({'count': int(next_count)}, ensure_ascii=False)}\n\n"
                 else:
+                    # 9. 发送心跳包 (Ping) 保持连接活跃
+                    # 避免前端 EventSource 因超时自动重连
                     yield ": ping\n\n"
         except asyncio.CancelledError:
             raise
@@ -275,6 +307,15 @@ async def get_system_alerts_recent(
     limit: int = Query(50),
     user: dict = Depends(PermissionChecker("sys:notify:history")),
 ):
+    """
+    获取最近的系统告警记录
+    
+    从 Redis 缓存列表中获取最近的告警消息。
+    通常用于前端页面初始化时展示历史告警。
+    
+    Args:
+        limit: 获取数量限制，默认 50，最大 200
+    """
     lim = max(1, min(int(limit or 50), 200))
     try:
         redis_client = redis_manager.get_client()
@@ -302,6 +343,15 @@ async def get_system_alerts_recent(
 
 @router.websocket("/ws/system-alerts")
 async def websocket_system_alerts(websocket: WebSocket):
+    """
+    WebSocket 系统告警实时推送
+    
+    用于实时接收系统产生的告警消息。
+    连接建立后，首先推送最近的历史告警 (init)，然后进入监听模式 (alert)。
+    
+    Args:
+        token: 认证 Token (通过 Query 参数传递)
+    """
     await websocket.accept()
     token = websocket.query_params.get("token")
     user = await verify_token_ws(websocket, token)
@@ -320,8 +370,11 @@ async def websocket_system_alerts(websocket: WebSocket):
 
     pubsub = redis_client.pubsub()
     try:
+        # 1. 订阅系统告警频道
         await pubsub.subscribe(NotificationService.SYSTEM_ALERTS_CHANNEL)
 
+        # 2. 获取最近的历史告警 (Recent Alerts)
+        # 用于前端页面初始化时填充数据，避免空白
         try:
             rows = await redis_client.lrange(NotificationService.SYSTEM_ALERTS_RECENT_KEY, 0, 49)
         except Exception:
@@ -337,9 +390,13 @@ async def websocket_system_alerts(websocket: WebSocket):
                 obj = None
             if isinstance(obj, dict):
                 init_items.append(obj)
+        
+        # 3. 推送初始化数据 (type: init)
         await websocket.send_json({"type": "init", "data": init_items})
 
+        # 4. 进入实时监听循环
         while True:
+            # 使用较短的 timeout (1.0s) 以便能响应 WebSocket 断开事件
             msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if msg and msg.get("type") == "message":
                 raw = msg.get("data")
@@ -350,7 +407,10 @@ async def websocket_system_alerts(websocket: WebSocket):
                 except Exception:
                     payload = None
                 if isinstance(payload, dict):
+                    # 5. 推送实时告警 (type: alert)
                     await websocket.send_json({"type": "alert", "data": payload})
+            
+            # 6. 短暂休眠，避免 CPU 占用过高
             await asyncio.sleep(0.01)
     except WebSocketDisconnect:
         return

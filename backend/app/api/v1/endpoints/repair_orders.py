@@ -14,7 +14,15 @@ async def create_order(
     order_in: RepairOrderCreate,
     current_user: dict = Depends(PermissionChecker(["sys:repair:create"]))
 ):
-    """提交报修工单"""
+    """
+    提交报修工单
+    
+    用户提交新的报修请求。
+    提交后会自动通知相关人员。
+    
+    Args:
+        order_in: 工单创建信息 (标题、内容、优先级、关联设备等)
+    """
     try:
         order_id = await RepairOrderService.create_order(order_in, current_user['id'])
         try:
@@ -43,17 +51,27 @@ async def list_orders(
     """
     获取工单列表
     
+    支持分页、状态过滤和范围筛选。
+    
+    权限规则：
+    1. 超级管理员或拥有 sys:repair:list_all 权限者可查看所有工单。
+    2. 维修人员 (sys:repair:accept 或 yunwei 角色) 可查看分配给自己的工单和待处理工单。
+    3. 普通用户只能查看自己提交的工单。
+    
     Args:
-        page: 页码
-        page_size: 每页数量
-        status: 状态过滤
-        scope: 范围过滤
+        page: 页码，默认 1
+        page_size: 每页数量，默认 10
+        status: 工单状态 (pending, processing, completed, closed, cancelled)
+        scope: 范围过滤 (例如 'my' 表示只看我的，'all' 表示看所有)
     """
     try:
         # Determine view permissions
+        # 1. 超级管理员或拥有 list_all 权限的用户可以查看所有工单
         can_view_all = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:list_all")
+        # 2. 维修人员 (拥有 accept 权限或 yunwei 角色) 可以查看分配给自己的工单
         can_view_assigned = await user_has_permission(current_user, "sys:repair:accept") or user_has_role(current_user, "yunwei")
 
+        # 调用 Service 层获取列表，传入权限标志
         result = await RepairOrderService.get_order_list(
             page=page, 
             page_size=page_size, 
@@ -70,7 +88,12 @@ async def list_orders(
 
 @router.get("/assignees", response_model=dict)
 async def list_assignees(current_user: dict = Depends(PermissionChecker(["sys:repair:manage"]))):
-    """获取可用维修人员列表"""
+    """
+    获取可用维修人员列表
+    
+    返回所有拥有维修权限 (yunwei 角色) 的用户列表。
+    用于管理员手动派单。
+    """
     try:
         users = await RepairOrderService.list_assignees()
         return {"code": 200, "data": users}
@@ -82,7 +105,17 @@ async def get_order(
     id: int,
     current_user: dict = Depends(PermissionChecker(["sys:repair:view"]))
 ):
-    """获取工单详情"""
+    """
+    获取工单详情
+    
+    返回工单的详细信息，包括：
+    - 基本信息 (标题、内容、状态等)
+    - 关联设备
+    - 工作日志 (Work Logs)
+    - 图片附件
+    
+    权限检查同列表接口，仅允许有权查看的人员访问。
+    """
     try:
         order = await RepairOrderService.get_order_detail(id)
         if not order:
@@ -124,47 +157,52 @@ async def assign_order(
     """
     派发工单 (管理员)
     
-    如果 assignee_id 为空，则尝试自动派单
+    管理员将工单指派给具体的维修人员。
+    
+    Args:
+        id: 工单 ID
+        assignee_id: 维修人员用户 ID。如果不传，系统将尝试自动派单 (负载均衡策略)。
     """
     try:
+        # 1. 获取工单详情
         order = await RepairOrderService.get_order_detail(id)
         if not order:
             return {"code": 404, "message": "工单不存在"}
+        # 2. 状态检查：只有 pending (待受理) 的工单可以进行派单
         if order.get("status") != "pending":
             return {"code": 400, "message": "仅待受理工单可派单"}
 
         target_assignee_id = assignee_id
         auto_assign = False
+        
+        # 3. 如果未指定 assignee_id，尝试自动派单
         if not target_assignee_id:
             auto_assign = True
+            # 调用 Service 层获取最合适的维修人员 (例如负载最小的)
             target_assignee_id = await RepairOrderService.pick_auto_assignee_id()
             if not target_assignee_id:
                 return {"code": 400, "message": "暂无可用维修人员"}
 
-        # 修改为 pending 状态，等待维修人员确认接单
+        # 4. 更新工单状态为 pending (待确认) 并设置 assignee
+        # 注意：这里状态仍为 pending，意味着工单已指派但维修人员尚未接单 (accept)
+        # 也可以设计为 assigned 状态，但目前业务逻辑复用了 pending
         update_data = RepairOrderUpdate(status="pending", assignee_id=target_assignee_id)
         
         assign_reason = "自动派单 (负载均衡)" if auto_assign else "管理员指派"
         await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True, assign_reason=assign_reason)
         
-        if auto_assign:
-            await RepairOrderService.log_action(
-                id,
-                current_user["id"],
-                "auto_assign",
-                "pending",
-                "pending",
-                f"自动派单给用户ID: {target_assignee_id} (待接单)",
-            )
-        else:
-             await RepairOrderService.log_action(
-                id,
-                current_user["id"],
-                "assign",
-                "pending",
-                "pending",
-                f"指派给用户ID: {target_assignee_id} (待接单)",
-            )
+        # 5. 记录操作日志
+        log_detail = f"自动派单给用户ID: {target_assignee_id} (待接单)" if auto_assign else f"指派给用户ID: {target_assignee_id} (待接单)"
+        log_type = "auto_assign" if auto_assign else "assign"
+        
+        await RepairOrderService.log_action(
+            id,
+            current_user["id"],
+            log_type,
+            "pending",
+            "pending",
+            log_detail,
+        )
         return {"code": 200, "message": "派单成功，等待维修人员接单"}
     except Exception as e:
         return {"code": 500, "message": f"派单失败: {str(e)}"}
@@ -177,19 +215,28 @@ async def accept_order(
     """
     接单 (维修人员)
     
-    维修人员确认接收工单，状态变为处理中
+    维修人员主动领取待处理的工单。
+    接单后，工单状态变更为 "processing"，且当前用户成为该工单的 assignee。
     """
     try:
+        # 1. 验证工单状态和归属
         order = await RepairOrderService.get_order_detail(id)
         if not order:
             return {"code": 404, "message": "工单不存在"}
+            
+        # 2. 状态检查：只能接 pending 状态的工单
         if order.get("status") != "pending":
             return {"code": 400, "message": "仅待受理工单可接单"}
+            
+        # 3. 归属检查：如果已经指派给其他人，当前用户无法接单
         if order.get("assignee_id") is not None and order.get("assignee_id") != current_user["id"]:
             return {"code": 403, "message": "该工单已被指派"}
 
+        # 4. 更新工单状态为 processing (处理中) 并确认 assignee
         update_data = RepairOrderUpdate(status="processing", assignee_id=current_user["id"])
         await RepairOrderService.update_order(id, update_data, current_user["id"], skip_log=True)
+        
+        # 5. 记录接单日志
         await RepairOrderService.log_action(id, current_user["id"], "accept", "pending", "processing", "接单")
         return {"code": 200, "message": "接单成功"}
     except Exception as e:
@@ -205,7 +252,14 @@ async def add_work_log(
     """
     添加工作记录 (维修人员)
     
-    记录维修过程、上传图片等
+    在维修过程中记录工作进展。
+    
+    Args:
+        id: 工单 ID
+        content: 工作记录内容
+        images: 关联的图片 ID 列表 (可选)
+    
+    仅工单的 assignee 或管理员可添加。
     """
     try:
         order = await RepairOrderService.get_order_detail(id)
@@ -234,28 +288,43 @@ async def complete_order(
     current_user: dict = Depends(PermissionChecker(["sys:repair:handle", "sys:repair:manage"]))
 ):
     """
-    完成工单
+    完成工单 (维修人员)
     
-    维修结束，标记工单为已完成
+    维修人员完成维修任务后，提交完成操作。
+    工单状态变更为 "completed"。
+    
+    Args:
+        id: 工单 ID
+        remark: 完成备注 (可选)
+    
+    仅工单的 assignee 或管理员可操作。
     """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
         return {"code": 404, "message": "工单不存在"}
 
+    # 1. 状态检查：只有处理中 (processing) 的工单才能被标记为完成
     if order.get("status") != "processing":
         return {"code": 400, "message": "仅处理中工单可完成"}
         
+    # 2. 权限检查
     is_super = user_is_super(current_user)
     is_maint = user_has_role(current_user, "yunwei")
+    
+    # 只有超级管理员或运维人员可以操作
     if not (is_super or is_maint):
         return {"code": 403, "message": "权限不足"}
         
+    # 普通运维人员只能完成分配给自己的工单
     if is_maint and (not is_super) and order.get('assignee_id') != current_user['id']:
          return {"code": 403, "message": "只能完成指派给自己的工单"}
 
     try:
+        # 3. 更新状态为 completed
         update_data = RepairOrderUpdate(status="completed")
         await RepairOrderService.update_order(id, update_data, current_user['id'], skip_log=True)
+        
+        # 4. 记录完成日志和备注
         await RepairOrderService.log_action(
             id,
             current_user["id"],
@@ -278,7 +347,12 @@ async def cancel_order(
     """
     取消工单
     
-    仅创建者或管理员可取消
+    创建者或管理员可以取消未完成的工单。
+    工单状态变更为 "cancelled"。
+    
+    Args:
+        id: 工单 ID
+        reason: 取消原因 (必填)
     """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
@@ -315,7 +389,12 @@ async def review_order(
     """
     评价工单
     
-    工单完成后，创建者可进行评价，评价后工单关闭
+    工单完成后，创建者可以对服务进行评价。
+    评价后工单状态变更为 "closed" (关闭/归档)。
+    
+    Args:
+        id: 工单 ID
+        review: 评价信息 (评分、评语)
     """
     order = await RepairOrderService.get_order_detail(id)
     if not order:
@@ -353,7 +432,13 @@ async def force_update_status(
     """
     强制修改工单状态 (管理员)
     
-    特殊情况下管理员手动干预工单状态
+    管理员手动干预工单状态。
+    通常用于处理异常情况或纠正错误状态。
+    
+    Args:
+        id: 工单 ID
+        status: 目标状态
+        remark: 修改备注
     """
     try:
         order = await RepairOrderService.get_order_detail(id)
