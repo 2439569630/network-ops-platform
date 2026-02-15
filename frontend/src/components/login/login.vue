@@ -63,55 +63,63 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import axios from '@/axios/axios'
-import { ElNotification } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
-import { homeDataStore } from '@/components/home/home/data'
+import { reactive, ref, onMounted, watch } from 'vue' // 引入 Vue 响应式 API
+import { useRoute, useRouter } from 'vue-router' // 引入 Vue Router 钩子
+import axios from '@/axios/axios' // 引入封装的 Axios
+import { ElNotification } from 'element-plus' // 引入 Element Plus 通知组件
+import { User, Lock } from '@element-plus/icons-vue' // 引入图标
+import { homeDataStore } from '@/components/home/home/data' // 引入主页数据 Store
 
-const router = useRouter()
-const route = useRoute()
+const router = useRouter() // 获取 Router 实例
+const route = useRoute() // 获取当前路由信息
 
+// 定义登录表单数据，使用 reactive 保持响应式
 const form = reactive({
   username: '',
   password: '',
 })
 
-const rememberPassword = ref(false)
-const loading = ref(false)
-const kickedInfo = ref(null)
+const rememberPassword = ref(false) // 是否记住账号（这里变量名 rememberPassword 实际上是“记住账号”，逻辑上有点歧义，但保留原意）
+const loading = ref(false) // 登录按钮的加载状态
+const kickedInfo = ref(null) // 存储被踢出登录的信息
 
+// 加载被踢出登录的信息
 const loadKickedInfo = () => {
   try {
     const reason = String(route.query?.reason || '')
+    // 如果原因不是被踢出，则清空信息
     if (reason !== 'kicked') {
       kickedInfo.value = null
       return
     }
+    // 从 sessionStorage 获取详细信息
     const raw = sessionStorage.getItem('auth:kicked_info')
     kickedInfo.value = raw ? JSON.parse(raw) : { device: null, ip: null }
-    sessionStorage.removeItem('auth:kicked_info')
+    sessionStorage.removeItem('auth:kicked_info') // 获取后立即清除，避免重复显示
   } catch {
     kickedInfo.value = null
   }
 }
 
+// 组件挂载时执行
 onMounted(() => {
-  loadKickedInfo()
+  loadKickedInfo() // 加载踢出信息
 
+  // 尝试从 localStorage 获取缓存的用户名
   const cachedUser = localStorage.getItem('username')
   if (cachedUser) {
     form.username = cachedUser
-    rememberPassword.value = true
+    rememberPassword.value = true // 如果有缓存，默认勾选“记住账号”
     return
   }
+  // 如果 URL 中有用户名参数，自动填充
   const qUser = route.query?.username
   if (typeof qUser === 'string' && qUser.trim()) {
     form.username = qUser.trim()
   }
 })
 
+// 监听路由参数变化，如果 reason 变为 kicked，重新加载信息
 watch(
   () => route.query?.reason,
   () => {
@@ -119,22 +127,27 @@ watch(
   }
 )
 
+// 跳转到注册页
 const goRegister = () => {
   router.push('/register')
 }
 
+// 跳转到忘记密码页
 const goForgotPassword = () => {
   router.push('/forgot-password')
 }
 
+// 登录成功后，根据用户权限选择跳转路径
 const pickPostLoginPath = async () => {
-  const fallback = '/user/home'
+  const fallback = '/user/home' // 默认跳转路径
   const store = homeDataStore()
+  // 确保会话已建立，force: true 表示强制刷新用户信息
   const session = await store.ensureSession({ force: true })
   if (!session) return fallback
-  if (store.isSuper) return '/user/dashboard'
+  if (store.isSuper) return '/user/dashboard' // 超级管理员跳转到仪表盘
 
   try {
+    // 获取权限列表
     const perms = await store.fetchPermissions({ force: true })
     if (perms.includes('sys:dashboard:view')) return '/user/dashboard'
     if (perms.includes('sys:message:access')) return '/user/message'
@@ -144,28 +157,34 @@ const pickPostLoginPath = async () => {
   }
 }
 
+// 提交登录表单
 const submitLogin = async () => {
   const username = String(form.username || '').trim()
   const password = String(form.password || '')
+  // 简单验证
   if (!username || !password) {
     ElNotification({ title: 'Error', message: '账号或密码不能为空', type: 'error' })
     return
   }
 
-  loading.value = true
+  loading.value = true // 开启加载状态
   try {
+    // 发送登录请求
     const res = await axios.post('/api/v1/auth/login', { username, password })
     try {
+      // 登录成功后，清除强制登录标记
       sessionStorage.removeItem('auth:force_login_at')
       sessionStorage.removeItem('auth:force_login_reason')
     } catch {}
 
+    // 处理“记住账号”逻辑
     if (rememberPassword.value) {
       localStorage.setItem('username', username)
     } else {
       localStorage.removeItem('username')
     }
 
+    // 获取跳转路径并跳转
     const nextPath = await pickPostLoginPath()
     await router.push(nextPath)
 
@@ -175,13 +194,14 @@ const submitLogin = async () => {
       type: 'success',
     })
   } catch (err) {
+    // 登录失败处理
     ElNotification({
       title: 'Error',
       message: err.response?.data?.message || err.message || '登录失败',
       type: 'error',
     })
   } finally {
-    loading.value = false
+    loading.value = false // 关闭加载状态
   }
 }
 </script>

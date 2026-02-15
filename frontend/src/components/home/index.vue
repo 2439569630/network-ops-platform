@@ -36,27 +36,31 @@
   </div>
 </template>
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import LEFT from './left/left.vue'
-import { homeDataStore } from '@/components/home/home/data'
-import { Menu, Close } from '@element-plus/icons-vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue' // 引入 Vue 生命周期钩子和响应式 API
+import LEFT from './left/left.vue' // 引入左侧导航栏组件
+import { homeDataStore } from '@/components/home/home/data' // 引入主页数据 Store
+import { Menu, Close } from '@element-plus/icons-vue' // 引入菜单图标
 
-const store = homeDataStore()
-const menuExpanded = ref(false)
-const isMobile = ref(false)
-let mobileMediaQuery = null
-let mobileMediaListener = null
+const store = homeDataStore() // 获取 Store 实例
+const menuExpanded = ref(false) // 移动端菜单展开状态
+const isMobile = ref(false) // 是否为移动端视图
+let mobileMediaQuery = null // 媒体查询对象
+let mobileMediaListener = null // 媒体查询监听器
 
+// 组件挂载时执行
 onMounted(() => {
-  store.syncAuthFromToken()
-  if (!store.isSuper) void store.fetchPermissions()
+  store.syncAuthFromToken() // 同步认证信息
+  if (!store.isSuper) void store.fetchPermissions() // 如果不是超级管理员，获取权限列表
 
+  // 初始化移动端媒体查询 (宽度小于等于 900px 视为移动端)
   mobileMediaQuery = window.matchMedia('(max-width: 900px)')
   mobileMediaListener = () => {
-    isMobile.value = mobileMediaQuery.matches
-    if (!isMobile.value) menuExpanded.value = false
+    isMobile.value = mobileMediaQuery.matches // 更新 isMobile 状态
+    if (!isMobile.value) menuExpanded.value = false // 切换到桌面端时，自动关闭菜单
   }
-  mobileMediaListener()
+  mobileMediaListener() // 初始化执行一次
+
+  // 添加媒体查询监听器（兼容旧版浏览器）
   if (typeof mobileMediaQuery.addEventListener === 'function') {
     mobileMediaQuery.addEventListener('change', mobileMediaListener)
   } else {
@@ -64,8 +68,10 @@ onMounted(() => {
   }
 })
 
+// 组件销毁前执行
 onBeforeUnmount(() => {
   if (!mobileMediaQuery || !mobileMediaListener) return
+  // 移除媒体查询监听器
   if (typeof mobileMediaQuery.removeEventListener === 'function') {
     mobileMediaQuery.removeEventListener('change', mobileMediaListener)
   } else {
