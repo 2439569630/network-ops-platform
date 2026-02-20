@@ -16,7 +16,7 @@ import json
 import time
 from fastapi import APIRouter, Depends, Response, HTTPException, WebSocket, WebSocketDisconnect, Query
 from starlette.websockets import WebSocketState
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel
 from app.core.security import verify_token, verify_token_ws, PermissionChecker, user_is_super, user_has_permission, get_or_init_user_auth_version
 from app.core.database import db

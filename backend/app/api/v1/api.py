@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     auth,           # 认证相关接口 (登录/注册/Token)
     users,          # 用户管理接口 (CRUD)
     devices,        # 设备管理接口 (列表/详情/配置)
+    dashboard,      # 系统概览 WS
     system,         # 系统管理接口 (配置/审计)
     notifications,  # 通知中心接口 (站内信/邮件)
     repair_orders,  # 报修工单接口 (工单流程)
@@ -47,6 +48,10 @@ api_router.include_router(devices.router, prefix="/user/device", tags=["Device"]
 # 路由前缀: /user/device/alerts (作为设备管理的子模块)
 api_router.include_router(alerts.router, prefix="/user/device/alerts", tags=["Device Alerts"])
 
+# 系统概览模块
+# 路由前缀: /dashboard
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+
 # 系统管理模块
 # 处理系统全局配置、审计日志查询等管理功能
 # 路由前缀: /system
@@ -81,4 +86,3 @@ api_router.include_router(locations.router, prefix="/locations", tags=["Location
 # 处理对网络设备的批量配置下发任务，支持模板和即时命令
 # 路由前缀: /config-push
 api_router.include_router(config_push.router, prefix="/config-push", tags=["Config Push"])
-

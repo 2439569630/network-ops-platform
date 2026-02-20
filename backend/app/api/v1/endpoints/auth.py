@@ -13,7 +13,7 @@ import secrets
 from typing import Optional
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Cookie
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Cookie, Query
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -1046,3 +1046,33 @@ async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
             "is_email_notify": bool(row.get("is_email_notify") or False)
         }
     }
+
+
+@router.get("/users/me/login-logs")
+async def get_my_login_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    token_payload: dict = Depends(verify_token),
+):
+    user_id = token_payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    limit = int(page_size)
+    offset = (int(page) - 1) * int(page_size)
+
+    total = await db.fetch_val("SELECT COUNT(1) FROM login_logs WHERE user_id = $1", int(user_id))
+    rows = await db.fetch_all(
+        """
+        SELECT id, ip, user_agent, device, created_at
+        FROM login_logs
+        WHERE user_id = $1
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2 OFFSET $3
+        """,
+        int(user_id),
+        limit,
+        offset,
+    )
+    items = [dict(r) for r in (rows or [])]
+    return {"code": 200, "data": items, "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)}}
