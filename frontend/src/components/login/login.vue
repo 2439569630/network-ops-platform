@@ -48,6 +48,14 @@
           <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" :prefix-icon="Lock" />
         </el-form-item>
 
+        <el-form-item v-if="captchaRequired" label="验证码">
+          <div class="captcha-row">
+            <div class="captcha-question">{{ form.captchaQuestion || '加载中...' }}</div>
+            <el-input v-model="form.captchaAnswer" placeholder="请输入答案" style="flex: 1" />
+            <el-button :disabled="captchaLoading" :loading="captchaLoading" @click="refreshCaptcha">刷新</el-button>
+          </div>
+        </el-form-item>
+
          <div class="auth-row">
           <el-checkbox v-model="rememberPassword">记住账号</el-checkbox>
           <el-button type="primary" link @click="goForgotPassword">忘记密码</el-button>
@@ -77,11 +85,16 @@ const route = useRoute() // 获取当前路由信息
 const form = reactive({
   username: '',
   password: '',
+  captchaId: '',
+  captchaQuestion: '',
+  captchaAnswer: '',
 })
 
 const rememberPassword = ref(false) // 是否记住账号（这里变量名 rememberPassword 实际上是“记住账号”，逻辑上有点歧义，但保留原意）
 const loading = ref(false) // 登录按钮的加载状态
 const kickedInfo = ref(null) // 存储被踢出登录的信息
+const captchaRequired = ref(false)
+const captchaLoading = ref(false)
 
 // 加载被踢出登录的信息
 const loadKickedInfo = () => {
@@ -137,6 +150,24 @@ const goForgotPassword = () => {
   router.push('/forgot-password')
 }
 
+const refreshCaptcha = async () => {
+  captchaLoading.value = true
+  try {
+    const res = await axios.get('/api/v1/auth/captcha', { __skipAuthHandling: true })
+    form.captchaId = String(res?.data?.data?.captcha_id || '')
+    form.captchaQuestion = String(res?.data?.data?.question || '')
+    form.captchaAnswer = ''
+  } catch (err) {
+    ElNotification({
+      title: 'Error',
+      message: err.response?.data?.message || err.message || '验证码加载失败',
+      type: 'error',
+    })
+  } finally {
+    captchaLoading.value = false
+  }
+}
+
 // 登录成功后，根据用户权限选择跳转路径
 const pickPostLoginPath = async () => {
   const fallback = '/user/home' // 默认跳转路径
@@ -166,16 +197,33 @@ const submitLogin = async () => {
     ElNotification({ title: 'Error', message: '账号或密码不能为空', type: 'error' })
     return
   }
+  if (captchaRequired.value) {
+    const captchaId = String(form.captchaId || '').trim()
+    const captchaAnswer = String(form.captchaAnswer || '').trim()
+    if (!captchaId || !captchaAnswer) {
+      ElNotification({ title: 'Error', message: '请完成验证码', type: 'error' })
+      return
+    }
+  }
 
   loading.value = true // 开启加载状态
   try {
     // 发送登录请求
-    const res = await axios.post('/api/v1/auth/login', { username, password })
+    const payload = { username, password }
+    if (captchaRequired.value) {
+      payload.captcha_id = String(form.captchaId || '').trim()
+      payload.captcha_answer = String(form.captchaAnswer || '').trim()
+    }
+    const res = await axios.post('/api/v1/auth/login', payload, { __skipAuthHandling: true })
     try {
       // 登录成功后，清除强制登录标记
       sessionStorage.removeItem('auth:force_login_at')
       sessionStorage.removeItem('auth:force_login_reason')
     } catch {}
+    captchaRequired.value = false
+    form.captchaId = ''
+    form.captchaQuestion = ''
+    form.captchaAnswer = ''
 
     // 处理“记住账号”逻辑
     if (rememberPassword.value) {
@@ -194,6 +242,12 @@ const submitLogin = async () => {
       type: 'success',
     })
   } catch (err) {
+    const errCode = err?.response?.data?.error
+    const serverCaptchaRequired = Boolean(err?.response?.data?.data?.captcha_required)
+    if (serverCaptchaRequired || String(errCode || '').startsWith('AUTH_CAPTCHA')) {
+      captchaRequired.value = true
+      await refreshCaptcha()
+    }
     // 登录失败处理
     ElNotification({
       title: 'Error',
@@ -286,6 +340,27 @@ const submitLogin = async () => {
   justify-content: space-between;
   align-items: center;
   margin-top: -4px;
+}
+
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.captcha-question {
+  min-width: 120px;
+  padding: 0 10px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.06);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  color: #111827;
+  font-weight: 600;
+  text-align: center;
+  user-select: none;
 }
 
 .auth-actions {

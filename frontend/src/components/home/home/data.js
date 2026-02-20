@@ -142,7 +142,7 @@ export const homeDataStore = defineStore('homeData', () => {
   const applySession = (data) => {
     const roles = Array.isArray(data?.roles) ? data.roles.map(r => String(r).toLowerCase()) : [];
     roleCodes.value = roles;
-    isSuper.value = Boolean(data?.is_super || false) || roles.includes('admin') || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+    isSuper.value = Boolean(data?.is_super || false) || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
     sessionUserId.value = data?.id ?? null;
     sessionUsername.value = String(data?.username || '');
     sessionPermVer.value = data?.perm_ver ?? null;

@@ -51,7 +51,12 @@
                             class="node-icon" 
                             :style="{ color: getTypeColor(data.type), width: '1.2em', height: '1.2em', marginRight: '8px', verticalAlign: '-2px' }"
                          />
-                         <span class="node-label" v-html="highlightText(node.label)"></span>
+                         <span class="node-label">
+                            <template v-for="(p, idx) in highlightParts(node.label)" :key="idx">
+                                <span v-if="p.highlight" class="node-highlight">{{ p.text }}</span>
+                                <span v-else>{{ p.text }}</span>
+                            </template>
+                         </span>
                          <span v-if="data.status === false" class="status-badge off">停</span>
                      </span>
                 </div>
@@ -548,10 +553,27 @@ const filterNode = (value, data) => {
          (data?.code && String(data.code).toLowerCase().includes(lowerValue))
 }
 
-const highlightText = (text) => {
-    if (!filterText.value) return text;
-    const reg = new RegExp(filterText.value, 'gi');
-    return text.replace(reg, (match) => `<span style="color: var(--el-color-primary); font-weight: bold">${match}</span>`);
+const highlightParts = (text) => {
+    const source = String(text ?? '')
+    const keyword = String(filterText.value ?? '')
+    if (!keyword) return [{ text: source, highlight: false }]
+
+    const lowerSource = source.toLowerCase()
+    const lowerKeyword = keyword.toLowerCase()
+    if (!lowerKeyword) return [{ text: source, highlight: false }]
+
+    const parts = []
+    let cursor = 0
+    while (true) {
+        const idx = lowerSource.indexOf(lowerKeyword, cursor)
+        if (idx === -1) break
+        if (idx > cursor) parts.push({ text: source.slice(cursor, idx), highlight: false })
+        parts.push({ text: source.slice(idx, idx + keyword.length), highlight: true })
+        cursor = idx + keyword.length
+        if (keyword.length === 0) break
+    }
+    if (cursor < source.length) parts.push({ text: source.slice(cursor), highlight: false })
+    return parts.length ? parts : [{ text: source, highlight: false }]
 }
 
 const handleNodeClick = async (data) => {
@@ -1165,6 +1187,11 @@ onBeforeUnmount(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.node-highlight {
+    color: var(--el-color-primary);
+    font-weight: bold;
 }
 
 .status-badge {
