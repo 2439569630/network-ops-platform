@@ -101,8 +101,9 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
         blocked_groups = list(_BLOCKED_GROUPS)
         configs = await db.fetch_all(sql, blocked_groups, ignored)
         return {"code": 200, "data": [dict(c) for c in configs]}
-    except Exception as e:
-        return {"code": 500, "message": f"获取配置失败: {str(e)}"}
+    except Exception:
+        logger.exception("list_config failed")
+        return {"code": 500, "message": "获取配置失败"}
 
 @router.post("/config/update", response_model=dict)
 async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionChecker(["sys:config:edit"]))):
@@ -166,9 +167,9 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
         # 5. 刷新系统配置缓存，使更改立即生效
         await SystemConfig.refresh()
         return {"code": 200, "message": "配置更新成功"}
-    except Exception as e:
-        logger.error(f"更新配置失败: {e}")
-        return {"code": 500, "message": f"更新失败: {str(e)}"}
+    except Exception:
+        logger.exception("update_config failed: key=%s", str(getattr(data, "key", "")))
+        return {"code": 500, "message": "更新失败"}
 
 
 @router.get("/audit/user-admin", response_model=dict)
@@ -226,15 +227,19 @@ async def list_user_admin_audit_logs(
         total = await db.fetch_val(f"SELECT COUNT(1) FROM user_admin_audit_log WHERE {where_sql}", *args)
         limit = int(page_size)
         offset = (int(page) - 1) * int(page_size)
+        limit_idx = idx
+        offset_idx = idx + 1
         rows = await db.fetch_all(
             f"""
             SELECT id, actor_user_id, actor_username, action, target_user_id, request_ip, detail, created_at
             FROM user_admin_audit_log
             WHERE {where_sql}
             ORDER BY created_at DESC, id DESC
-            LIMIT {limit} OFFSET {offset}
+            LIMIT ${limit_idx} OFFSET ${offset_idx}
             """,
             *args,
+            limit,
+            offset,
         )
         items = [dict(r) for r in (rows or [])]
         for it in items:
@@ -244,5 +249,13 @@ async def list_user_admin_audit_logs(
             "data": items,
             "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)},
         }
-    except Exception as e:
-        return {"code": 500, "message": f"获取审计日志失败: {str(e)}"}
+    except Exception:
+        logger.exception(
+            "list_user_admin_audit_logs failed: actor_username=%s action=%s target_user_id=%s start_at=%s end_at=%s",
+            str(actor_username or ""),
+            str(action or ""),
+            str(target_user_id) if target_user_id is not None else "",
+            str(start_at) if start_at is not None else "",
+            str(end_at) if end_at is not None else "",
+        )
+        return {"code": 500, "message": "获取审计日志失败"}

@@ -32,8 +32,9 @@ async def list_site_messages(
             unread_only=bool(unread_only),
         )
         return {"code": 200, "data": rows}
-    except Exception as e:
-        return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
+    except Exception:
+        logger.exception("list_site_messages failed: user_id=%s unread_only=%s", str(user.get("id")), str(unread_only))
+        return {"code": 500, "message": "获取站内消息失败"}
 
 @router.get("/site-messages/unread-count", response_model=dict)
 async def get_site_message_unread_count(
@@ -43,8 +44,9 @@ async def get_site_message_unread_count(
     try:
         cnt = await NotificationService.get_site_message_unread_count(user_id=int(user.get("id")))
         return {"code": 200, "data": {"count": int(cnt)}}
-    except Exception as e:
-        return {"code": 500, "message": f"获取未读数失败: {str(e)}"}
+    except Exception:
+        logger.exception("get_site_message_unread_count failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "获取未读数失败"}
 
 @router.get("/site-messages/{message_id}", response_model=dict)
 async def get_site_message_detail(
@@ -60,8 +62,13 @@ async def get_site_message_detail(
         if not row:
             return {"code": 404, "message": "消息不存在"}
         return {"code": 200, "data": row}
-    except Exception as e:
-        return {"code": 500, "message": f"获取站内消息失败: {str(e)}"}
+    except Exception:
+        logger.exception(
+            "get_site_message_detail failed: user_id=%s message_id=%s",
+            str(user.get("id")),
+            str(message_id),
+        )
+        return {"code": 500, "message": "获取站内消息失败"}
 
 @router.post("/site-messages", response_model=dict)
 async def create_site_message(
@@ -73,6 +80,9 @@ async def create_site_message(
     
     仅限管理员使用
     """
+    title = ""
+    target_user_id = None
+    is_global = False
     try:
         # 1. 权限检查：仅超级管理员可发送全站/定向消息
         if not user_is_super(user):
@@ -100,8 +110,15 @@ async def create_site_message(
         return {"code": 200, "data": row, "message": "发布成功"}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
-    except Exception as e:
-        return {"code": 500, "message": f"发布失败: {str(e)}"}
+    except Exception:
+        logger.exception(
+            "create_site_message failed: sender_id=%s target_user_id=%s is_global=%s title_len=%s",
+            str(user.get("id")),
+            str(target_user_id) if target_user_id is not None else "",
+            str(is_global),
+            str(len(title)),
+        )
+        return {"code": 500, "message": "发布失败"}
 
 @router.post("/site-messages/{message_id}/read", response_model=dict)
 async def mark_site_message_read(
@@ -112,8 +129,13 @@ async def mark_site_message_read(
     try:
         await NotificationService.mark_site_message_read(user_id=int(user.get("id")), message_id=int(message_id))
         return {"code": 200, "message": "已读"}
-    except Exception as e:
-        return {"code": 500, "message": f"操作失败: {str(e)}"}
+    except Exception:
+        logger.exception(
+            "mark_site_message_read failed: user_id=%s message_id=%s",
+            str(user.get("id")),
+            str(message_id),
+        )
+        return {"code": 500, "message": "操作失败"}
 
 @router.post("/site-messages/{message_id}/unread", response_model=dict)
 async def mark_site_message_unread(
@@ -124,8 +146,13 @@ async def mark_site_message_unread(
     try:
         await NotificationService.mark_site_message_unread(user_id=int(user.get("id")), message_id=int(message_id))
         return {"code": 200, "message": "未读"}
-    except Exception as e:
-        return {"code": 500, "message": f"操作失败: {str(e)}"}
+    except Exception:
+        logger.exception(
+            "mark_site_message_unread failed: user_id=%s message_id=%s",
+            str(user.get("id")),
+            str(message_id),
+        )
+        return {"code": 500, "message": "操作失败"}
 
 @router.post("/site-messages/read-all", response_model=dict)
 async def mark_all_site_messages_read(
@@ -137,8 +164,9 @@ async def mark_all_site_messages_read(
     try:
         count = await NotificationService.mark_all_site_messages_read(user_id=int(user.get("id")))
         return {"code": 200, "message": f"已将 {count} 条消息标记为已读", "data": {"count": count}}
-    except Exception as e:
-        return {"code": 500, "message": f"操作失败: {str(e)}"}
+    except Exception:
+        logger.exception("mark_all_site_messages_read failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "操作失败"}
 
 @router.get("/history", response_model=dict)
 async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history"))):
@@ -147,8 +175,9 @@ async def get_history(user: dict = Depends(PermissionChecker("sys:notify:history
         can_view_all = user_is_super(user) or (await user_has_permission(user, "sys:notify:global"))
         rows = await NotificationService.get_history(bool(can_view_all), user.get('id'))
         return {"code": 200, "data": rows}
-    except Exception as e:
-        return {"code": 500, "message": f"获取历史失败: {str(e)}"}
+    except Exception:
+        logger.exception("get_history failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "获取历史失败"}
 
 @router.get("/config", response_model=dict)
 async def get_config(user: dict = Depends(PermissionChecker("sys:notify:config:view"))):
@@ -156,8 +185,9 @@ async def get_config(user: dict = Depends(PermissionChecker("sys:notify:config:v
     try:
         config = await NotificationService.get_config(user.get('id'))
         return {"code": 200, "data": config}
-    except Exception as e:
-        return {"code": 500, "message": f"获取配置失败: {str(e)}"}
+    except Exception:
+        logger.exception("get_config failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "获取配置失败"}
 
 @router.post("/config", response_model=dict)
 async def update_config(
@@ -170,8 +200,9 @@ async def update_config(
         return {"code": 200, "message": "配置保存成功"}
     except ValueError as e:
         return {"code": 403, "message": str(e)}
-    except Exception as e:
-        return {"code": 500, "message": f"保存失败: {str(e)}"}
+    except Exception:
+        logger.exception("update_config failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "保存失败"}
 
 @router.post("/test", response_model=dict)
 async def test_notification(
@@ -184,12 +215,13 @@ async def test_notification(
         if success:
             return {"code": 200, "message": "发送成功"}
         else:
-            return {"code": 500, "message": f"发送失败: {msg}"}
+            logger.error("test_notification failed: %s", str(msg or ""))
+            return {"code": 500, "message": "发送失败"}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
-    except Exception as e:
-        logger.error(f"Test notification error: {e}")
-        return {"code": 500, "message": str(e)}
+    except Exception:
+        logger.exception("test_notification error")
+        return {"code": 500, "message": "发送失败"}
 
 @router.get("/sse/site-messages")
 async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:access"))):
@@ -444,8 +476,9 @@ async def get_subscribers(
             
         users = await query.values("id", "username", "nickname", "email", "is_email_notify")
         return {"code": 200, "data": users}
-    except Exception as e:
-        return {"code": 500, "message": f"获取订阅列表失败: {str(e)}"}
+    except Exception:
+        logger.exception("get_subscribers failed: user_id=%s", str(user.get("id")))
+        return {"code": 500, "message": "获取订阅列表失败"}
 
 @router.post("/subscribe", response_model=dict)
 async def toggle_subscription(
@@ -458,5 +491,6 @@ async def toggle_subscription(
         user_obj.is_email_notify = data.is_enabled
         await user_obj.save()
         return {"code": 200, "message": "设置成功", "data": {"is_email_notify": user_obj.is_email_notify}}
-    except Exception as e:
-        return {"code": 500, "message": f"设置失败: {str(e)}"}
+    except Exception:
+        logger.exception("toggle_subscription failed: user_id=%s is_enabled=%s", str(user.get("id")), str(getattr(data, "is_enabled", "")))
+        return {"code": 500, "message": "设置失败"}

@@ -1,7 +1,10 @@
 import unittest
-from unittest.mock import AsyncMock
+import json
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 class TestMyLoginLogsEndpoint(unittest.IsolatedAsyncioTestCase):
@@ -42,6 +45,110 @@ class TestMyLoginLogsEndpoint(unittest.IsolatedAsyncioTestCase):
             await auth_endpoint.get_my_login_logs(page=1, page_size=10, token_payload={})
 
         self.assertEqual(getattr(cm.exception, "status_code", None), 401)
+
+
+class TestLoginRateLimit(unittest.IsolatedAsyncioTestCase):
+    async def test_captcha_required_returns_400(self):
+        from app.api.v1.endpoints import auth as auth_endpoint
+
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+        request = Request(scope)
+        response = Response()
+
+        auth_endpoint.db.fetch_one = AsyncMock(return_value=None)
+
+        with patch("app.api.v1.endpoints.auth.redis_manager.get_client", return_value=object()):
+            with patch("app.api.v1.endpoints.auth._is_login_rate_limited", new=AsyncMock(return_value=False)):
+                with patch("app.api.v1.endpoints.auth._should_require_login_captcha", new=AsyncMock(return_value=True)):
+                    with patch(
+                        "app.api.v1.endpoints.auth._verify_login_captcha",
+                        new=AsyncMock(return_value=(False, "AUTH_CAPTCHA_REQUIRED", "请完成验证码")),
+                    ):
+                        result = await auth_endpoint.login(
+                            data=auth_endpoint.LoginForm(username="u", password="p"),
+                            response=response,
+                            request=request,
+                        )
+
+        self.assertEqual(getattr(result, "status_code", None), 400)
+        payload = json.loads(result.body.decode("utf-8"))
+        self.assertEqual(payload.get("error"), "AUTH_CAPTCHA_REQUIRED")
+        self.assertEqual(payload.get("data", {}).get("captcha_required"), True)
+
+    async def test_rate_limited_returns_429(self):
+        from app.api.v1.endpoints import auth as auth_endpoint
+
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+        request = Request(scope)
+        response = Response()
+
+        auth_endpoint.db.fetch_one = AsyncMock(return_value=None)
+
+        with patch("app.api.v1.endpoints.auth.redis_manager.get_client", return_value=object()):
+            with patch("app.api.v1.endpoints.auth._is_login_rate_limited", new=AsyncMock(return_value=True)):
+                result = await auth_endpoint.login(
+                    data=auth_endpoint.LoginForm(username="u", password="p"),
+                    response=response,
+                    request=request,
+                )
+
+        self.assertEqual(getattr(result, "status_code", None), 429)
+        payload = json.loads(result.body.decode("utf-8"))
+        self.assertEqual(payload.get("error"), "AUTH_RATE_LIMITED")
+        self.assertEqual(payload.get("data", {}).get("captcha_required"), True)
+
+    async def test_user_not_found_records_fail(self):
+        from app.api.v1.endpoints import auth as auth_endpoint
+
+        scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+        request = Request(scope)
+        response = Response()
+
+        auth_endpoint.db.fetch_one = AsyncMock(return_value=None)
+
+        record = AsyncMock(return_value=None)
+        with patch("app.api.v1.endpoints.auth.redis_manager.get_client", return_value=object()):
+            with patch("app.api.v1.endpoints.auth._is_login_rate_limited", new=AsyncMock(return_value=False)):
+                with patch("app.api.v1.endpoints.auth._should_require_login_captcha", new=AsyncMock(return_value=False)):
+                    with patch("app.api.v1.endpoints.auth._record_login_fail", new=record):
+                        result = await auth_endpoint.login(
+                            data=auth_endpoint.LoginForm(username="u", password="p"),
+                            response=response,
+                            request=request,
+                        )
+
+        self.assertEqual(getattr(result, "status_code", None), 401)
+        self.assertGreaterEqual(record.await_count, 1)
 
 
 if __name__ == "__main__":

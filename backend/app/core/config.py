@@ -1,7 +1,7 @@
 
-import logging
+import secrets
 from typing import Any, Dict, Optional, Union
-from pydantic import PostgresDsn, RedisDsn, Field
+from pydantic import PostgresDsn, RedisDsn, Field, model_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -26,11 +26,41 @@ class Settings(BaseSettings):
     REDIS_PUBSUB_MAX_CONNECTIONS: int = Field(default=200, alias="REDIS_PUBSUB_MAX_CONNECTIONS")
     
     # Security
-    SECRET_KEY: str = Field(default="dev-secret", alias="JWT_SECRET_KEY")
+    ALLOW_EPHEMERAL_JWT_SECRETS: bool = Field(default=False, alias="ALLOW_EPHEMERAL_JWT_SECRETS")
+    SECRET_KEY: Optional[str] = Field(default=None, alias="JWT_SECRET_KEY")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     ALGORITHM: str = "HS256"
-    REFRESH_SECRET_KEY: str = Field(default="dev-refresh-secret", alias="JWT_REFRESH_SECRET_KEY")
+    REFRESH_SECRET_KEY: Optional[str] = Field(default=None, alias="JWT_REFRESH_SECRET_KEY")
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
+
+    @model_validator(mode="after")
+    def _validate_jwt_secrets(self):
+        placeholders = {"dev-secret", "dev-refresh-secret", "change-me"}
+
+        secret_key = str(self.SECRET_KEY or "").strip()
+        if not secret_key:
+            if not bool(self.ALLOW_EPHEMERAL_JWT_SECRETS):
+                raise ValueError("JWT_SECRET_KEY 未配置")
+            secret_key = secrets.token_urlsafe(48)
+        if secret_key in placeholders:
+            if not bool(self.ALLOW_EPHEMERAL_JWT_SECRETS):
+                raise ValueError("JWT_SECRET_KEY 强度不足")
+            secret_key = secrets.token_urlsafe(48)
+        if len(secret_key) < 32:
+            raise ValueError("JWT_SECRET_KEY 强度不足")
+        self.SECRET_KEY = secret_key
+
+        refresh_secret = str(self.REFRESH_SECRET_KEY or "").strip()
+        if not refresh_secret:
+            refresh_secret = secret_key
+        if refresh_secret in placeholders:
+            if not bool(self.ALLOW_EPHEMERAL_JWT_SECRETS):
+                raise ValueError("JWT_REFRESH_SECRET_KEY 强度不足")
+            refresh_secret = secret_key
+        if len(refresh_secret) < 32:
+            raise ValueError("JWT_REFRESH_SECRET_KEY 强度不足")
+        self.REFRESH_SECRET_KEY = refresh_secret
+        return self
     
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = [

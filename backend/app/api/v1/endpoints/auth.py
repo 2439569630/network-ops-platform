@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import time
 from typing import Optional
 import json
 
@@ -65,6 +66,8 @@ class LoginForm(BaseModel):
     """登录表单数据"""
     username: str
     password: str
+    captcha_id: Optional[str] = None
+    captcha_answer: Optional[str] = None
 
 class RegisterForm(BaseModel):
     """注册表单数据"""
@@ -108,6 +111,128 @@ def _captcha_key(captcha_id: str) -> str:
 def _hash_text(value: str) -> str:
     """计算文本的 SHA256 哈希"""
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+def _login_fail_key_ip(ip: Optional[str]) -> Optional[str]:
+    ip_s = str(ip or "").strip()
+    if not ip_s:
+        return None
+    return f"auth:login:fail:ip:{ip_s}"
+
+def _login_fail_key_user(username: str) -> str:
+    u = str(username or "").strip().lower()
+    return f"auth:login:fail:user:{u}"
+
+async def _get_login_fail_counts(redis_client, *, ip: Optional[str], username: str) -> tuple[int, int]:
+    window_seconds = SystemConfig.get_int("auth:login:rate:window_seconds", 300)
+    window_seconds = max(10, int(window_seconds or 300))
+    window_ms = window_seconds * 1000
+    expire_seconds = window_seconds * 2
+    now_ms = int(time.time() * 1000)
+    window_start = now_ms - window_ms
+
+    ip_key = _login_fail_key_ip(ip)
+    user_key = _login_fail_key_user(username)
+
+    pipe = redis_client.pipeline(transaction=False)
+    if ip_key:
+        pipe.zremrangebyscore(ip_key, 0, window_start)
+        pipe.zcard(ip_key)
+        pipe.expire(ip_key, expire_seconds)
+    pipe.zremrangebyscore(user_key, 0, window_start)
+    pipe.zcard(user_key)
+    pipe.expire(user_key, expire_seconds)
+    res = await pipe.execute()
+
+    ip_cnt = 0
+    user_cnt = 0
+    idx = 0
+    if ip_key:
+        try:
+            ip_cnt = int(res[idx + 1] or 0)
+        except Exception:
+            ip_cnt = 0
+        idx += 3
+    try:
+        user_cnt = int(res[idx + 1] or 0)
+    except Exception:
+        user_cnt = 0
+    return ip_cnt, user_cnt
+
+async def _record_login_fail(redis_client, *, ip: Optional[str], username: str) -> None:
+    window_seconds = SystemConfig.get_int("auth:login:rate:window_seconds", 300)
+    window_seconds = max(10, int(window_seconds or 300))
+    expire_seconds = window_seconds * 2
+    now_ms = int(time.time() * 1000)
+    member = f"{now_ms}:{secrets.token_urlsafe(8)}"
+
+    ip_key = _login_fail_key_ip(ip)
+    user_key = _login_fail_key_user(username)
+
+    pipe = redis_client.pipeline(transaction=False)
+    if ip_key:
+        pipe.zadd(ip_key, {member: now_ms})
+        pipe.expire(ip_key, expire_seconds)
+    pipe.zadd(user_key, {member: now_ms})
+    pipe.expire(user_key, expire_seconds)
+    await pipe.execute()
+
+async def _should_require_login_captcha(redis_client, *, ip: Optional[str], username: str) -> bool:
+    ip_cnt, user_cnt = await _get_login_fail_counts(redis_client, ip=ip, username=username)
+    ip_threshold = SystemConfig.get_int("auth:login:captcha:ip_threshold", 5)
+    user_threshold = SystemConfig.get_int("auth:login:captcha:user_threshold", 5)
+    try:
+        ip_threshold = int(ip_threshold or 5)
+    except Exception:
+        ip_threshold = 5
+    try:
+        user_threshold = int(user_threshold or 5)
+    except Exception:
+        user_threshold = 5
+    ip_threshold = max(0, ip_threshold)
+    user_threshold = max(0, user_threshold)
+    if ip_threshold == 0 or user_threshold == 0:
+        return True
+    if ip_cnt >= ip_threshold:
+        return True
+    if user_cnt >= user_threshold:
+        return True
+    return False
+
+async def _is_login_rate_limited(redis_client, *, ip: Optional[str], username: str) -> bool:
+    ip_cnt, user_cnt = await _get_login_fail_counts(redis_client, ip=ip, username=username)
+    ip_max = SystemConfig.get_int("auth:login:rate:ip_max_fails", 30)
+    user_max = SystemConfig.get_int("auth:login:rate:user_max_fails", 15)
+    try:
+        ip_max = int(ip_max or 30)
+    except Exception:
+        ip_max = 30
+    try:
+        user_max = int(user_max or 15)
+    except Exception:
+        user_max = 15
+    ip_max = max(1, ip_max)
+    user_max = max(1, user_max)
+    if ip_cnt >= ip_max:
+        return True
+    if user_cnt >= user_max:
+        return True
+    return False
+
+async def _verify_login_captcha(redis_client, *, captcha_id: str, captcha_answer: str) -> tuple[bool, str, str]:
+    cid = str(captcha_id or "").strip()
+    ans = str(captcha_answer or "").strip()
+    if not cid or not ans:
+        return False, "AUTH_CAPTCHA_REQUIRED", "请完成验证码"
+
+    captcha_raw = await redis_client.get(_captcha_key(cid))
+    if not captcha_raw:
+        return False, "AUTH_CAPTCHA_EXPIRED", "验证码已过期，请刷新"
+
+    if not hmac.compare_digest(str(captcha_raw), _hash_text(ans)):
+        return False, "AUTH_CAPTCHA_INVALID", "验证码不正确"
+
+    await redis_client.delete(_captcha_key(cid))
+    return True, "", ""
 
 def _infer_device_label(user_agent: Optional[str]) -> str:
     """根据 User-Agent 推断设备类型和浏览器"""
@@ -302,12 +427,60 @@ async def login(data: LoginForm, response: Response, request: Request):
     如果密码是明文，会自动升级为哈希存储。
     会记录登录日志，并根据设置发送登录提醒。
     """
+    ip = _get_request_ip(request)
+    username_input = str(data.username or "").strip()
+    username_norm = username_input.lower()
+
+    try:
+        redis_client = redis_manager.get_client()
+        if await _is_login_rate_limited(redis_client, ip=ip, username=username_norm):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "code": 429,
+                    "message": "尝试过于频繁，请稍后再试",
+                    "status": "error",
+                    "error": "AUTH_RATE_LIMITED",
+                    "data": {"captcha_required": True},
+                },
+            )
+
+        captcha_required = await _should_require_login_captcha(redis_client, ip=ip, username=username_norm)
+        if captcha_required:
+            ok, err_code, err_msg = await _verify_login_captcha(
+                redis_client,
+                captcha_id=str(data.captcha_id or ""),
+                captcha_answer=str(data.captcha_answer or ""),
+            )
+            if not ok:
+                try:
+                    await _record_login_fail(redis_client, ip=ip, username=username_norm)
+                except Exception:
+                    pass
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "code": 400,
+                        "message": err_msg,
+                        "status": "error",
+                        "error": err_code,
+                        "data": {"captcha_required": True},
+                    },
+                )
+    except Exception:
+        pass
+
     # 1. 查询用户基础信息
     sql = "SELECT id, username, password, is_approved, permissions, email, is_email_notify FROM users WHERE username = $1"
-    user = await db.fetch_one(sql, data.username)
+    user = await db.fetch_one(sql, username_input)
 
     if not user:
         # 用户不存在，返回统一的错误提示，防止用户名枚举
+        try:
+            redis_client = redis_manager.get_client()
+            await _record_login_fail(redis_client, ip=ip, username=username_norm)
+        except Exception:
+            pass
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
@@ -315,6 +488,11 @@ async def login(data: LoginForm, response: Response, request: Request):
 
     # 检查账户是否被封禁或未审核
     if user['is_approved'] is False:
+        try:
+            redis_client = redis_manager.get_client()
+            await _record_login_fail(redis_client, ip=ip, username=username_norm)
+        except Exception:
+            pass
         return JSONResponse(
             status_code=403,
             content={"code": 403, "message": "账户未审核或已封禁，请联系管理员", "status": "error"}
@@ -322,10 +500,21 @@ async def login(data: LoginForm, response: Response, request: Request):
 
     # 2. 验证密码 (兼容明文和哈希)
     if not _verify_password_compat(data.password, user.get("password")):
-         return JSONResponse(
+        try:
+            redis_client = redis_manager.get_client()
+            await _record_login_fail(redis_client, ip=ip, username=username_norm)
+        except Exception:
+            pass
+        return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "用户名或密码错误", "status": "error"}
         )
+
+    try:
+        redis_client = redis_manager.get_client()
+        await redis_client.delete(_login_fail_key_user(username_norm))
+    except Exception:
+        pass
 
     # 如果数据库中存储的是明文密码，自动升级为 bcrypt 哈希
     # 这是一个渐进式迁移策略，用户登录一次即可自动升级安全性
@@ -380,7 +569,6 @@ async def login(data: LoginForm, response: Response, request: Request):
         auth_ver = await _get_or_init_auth_ver(user["id"])
 
     # 4. 记录日志和会话信息
-    ip = _get_request_ip(request)
     ua = request.headers.get("user-agent")
     device = _infer_device_label(ua)
     
@@ -1046,6 +1234,25 @@ async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
             "is_email_notify": bool(row.get("is_email_notify") or False)
         }
     }
+
+@router.put("/users/me/security")
+async def update_my_security_settings(form: UpdateSecurityForm, token_payload: dict = Depends(verify_token)):
+    """
+    更新用户安全设置 (当前仅支持登录邮件提醒开关)
+    """
+    user_id = token_payload.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    if form.is_email_notify is None:
+        return JSONResponse(
+            status_code=400,
+            content={"code": 400, "message": "缺少 is_email_notify 参数", "status": "error"},
+        )
+
+    enabled = bool(form.is_email_notify)
+    await db.execute("UPDATE users SET is_email_notify = $1 WHERE id = $2", enabled, int(user_id))
+    return {"code": 200, "status": "success", "message": "设置已更新", "data": {"is_email_notify": enabled}}
 
 
 @router.get("/users/me/login-logs")
