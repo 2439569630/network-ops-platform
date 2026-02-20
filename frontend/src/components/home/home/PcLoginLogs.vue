@@ -42,8 +42,10 @@ const fetchLogs = async () => {
       params: { page: page.value, page_size: pageSize.value }
     });
     if (res.data.code === 200) {
-      logs.value = res.data.data.items;
-      total.value = res.data.data.total;
+      const data = res.data?.data;
+      const meta = res.data?.meta;
+      logs.value = Array.isArray(data) ? data : (data?.items || []);
+      total.value = Number(meta?.total ?? data?.total ?? 0) || 0;
     }
   } catch (e) {
     console.error(e);
