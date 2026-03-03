@@ -80,10 +80,6 @@
                             <el-icon><Avatar /></el-icon>
                             <span>角色与权限管理</span>
                         </el-menu-item>
-                        <el-menu-item index="role-distribution" @click="goto('/user/role-distribution')" v-if="isAdmin || hasPerm('sys:role:distribution')">
-                            <el-icon><User /></el-icon>
-                            <span>角色人员分布</span>
-                        </el-menu-item>
                         <el-menu-item index="user-manage" @click="goto('/user/user-manage')" v-if="hasPerm('sys:user:view')">
                             <el-icon><User /></el-icon>
                             <span>用户管理</span>
@@ -167,7 +163,6 @@ const activeMenu = computed(() => {
 
     // 系统管理
     if (path.includes('/user/organization')) return 'organization';
-    if (path.includes('/user/role-distribution')) return 'role-distribution';
     if (path.includes('/user/user-manage')) return 'user-manage';
     if (path.includes('/user/audit')) return 'audit';
     if (path.includes('/user/role')) return 'role';

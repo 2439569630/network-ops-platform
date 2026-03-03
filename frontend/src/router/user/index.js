@@ -67,12 +67,6 @@ const homeRoutes = [
                 meta: { title: '角色与权限管理', perms: ['sys:role:manage'] } // 仅管理员和有权限者可见
             },
             {
-                path: 'role-distribution',
-                name: 'role-distribution',
-                component: () => import('@/components/Role/RoleUserDistribution.vue'),
-                meta: { title: '角色人员分布', perms: ['sys:role:distribution'] }
-            },
-            {
                 path: 'user-manage',
                 name: 'user-manage',
                 component: () => import('@/components/System/UserManagement.vue'),

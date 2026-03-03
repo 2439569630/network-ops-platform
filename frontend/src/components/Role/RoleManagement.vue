@@ -353,40 +353,6 @@
            </div>
         </div>
 
-        <div v-show="activeTab === 'distribution'" class="view-container distribution-view">
-          <div class="distribution-container" v-loading="roleUsersLoading">
-            <div class="distribution-header">
-              <div class="distribution-title">角色人员分布</div>
-              <el-button type="primary" :loading="roleUsersLoading" @click="fetchRoleUsers">刷新</el-button>
-            </div>
-
-            <div class="role-cards">
-              <el-card v-for="role in roleUsersData" :key="role.id" class="role-card" shadow="hover">
-                <template #header>
-                  <div class="role-card-header">
-                    <div class="role-card-name">{{ role.name }}</div>
-                    <el-tag size="small" type="info">{{ (role.users || []).length }} 人</el-tag>
-                  </div>
-                </template>
-
-                <div v-if="(role.users || []).length === 0" class="role-card-empty">
-                  <el-empty description="暂无成员" :image-size="60" />
-                </div>
-                <div v-else class="role-user-tags">
-                  <el-tag
-                    v-for="u in role.users"
-                    :key="u.id"
-                    size="small"
-                    effect="plain"
-                    class="user-tag"
-                  >
-                    {{ u.nickname || u.username }}
-                  </el-tag>
-                </div>
-              </el-card>
-            </div>
-          </div>
-        </div>
 
         <el-dialog v-model="addMembersDialogVisible" title="添加成员" :width="isMobile ? '90%' : '560px'">
           <el-form label-width="90px">
@@ -488,8 +454,7 @@ const permListFilter = ref(''); // 权限管理里的列表搜索
 const disabledPermCodes = ref([]); // 被全局禁用的权限编码集合
 const disabledSavingCode = ref('');
 
-const roleUsersLoading = ref(false);
-const roleUsersData = ref([]);
+// 分布视图已移除
 
 const roleMembersLoading = ref(false);
 const roleMembers = ref([]);
@@ -636,7 +601,6 @@ const indicatorStyle = computed(() => {
 const tabSwitcherRef = ref(null);
 const tabRoleRef = ref(null);
 const tabPermissionRef = ref(null);
-const tabDistributionRef = ref(null);
 const indicatorLeft = ref(0);
 const indicatorWidth = ref(0);
 let tabResizeObserver;
@@ -740,9 +704,6 @@ onMounted(async () => {
 watch(activeTab, (val) => {
   router.replace({ query: { ...route.query, tab: val } });
   updateIndicator();
-  if (val === 'distribution' && roleUsersData.value.length === 0) {
-    // Deprecated
-  }
 });
 
 onBeforeUnmount(() => {
@@ -770,9 +731,7 @@ const updateIndicator = async () => {
 
   const activeEl = activeTab.value === 'role'
     ? tabRoleRef.value
-    : activeTab.value === 'permission'
-      ? tabPermissionRef.value
-      : tabDistributionRef.value;
+    : tabPermissionRef.value;
 
   if (!activeEl) return;
   indicatorLeft.value = activeEl.offsetLeft;
@@ -794,21 +753,6 @@ const fetchRoles = async () => {
   finally { roleLoading.value = false; }
 };
 
-const fetchRoleUsers = async () => {
-  roleUsersLoading.value = true;
-  try {
-    const res = await axios.get('/api/v1/rbac/roles/with_users');
-    if (res.data.code === 200) {
-      roleUsersData.value = res.data.data || [];
-    } else {
-      ElMessage.error(res.data.message || '获取人员分布失败');
-    }
-  } catch (e) {
-    ElMessage.error('获取人员分布失败');
-  } finally {
-    roleUsersLoading.value = false;
-  }
-};
 
 const fetchPermissions = async () => {
   permissionLoading.value = true;
