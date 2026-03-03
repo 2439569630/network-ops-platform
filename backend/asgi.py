@@ -147,7 +147,6 @@ async def lifespan(app: FastAPI):
             logger.info(f"系统权限同步完成: {sync_res}")
             
             # 自动给 admin 角色赋予新权限
-            await RbacService.grant_permission_to_role_code("admin", "sys:role:distribution")
             await RbacService.grant_permission_to_role_code("admin", "sys:audit:view")
             await RbacService.grant_permission_to_role_code("admin", "sys:role:manage")
         except Exception as e:

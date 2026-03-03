@@ -28,9 +28,8 @@ class RbacService:
         "sys:device:route:view": ["sys:device:list"],
         "sys:device:vlan:view": ["sys:device:list"],
         "sys:user:manage": ["sys:user:view"],
-        "sys:role:distribution": ["sys:user:view"],
         "sys:role:assign": ["sys:user:view"],
-        "sys:role:manage": ["sys:user:view", "sys:role:assign", "sys:role:distribution"],
+        "sys:role:manage": ["sys:user:view", "sys:role:assign"],
         "sys:audit:view": ["sys:user:view"],
         "sys:user:import": ["sys:user:manage"],
         "sys:config:edit": ["sys:config:view"],
@@ -76,7 +75,6 @@ class RbacService:
         {"name": "SSH连接", "code": "sys:ssh:connect", "description": "允许建立SSH连接"},
         {"name": "查看用户", "code": "sys:user:view", "description": "允许查看用户列表"},
         {"name": "管理用户", "code": "sys:user:manage", "description": "允许创建、编辑、禁用用户"},
-        {"name": "角色分布", "code": "sys:role:distribution", "description": "允许查看用户角色分配情况"},
         {"name": "分配角色", "code": "sys:role:assign", "description": "允许为用户分配角色"},
         {"name": "角色权限管理", "code": "sys:role:manage", "description": "允许管理角色与权限目录/分配关系"},
         {"name": "系统审计", "code": "sys:audit:view", "description": "允许查看系统操作审计日志"},
@@ -303,80 +301,8 @@ class RbacService:
         return result
 
     @staticmethod
-    async def get_users_with_roles_paginated(
-        q: Optional[str] = None,
-        role_id: Optional[int] = None,
-        page: int = 1,
-        page_size: int = 20
-    ) -> dict:
-        page_norm = max(1, int(page or 1))
-        page_size_norm = max(1, min(200, int(page_size or 20)))
-        offset = (page_norm - 1) * page_size_norm
-
-        # Base query
-        query = User.all()
-
-        # Apply filters
-        if role_id:
-            # Subquery for users in role
-            user_ids_in_role = await UserRole.filter(role_id=role_id).values_list('user_id', flat=True)
-            query = query.filter(id__in=user_ids_in_role)
-
-        q_norm = str(q or "").strip()
-        if q_norm:
-            query = query.filter(
-                Q(username__icontains=q_norm) | 
-                Q(nickname__icontains=q_norm) | 
-                Q(email__icontains=q_norm)
-            )
-
-        # Count
-        total = await query.count()
-        
-        # Fetch Users
-        users = await query.order_by("username").offset(offset).limit(page_size_norm).all()
-        
-        # Fetch Roles for these users
-        # To avoid N+1, fetch all UserRoles for these user_ids
-        fetched_user_ids = [u.id for u in users]
-        user_roles = await UserRole.filter(user_id__in=fetched_user_ids).all()
-        
-        # Fetch Role details
-        role_ids = list({ur.role_id for ur in user_roles})
-        roles = await Role.filter(id__in=role_ids).all()
-        role_map = {r.id: r for r in roles}
-        
-        # Build user -> roles map
-        user_roles_map = {}
-        for ur in user_roles:
-            if ur.user_id not in user_roles_map:
-                user_roles_map[ur.user_id] = []
-            if ur.role_id in role_map:
-                r = role_map[ur.role_id]
-                user_roles_map[ur.user_id].append({
-                    "id": r.id,
-                    "name": r.name,
-                    "code": r.code
-                })
-        
-        items = []
-        for u in users:
-            items.append({
-                "id": u.id,
-                "username": u.username,
-                "nickname": u.nickname,
-                "email": u.email,
-                "is_approved": u.is_approved,
-                "created_at": u.created_at,
-                "roles": user_roles_map.get(u.id, [])
-            })
-            
-        return {
-            "items": items,
-            "total": total,
-            "page": page_norm,
-            "page_size": page_size_norm
-        }
+    async def get_users_with_roles_paginated() -> dict:
+        return {"items": [], "total": 0, "page": 1, "page_size": 20}
 
     @staticmethod
     async def set_default_role(role_id: int) -> None:

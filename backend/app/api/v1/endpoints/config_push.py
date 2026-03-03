@@ -175,7 +175,6 @@ async def config_push_ws(websocket: WebSocket, job_id: int, token: str | None = 
     # 支持从指定的 last_id 开始消费，实现断线重连
     # 默认从 "0-0" 开始，即获取该任务的所有历史日志
     last_id = str(websocket.query_params.get("last_id") or "0-0").strip() or "0-0"
-    stream_key = f"job:stream:{job_id}" # 修正为正确的 Stream Key 格式
     redis = redis_manager.get_client()
 
     try:

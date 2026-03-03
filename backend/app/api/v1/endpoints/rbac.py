@@ -391,31 +391,6 @@ async def delete_permission(permission_id: int, current_user: dict = Depends(dep
         return {"code": 500, "message": f"删除失败: {str(e)}"}
 
 
-@router.get("/roles/users_distribution", response_model=dict)
-async def get_users_distribution(
-    q: str = Query("", max_length=200),
-    role_id: int = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
-    current_user: dict = Depends(deps.get_current_user),
-):
-    """
-    获取用户角色分布列表
-    
-    查看每个用户的角色分配情况。
-    支持按用户名/角色筛选。
-    
-    需要 sys:role:distribution 权限。
-    """
-    # 允许 superadmin 或拥有 sys:role:distribution 权限的用户
-    has_perm = await user_has_permission(current_user, "sys:role:distribution")
-    if not has_perm:
-        return {"code": 403, "message": "权限不足"}
-    try:
-        result = await RbacService.get_users_with_roles_paginated(q=q, role_id=role_id, page=page, page_size=page_size)
-        return {"code": 200, "data": result.get("items") or [], "meta": {"total": result.get("total") or 0, "page": result.get("page") or page, "page_size": result.get("page_size") or page_size}}
-    except Exception as e:
-        return {"code": 500, "message": f"获取失败: {str(e)}"}
 
 
 @router.get("/roles/{role_id}/permissions", response_model=dict)
@@ -554,11 +529,9 @@ async def set_user_roles(
     全量替换用户的角色列表。
     会检查是否涉及超级管理员角色的变更（防止权限逃逸或误操作）。
     
-    需要 sys:role:assign 或 sys:role:distribution 权限。
+    需要 sys:role:assign 权限。
     """
-    # 允许 superadmin 或拥有 sys:role:distribution 权限的用户 (认为管理分布包含分配角色)
-    # 或者我们应该定义一个 sys:role:assign? 暂时复用 distribution
-    has_perm = await user_has_permission(current_user, "sys:role:assign") or await user_has_permission(current_user, "sys:role:distribution")
+    has_perm = await user_has_permission(current_user, "sys:role:assign")
     if not has_perm:
         return {"code": 403, "message": "权限不足"}
     try:
