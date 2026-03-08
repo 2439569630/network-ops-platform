@@ -5,6 +5,7 @@
       <div :class="$style.titleWrap">
         <div :class="$style.title">{{ detail.device_name || '设备详情' }}</div>
         <el-tag
+          v-if="showStatusTag"
           :type="statusTagType"
           size="small"
           effect="dark"
@@ -18,7 +19,7 @@
       </div>
     </div>
 
-    <div :class="$style.content">
+    <div :class="$style.content"> 
       <el-tabs v-model="activeTab" :class="$style.tabs">
         <el-tab-pane label="概览" name="overview">
           <el-card :class="$style.section" shadow="never">
@@ -218,19 +219,42 @@
       </el-tabs>
     </div>
 
-    <el-dialog v-model="editVisible" title="编辑设备" width="520px" destroy-on-close>
-      <el-form :model="editForm" label-width="90px">
-        <el-form-item label="设备名称">
+    <el-dialog v-model="editVisible" title="编辑设备" width="620px" destroy-on-close>
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
+        <el-form-item label="设备名称" prop="device_name">
           <el-input v-model="editForm.device_name" />
         </el-form-item>
-        <el-form-item label="设备类型">
-          <el-input v-model="editForm.type" />
+        <el-form-item label="设备类型" prop="type">
+          <el-select v-model="editForm.type" placeholder="请选择" style="width: 100%">
+            <el-option label="路由器" value="路由器" />
+            <el-option label="交换机" value="交换机" />
+            <el-option label="防火墙" value="防火墙" />
+            <el-option label="服务器" value="服务器" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="位置">
+        <el-form-item label="IPv4地址" prop="ipv4">
+          <el-input v-model="editForm.ipv4" />
+        </el-form-item>
+        <el-form-item label="SSH端口" prop="ssh_port">
+          <el-input-number v-model="editForm.ssh_port" :min="1" :max="65535" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="账号" prop="user_name">
+          <el-input v-model="editForm.user_name" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="editForm.password" type="password" show-password placeholder="留空则不修改" />
+        </el-form-item>
+        <el-form-item label="MAC地址" prop="mac">
+          <el-input v-model="editForm.mac" />
+        </el-form-item>
+        <el-form-item label="IPv6地址" prop="ipv6">
+          <el-input v-model="editForm.ipv6" />
+        </el-form-item>
+        <el-form-item label="位置" prop="location">
           <el-input v-model="editForm.location" />
         </el-form-item>
-        <el-form-item label="SSH端口">
-          <el-input-number v-model="editForm.ssh_port" :min="1" :max="65535" style="width: 100%" />
+        <el-form-item label="启用" prop="is_active">
+          <el-switch v-model="editForm.is_active" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -277,19 +301,25 @@ const detail = reactive({
   ipv6: '',
   mac: '',
   location: '',
+  location_node_id: null,
   ssh_port: 22,
+  user_name: '',
+  is_active: true,
   created_by_name: '',
   ops_admin_name: '',
   status: 'offline',
   connectivity: 'offline',
+  online_status: false,
   displayStatus: '',
   fsmState: '',
   fsmReason: '',
+  rawStatus: '',
+  stale: false,
   cpuUsage: 0,
   memoryUsage: 0,
   diskUsage: 0,
   uptime: '未知',
-  osVersion: 'Unknown',
+  osVersion: '未知',
   vendor: '',
   model: '',
   product: '',
@@ -342,16 +372,45 @@ const activeTab = computed({
 
 const editVisible = ref(false)
 const editSaving = ref(false)
+const editFormRef = ref(null)
 const editForm = reactive({
   device_name: '',
   type: '',
   location: '',
   ssh_port: 22,
+  ipv4: '',
+  ipv6: '',
+  mac: '',
+  user_name: '',
+  password: '',
+  is_active: true,
+})
+
+const editRules = reactive({
+  device_name: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择设备类型', trigger: 'change' }],
+  ipv4: [
+    { required: true, message: '请输入IPv4地址', trigger: 'blur' },
+    {
+      pattern: /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
+      message: 'IPv4格式不正确',
+      trigger: 'blur',
+    },
+  ],
+  ssh_port: [{ required: true, message: '请输入SSH端口', trigger: 'change' }],
 })
 
 const statusText = computed(() => getDeviceStatusText(detail, nowTick.value))
 
 const statusTagType = computed(() => getDeviceStatusTagType(detail))
+
+const showStatusTag = computed(() => {
+  const s = String(statusText.value || '').trim()
+  if (!s) return false
+  if (s === '离线') return false
+  if (s.startsWith('离线（')) return false
+  return true
+})
 
 const clampPercent = (val) => {
   const n = Number(val)
@@ -363,22 +422,63 @@ const clampPercent = (val) => {
 
 const formatPercent = (val) => `${clampPercent(val).toFixed(0)}%`
 
+const parsePercent = (val) => {
+  if (val === null || val === undefined) return null
+  if (typeof val === 'number') return clampPercent(val)
+  const s = String(val).trim()
+  if (!s) return null
+  const n = Number.parseFloat(s.replace('%', ''))
+  if (!Number.isFinite(n)) return null
+  return clampPercent(n)
+}
+
 const applyStatusPayload = (payload) => {
   if (!payload || typeof payload !== 'object') return
-  if (payload.status) detail.status = payload.status
-  if (payload.connectivity) detail.connectivity = payload.connectivity
-  if (payload.displayStatus) detail.displayStatus = payload.displayStatus
-  if (payload.display_status) detail.displayStatus = payload.display_status
-  if (payload.fsmState) detail.fsmState = payload.fsmState
-  if (payload.fsm_state) detail.fsmState = payload.fsm_state
-  if (payload.fsmReason) detail.fsmReason = payload.fsmReason
-  if (payload.fsm_reason) detail.fsmReason = payload.fsm_reason
+  if (payload.status !== undefined) detail.status = payload.status
+  if (payload.connectivity !== undefined) detail.connectivity = payload.connectivity
+  if (payload.online_status !== undefined) {
+    detail.online_status = Boolean(payload.online_status)
+    detail.connectivity = detail.online_status ? 'online' : 'offline'
+  }
+  if (payload.onlineStatus !== undefined) {
+    detail.online_status = Boolean(payload.onlineStatus)
+    detail.connectivity = detail.online_status ? 'online' : 'offline'
+  }
+  if (payload.stale !== undefined) detail.stale = Boolean(payload.stale)
+  if (payload.displayStatus !== undefined) detail.displayStatus = payload.displayStatus
+  if (payload.display_status !== undefined) detail.displayStatus = payload.display_status
+  if (payload.fsmState !== undefined) detail.fsmState = payload.fsmState
+  if (payload.fsm_state !== undefined) detail.fsmState = payload.fsm_state
+  if (payload.fsmReason !== undefined) detail.fsmReason = payload.fsmReason
+  if (payload.fsm_reason !== undefined) detail.fsmReason = payload.fsm_reason
+  if (payload.rawStatus !== undefined) detail.rawStatus = payload.rawStatus
+  if (payload.raw_status !== undefined) detail.rawStatus = payload.raw_status
   
-  if (payload.cpuUsage !== undefined) detail.cpuUsage = Number(payload.cpuUsage) || 0
-  if (payload.memoryUsage !== undefined) detail.memoryUsage = Number(payload.memoryUsage) || 0
-  if (payload.diskUsage !== undefined) detail.diskUsage = Number(payload.diskUsage) || 0
-  if (payload.uptime) detail.uptime = payload.uptime
-  if (payload.osVersion) detail.osVersion = payload.osVersion
+  if (payload.cpuUsage !== undefined) {
+    const v = parsePercent(payload.cpuUsage)
+    if (v !== null) detail.cpuUsage = v
+  }
+  if (payload.cpu_usage !== undefined) {
+    const v = parsePercent(payload.cpu_usage)
+    if (v !== null) detail.cpuUsage = v
+  }
+  if (payload.memoryUsage !== undefined) {
+    const v = parsePercent(payload.memoryUsage)
+    if (v !== null) detail.memoryUsage = v
+  }
+  if (payload.memory_usage !== undefined) {
+    const v = parsePercent(payload.memory_usage)
+    if (v !== null) detail.memoryUsage = v
+  }
+  if (payload.diskUsage !== undefined) {
+    const v = parsePercent(payload.diskUsage)
+    if (v !== null) detail.diskUsage = v
+  }
+  if (payload.disk_usage !== undefined) {
+    const v = parsePercent(payload.disk_usage)
+    if (v !== null) detail.diskUsage = v
+  }
+  if (payload.uptime !== undefined) detail.uptime = payload.uptime
 
   if (payload.vendor) detail.vendor = payload.vendor
   if (payload.model) detail.model = payload.model
@@ -386,6 +486,12 @@ const applyStatusPayload = (payload) => {
   if (payload.version) detail.version = payload.version
   if (payload.vrp_version) detail.vrp_version = payload.vrp_version
   if (payload.version_raw) detail.version_raw = payload.version_raw
+
+  if (payload.osVersion !== undefined) detail.osVersion = payload.osVersion
+  if (payload.os_version !== undefined) detail.osVersion = payload.os_version
+  if ((detail.osVersion === '未知' || detail.osVersion === 'Unknown' || !String(detail.osVersion || '').trim()) && (detail.vrp_version || detail.version)) {
+    detail.osVersion = detail.vrp_version || detail.version
+  }
 }
 
 const openWs = () => {
@@ -513,10 +619,15 @@ const fetchDetail = async () => {
     detail.ipv6 = data.ipv6 || ''
     detail.mac = data.mac || ''
     detail.location = data.location || ''
+    detail.location_node_id = data.location_node_id ?? null
     detail.ssh_port = data.ssh_port || 22
+    detail.user_name = data.user_name || ''
+    detail.is_active = data.is_active !== undefined ? Boolean(data.is_active) : true
     detail.created_by_name = data.created_by_name || ''
     detail.ops_admin_name = data.ops_admin_name || ''
     applyStatusPayload(data)
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || e?.response?.data?.message || e?.message || '获取设备详情失败')
   } finally {
     loading.value = false
   }
@@ -527,6 +638,12 @@ const openEdit = () => {
   editForm.type = detail.type || ''
   editForm.location = detail.location || ''
   editForm.ssh_port = Number(detail.ssh_port || 22)
+  editForm.ipv4 = detail.ipv4 || ''
+  editForm.ipv6 = detail.ipv6 || ''
+  editForm.mac = detail.mac || ''
+  editForm.user_name = detail.user_name || ''
+  editForm.password = ''
+  editForm.is_active = detail.is_active !== undefined ? Boolean(detail.is_active) : true
   editVisible.value = true
 }
 
@@ -534,13 +651,24 @@ const saveEdit = async () => {
   if (!deviceId.value) return
   editSaving.value = true
   try {
-    await axios.post('/api/v1/user/device/update', {
+    if (editFormRef.value) {
+      await editFormRef.value.validate()
+    }
+    const payload = {
       device_id: deviceId.value,
       device_name: editForm.device_name,
       type: editForm.type,
       location: editForm.location,
       ssh_port: editForm.ssh_port,
-    })
+      ipv4: editForm.ipv4,
+      ipv6: editForm.ipv6,
+      mac: editForm.mac,
+      user_name: editForm.user_name,
+      password: editForm.password,
+      is_active: editForm.is_active,
+    }
+    if (!String(payload.password || '').trim()) delete payload.password
+    await axios.post('/api/v1/user/device/update', payload)
     editVisible.value = false
     await fetchDetail()
     ElMessage.success('保存成功')

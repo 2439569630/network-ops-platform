@@ -20,7 +20,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="150" />
-        <el-table-column prop="ports" label="包含端口" min-width="200">
+        <!-- <el-table-column prop="ports" label="包含端口" min-width="200">
           <template #default="{ row }">
             <el-tag 
               v-for="port in row.ports" 
@@ -32,7 +32,7 @@
               {{ port }}
             </el-tag>
           </template>
-        </el-table-column>
+        </el-table-column> -->
       </el-table>
     </el-card>
   </div>

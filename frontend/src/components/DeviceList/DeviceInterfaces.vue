@@ -14,18 +14,24 @@
 
       <el-table :data="interfaces" style="width: 100%">
         <el-table-column prop="name" label="接口名称" min-width="140" fixed />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="phy_state" label="PHY" width="110">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'up' ? 'success' : 'danger'" effect="dark">
-              {{ row.status.toUpperCase() }}
+            <el-tag size="small" :type="isUpToken(row.phy_state) ? 'success' : 'danger'" effect="dark">
+              {{ String(row.phy_state || '-').toUpperCase() }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ip_address" label="IP地址" min-width="140" />
-        <el-table-column prop="mac_address" label="MAC地址" min-width="140" />
-        <el-table-column prop="speed" label="速率" width="100" />
-        <el-table-column prop="duplex" label="双工" width="100" />
-        <el-table-column prop="description" label="描述" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="protocol_state" label="Protocol" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="isUpToken(row.protocol_state) ? 'success' : 'danger'" effect="dark">
+              {{ String(row.protocol_state || '-').toUpperCase() }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="in_uti" label="InUti" width="110" />
+        <el-table-column prop="out_uti" label="OutUti" width="110" />
+        <el-table-column prop="in_errors" label="inErrors" width="110" />
+        <el-table-column prop="out_errors" label="outErrors" width="110" />
       </el-table>
     </el-card>
     <el-drawer v-model="detailOpen" title="插槽0接口详情" size="60%" :with-header="true">
@@ -337,6 +343,10 @@ const humanNum = (v) => {
   if (!isFinite(n)) return '0'
   return n.toLocaleString()
 }
+const isUpToken = (v) => {
+  const s = String(v || '').trim().toLowerCase()
+  return s === 'up' || s.startsWith('up(') || s.startsWith('up/')
+}
 const statusOf = (item) => {
   const s = (item?.protocol_state || item?.phy_state || 'down').toLowerCase()
   return s
@@ -357,12 +367,12 @@ const applyInterfaces = (rawList) => {
   const list = Array.isArray(rawList) ? rawList : []
   interfaces.value = list.map(item => ({
     name: item.name || '',
-    status: (item.protocol_state || item.phy_state || 'down').toLowerCase(),
-    ip_address: item.ip_address || '-', // 待后端完善解析
-    mac_address: item.mac_address || '-',
-    speed: item.speed || '-',
-    duplex: item.duplex || '-',
-    description: item.description || ''
+    phy_state: String(item.phy_state || '').toLowerCase(),
+    protocol_state: String(item.protocol_state || '').toLowerCase(),
+    in_uti: item.in_uti ?? '-',
+    out_uti: item.out_uti ?? '-',
+    in_errors: item.in_errors ?? '0',
+    out_errors: item.out_errors ?? '0'
   }))
 }
 
