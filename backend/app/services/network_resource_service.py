@@ -41,10 +41,13 @@ class NetworkResourceService:
         # 实际场景可能需要 DeviceDriverFactory
         device_info = {
             "id": device.id,
+            "device_name": device.device_name,
             "ipv4": device.ipv4,
             "device_type": "huawei",
             "host": device.ipv4,
+            "ssh_port": device.ssh_port,
             "port": device.ssh_port,
+            "user_name": device.user_name,
             "username": device.user_name,
             "password": device.password,
             "timeout": 10,
@@ -162,6 +165,11 @@ class NetworkResourceService:
             try:
                 redis = redis_manager.get_client()
                 await self._mark_error(redis, did, [f"interfaces_slot{sid}_detailed"], str(e))
+            except Exception:
+                pass
+        finally:
+            try:
+                await driver.disconnect()
             except Exception:
                 pass
 
@@ -298,6 +306,11 @@ class NetworkResourceService:
             try:
                 redis = redis_manager.get_client()
                 await self._mark_error(redis, int(device_id), sorted(list(wanted)), str(e))
+            except Exception:
+                pass
+        finally:
+            try:
+                await driver.disconnect()
             except Exception:
                 pass
 

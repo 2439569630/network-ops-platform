@@ -99,7 +99,14 @@ class DeviceUpdateRequest(BaseModel):
     device_name: Optional[str] = None
     type: Optional[str] = None
     location: Optional[str] = None
+    location_node_id: Optional[int] = None
     ssh_port: Optional[int] = None
+    ipv4: Optional[str] = None
+    ipv6: Optional[str] = None
+    mac: Optional[str] = None
+    user_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 # --- 设备基本管理接口 ---
@@ -235,11 +242,24 @@ async def update_device(
     Args:
         data: 更新请求参数
     """
+    ipv4 = data.ipv4
+    if ipv4 is not None and not str(ipv4).strip():
+        raise HTTPException(status_code=400, detail="IPv4不能为空")
+    password = data.password
+    if password is not None and not str(password).strip():
+        password = None
     patch = DeviceUpdate(
         device_name=data.device_name,
         type=data.type,
         location=data.location,
+        location_node_id=data.location_node_id,
         ssh_port=data.ssh_port,
+        ipv4=ipv4,
+        ipv6=data.ipv6,
+        mac=data.mac,
+        user_name=data.user_name,
+        password=password,
+        is_active=data.is_active,
     )
     await device_service.update_device(int(data.device_id), patch, updated_by=str(user_data.get("id") or ""))
     return {"code": 200}
@@ -310,6 +330,7 @@ async def get_device_detail(
             nd.ipv6,
             nd.mac,
             nd.device_type,
+            nd.user_name,
             COALESCE(lp.full_path, ln.name, '') AS location,  -- 优先使用全路径
             lnd.node_id AS location_node_id,
             nd.ssh_port,
@@ -323,7 +344,6 @@ async def get_device_detail(
         LEFT JOIN location_path lp ON lp.id = ln.id
         LEFT JOIN users u ON u.id::text = nd.created_by
         WHERE nd.id = $1
-          AND COALESCE(nd.is_active, true) = true
     """
     # 如果启用了逻辑删除，过滤掉已删除的记录
     if await device_service.has_deleted_at():
@@ -341,6 +361,7 @@ async def get_device_detail(
     data["ipv4"] = str(data.get("ipv4") or "")
     data["ipv6"] = str(data.get("ipv6") or "")
     data["mac"] = str(data.get("mac") or "")
+    data["user_name"] = str(data.get("user_name") or "")
     data["ssh_port"] = int(data.get("ssh_port") or 22)
     data["location"] = str(data.get("location") or "")
     
@@ -457,7 +478,23 @@ async def sync_device_resources(
     
     异步执行：会立即返回，后台 Worker 会连接设备并拉取最新接口、路由、VLAN 信息。
     """
-    await network_resource_service.sync_device_resources(int(device_id))
+    did = int(device_id)
+    try:
+        redis = redis_manager.get_client()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Redis不可用，无法触发同步")
+
+    await redis.publish(
+        "device:resource:sync:request",
+        json.dumps(
+            {
+                "device_id": int(did),
+                "requested_by": str(user.get("id") or ""),
+                "ts": float(time.time()),
+            },
+            ensure_ascii=False,
+        ),
+    )
     return {"code": 200, "message": "同步任务已触发"}
 
 # --- 审计日志 ---

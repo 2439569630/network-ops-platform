@@ -22,8 +22,14 @@ class DeviceUpdate(BaseModel):
     device_name: Optional[str] = None
     type: Optional[str] = None
     location: Optional[str] = None
+    location_node_id: Optional[int] = None
     ssh_port: Optional[int] = None
-    # ...其他可更新字段
+    ipv4: Optional[str] = None
+    ipv6: Optional[str] = None
+    mac: Optional[str] = None
+    user_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class DeviceResponse(DeviceBase):
     """设备响应模型"""

@@ -636,7 +636,30 @@ class DeviceService:
             return
 
         old_values = dict(device)
+        try:
+            old_values.pop("password", None)
+        except Exception:
+            pass
         import datetime
+
+        next_ipv4 = str(device.ipv4 or "")
+        next_ssh_port = int(device.ssh_port or 22)
+        if getattr(patch, "ipv4", None) is not None:
+            v = str(getattr(patch, "ipv4") or "").strip()
+            if not v:
+                raise HTTPException(status_code=400, detail="IPv4不能为空")
+            next_ipv4 = v
+        if getattr(patch, "ssh_port", None) is not None:
+            try:
+                next_ssh_port = int(getattr(patch, "ssh_port") or 0)
+            except Exception:
+                next_ssh_port = 0
+            if next_ssh_port <= 0 or next_ssh_port > 65535:
+                raise HTTPException(status_code=400, detail="SSH端口不合法")
+        if next_ipv4 != str(device.ipv4 or "") or next_ssh_port != int(device.ssh_port or 22):
+            exists = await NetworkDevice.filter(ipv4=next_ipv4, ssh_port=next_ssh_port).exclude(id=device.id).exists()
+            if exists:
+                raise HTTPException(status_code=400, detail="该IP+端口已存在")
 
         if patch.device_name is not None:
             device.device_name = patch.device_name
@@ -669,8 +692,38 @@ class DeviceService:
 
         if getattr(patch, "type", None) is not None:
             device.device_type = getattr(patch, "type")
+        if getattr(patch, "ipv4", None) is not None:
+            device.ipv4 = next_ipv4
         if getattr(patch, "ssh_port", None) is not None:
-            device.ssh_port = getattr(patch, "ssh_port")
+            device.ssh_port = next_ssh_port
+        if getattr(patch, "ipv6", None) is not None:
+            v = str(getattr(patch, "ipv6") or "").strip()
+            device.ipv6 = v or None
+        if getattr(patch, "mac", None) is not None:
+            v = str(getattr(patch, "mac") or "").strip()
+            device.mac = v or None
+        if getattr(patch, "user_name", None) is not None:
+            device.user_name = str(getattr(patch, "user_name") or "").strip()
+        if getattr(patch, "password", None) is not None:
+            device.password = str(getattr(patch, "password") or "")
+        if getattr(patch, "is_active", None) is not None:
+            device.is_active = bool(getattr(patch, "is_active"))
+        if getattr(patch, "location_node_id", None) is not None:
+            try:
+                node_id = int(getattr(patch, "location_node_id") or 0)
+            except Exception:
+                node_id = 0
+            if node_id <= 0:
+                await LocationNodeDevice.filter(device_id=device.id).delete()
+            else:
+                node = await LocationNode.get_or_none(id=node_id)
+                if node:
+                    mapping = await LocationNodeDevice.filter(device_id=device.id).first()
+                    if mapping:
+                        mapping.node_id = node.id
+                        await mapping.save()
+                    else:
+                        await LocationNodeDevice.create(node_id=node.id, device_id=device.id)
 
         device.updated_at = datetime.datetime.now()
         device.updated_by = str(updated_by or "")
@@ -680,6 +733,10 @@ class DeviceService:
         
         # Reload to get fresh values if needed, or just use what we set
         new_values = dict(device)
+        try:
+            new_values.pop("password", None)
+        except Exception:
+            pass
 
         await self._log_device_change(
             device_id=device.id,

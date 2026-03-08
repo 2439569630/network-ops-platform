@@ -93,6 +93,7 @@ def setup_logger(log_level: str = "INFO"):
         or "app"
     )
     enable_console = str(os.getenv("LOG_CONSOLE", "1")).strip().lower() not in {"0", "false", "no", "off"}
+    enable_file = str(os.getenv("LOG_TO_FILE", "1")).strip().lower() not in {"0", "false", "no", "off"}
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
@@ -127,12 +128,12 @@ def setup_logger(log_level: str = "INFO"):
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 
-    # File Handler
-    log_file = str(os.getenv("LOG_FILE", "")).strip() or f"{service_name}.log"
-    log_file_path = log_file if os.path.isabs(log_file) else os.path.join(log_dir, log_file)
-    main_file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
-    main_file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(main_file_handler)
+    if enable_file:
+        log_file = str(os.getenv("LOG_FILE", "")).strip() or f"{service_name}.log"
+        log_file_path = log_file if os.path.isabs(log_file) else os.path.join(log_dir, log_file)
+        main_file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+        main_file_handler.setFormatter(file_formatter)
+        root_logger.addHandler(main_file_handler)
 
     # 4. 专用 Logger 配置
     # Device Drivers
@@ -140,11 +141,12 @@ def setup_logger(log_level: str = "INFO"):
     driver_logger.setLevel(logging.INFO)
     if driver_logger.hasHandlers():
         driver_logger.handlers.clear()
-    driver_log_file = str(os.getenv("DRIVER_LOG_FILE", "")).strip() or f"{service_name}.drivers.log"
-    driver_log_path = driver_log_file if os.path.isabs(driver_log_file) else os.path.join(log_dir, driver_log_file)
-    driver_handler = logging.FileHandler(driver_log_path, encoding="utf-8")
-    driver_handler.setFormatter(file_formatter)
-    driver_logger.addHandler(driver_handler)
+    if enable_file:
+        driver_log_file = str(os.getenv("DRIVER_LOG_FILE", "")).strip() or f"{service_name}.drivers.log"
+        driver_log_path = driver_log_file if os.path.isabs(driver_log_file) else os.path.join(log_dir, driver_log_file)
+        driver_handler = logging.FileHandler(driver_log_path, encoding="utf-8")
+        driver_handler.setFormatter(file_formatter)
+        driver_logger.addHandler(driver_handler)
     driver_logger.propagate = True
 
     # 屏蔽噪音

@@ -264,3 +264,29 @@ class TestResourceScheduler(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(updated)
         self.assertGreater(device.interfaces_calls, 0)
+
+    async def test_manual_resource_sync_reuses_monitor_device_connection(self):
+        manager = MonitorManager()
+        manager.running = True
+
+        device = DummyHuaweiDevice(metrics_interval=10.0, interfaces_sync_interval=3.0)
+        manager.devices[1] = device  # type: ignore[assignment]
+
+        captured: dict = {}
+
+        def _capture(did: int, payload: dict):
+            captured["device_id"] = did
+            captured["payload"] = payload
+
+        manager._enqueue_postprocess_latest = _capture  # type: ignore[method-assign]
+
+        mocked = mock.AsyncMock(return_value=None)
+        with mock.patch("app.workers.monitor.manager.network_resource_service.sync_device_resources", new=mocked):
+            await manager._run_resource_sync(1, ["interfaces"])
+
+        self.assertEqual(mocked.await_count, 0)
+        self.assertEqual(captured.get("device_id"), 1)
+        payload = captured.get("payload") or {}
+        self.assertEqual(payload.get("type"), "resources_postprocess")
+        data = payload.get("data") or {}
+        self.assertIn("interfaces", data)

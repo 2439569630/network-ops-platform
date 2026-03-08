@@ -18,6 +18,7 @@ from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.core.redis import redis_manager
 from app.services.notification_service import NotificationService
 from app.services.device_event_service import DEVICE_UPDATE_CHANNEL
+from app.services.network_resource_service import network_resource_service
 from app.models.orm.device import NetworkDevice
 from app.models.orm.device import DeviceConfigEntry
 from app.workers.monitor.alert_handler import AlertHandler
@@ -26,6 +27,8 @@ from app.utils.device_status import status_fields_from_snapshot
 from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
+
+RESOURCE_SYNC_REQUEST_CHANNEL = "device:resource:sync:request"
 
 def normalize_period_seconds(value: Any, *, default_seconds: float, min_seconds: float = 1.0) -> float:
     if value is None:
@@ -87,7 +90,9 @@ class MonitorManager:
             # 告警规则订阅任务
             cls._instance.alert_sub_task: Optional[asyncio.Task] = None
             cls._instance.device_sub_task: Optional[asyncio.Task] = None
+            cls._instance.resource_sync_sub_task: Optional[asyncio.Task] = None
             cls._instance.device_event_consumer_task: Optional[asyncio.Task] = None
+            cls._instance._resource_sync_inflight: Dict[int, asyncio.Task] = {}
             cls._instance._leader_lock_token: Optional[str] = None
             cls._instance._leader_lock_task: Optional[asyncio.Task] = None
             cls._instance._device_event_signal: asyncio.Event = asyncio.Event()
@@ -96,7 +101,16 @@ class MonitorManager:
             cls._instance._monitor_log_detail: str = str(os.getenv("MONITOR_LOG_DETAIL", "summary") or "summary").strip().lower()
             cls._instance._postprocess_queues: Dict[int, asyncio.Queue] = {}
             cls._instance._postprocess_tasks: Dict[int, asyncio.Task] = {}
+            cls._instance._device_job_locks: Dict[int, asyncio.Lock] = {}
         return cls._instance
+
+    def _get_device_job_lock(self, device_id: int) -> asyncio.Lock:
+        did = int(device_id)
+        lock = self._device_job_locks.get(did)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._device_job_locks[did] = lock
+        return lock
 
     def _ensure_postprocess_worker(self, device_id: int) -> None:
         """
@@ -597,6 +611,132 @@ class MonitorManager:
             await asyncio.sleep(delay + random.uniform(0.0, 0.5))
             delay = min(30.0, delay * 2.0)
 
+    def _trigger_resource_sync(self, device_id: int, resources: Optional[list[str]]) -> None:
+        did = int(device_id)
+        existing = self._resource_sync_inflight.get(did)
+        if existing is not None and not existing.done():
+            return
+        self._resource_sync_inflight[did] = asyncio.create_task(self._run_resource_sync(did, resources))
+
+    async def _run_resource_sync(self, device_id: int, resources: Optional[list[str]]) -> None:
+        did = int(device_id)
+        try:
+            device = self.devices.get(did)
+            if device is not None:
+                wanted = resources or ["interfaces", "routes", "vlans", "interfaces_slot0_detailed"]
+                wanted_set = {str(x).strip().lower() for x in wanted if str(x).strip()}
+                wanted_set = wanted_set & {"interfaces", "routes", "vlans", "interfaces_slot0_detailed"}
+                if wanted_set:
+                    async with self._get_device_job_lock(did):
+                        if not getattr(device, "connected", False):
+                            try:
+                                await device.connect(purpose="steady")
+                            except Exception:
+                                pass
+                        if getattr(device, "connected", False):
+                            data: dict[str, Any] = {}
+                            if "interfaces" in wanted_set and hasattr(device, "collect_interfaces"):
+                                data["interfaces"] = await device.collect_interfaces()
+                            if "routes" in wanted_set and hasattr(device, "collect_routes"):
+                                data["routes"] = await device.collect_routes()
+                            if "vlans" in wanted_set and hasattr(device, "collect_vlans"):
+                                data["vlans"] = await device.collect_vlans()
+                            if "interfaces_slot0_detailed" in wanted_set and hasattr(device, "collect_interfaces_detailed"):
+                                data["interfaces_slot0_detailed"] = await device.collect_interfaces_detailed(slot_id=0)
+                            data = {k: v for k, v in data.items() if v is not None}
+                            if data:
+                                self._enqueue_postprocess_latest(did, {"type": "resources_postprocess", "data": data})
+                    return
+
+            await network_resource_service.sync_device_resources(did, resources=resources)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"手动资源同步失败: device_id={did} err={e}")
+        else:
+            try:
+                redis = redis_manager.get_client()
+                wanted = resources or ["interfaces", "routes", "vlans", "interfaces_slot0_detailed"]
+                await redis.publish(
+                    f"ws:devices:resources:{did}",
+                    json.dumps(
+                        {"type": "resources_updated", "device_id": did, "resources": sorted(set(wanted))},
+                        ensure_ascii=False,
+                    ),
+                )
+            except Exception:
+                pass
+        finally:
+            t = asyncio.current_task()
+            cur = self._resource_sync_inflight.get(did)
+            if cur is t:
+                self._resource_sync_inflight.pop(did, None)
+
+    async def _subscribe_resource_sync_requests(self) -> None:
+        delay = 1.0
+        while self.running:
+            pubsub = None
+            try:
+                redis_client = redis_manager.get_pubsub_client()
+                pubsub = redis_client.pubsub()
+                await pubsub.subscribe(RESOURCE_SYNC_REQUEST_CHANNEL)
+                logger.info(f"已订阅资源同步请求频道: {RESOURCE_SYNC_REQUEST_CHANNEL}")
+                delay = 1.0
+
+                async for message in pubsub.listen():
+                    if not self.running:
+                        break
+                    if message.get("type") != "message":
+                        continue
+                    payload = None
+                    try:
+                        raw = message.get("data")
+                        if isinstance(raw, (bytes, bytearray)):
+                            raw = raw.decode("utf-8", errors="ignore")
+                        if isinstance(raw, str):
+                            payload = json.loads(raw) if raw else None
+                        elif isinstance(raw, dict):
+                            payload = raw
+                    except Exception:
+                        payload = None
+                    if not isinstance(payload, dict):
+                        continue
+                    try:
+                        did = int(payload.get("device_id"))
+                    except Exception:
+                        continue
+
+                    resources = payload.get("resources")
+                    wanted: Optional[list[str]] = None
+                    if isinstance(resources, list):
+                        cleaned = [str(x).strip().lower() for x in resources if str(x).strip()]
+                        wanted = cleaned or None
+                    elif isinstance(resources, str):
+                        cleaned = [x.strip().lower() for x in resources.split(",") if x.strip()]
+                        wanted = cleaned or None
+
+                    self._trigger_resource_sync(did, wanted)
+            except asyncio.CancelledError:
+                logger.info("资源同步请求订阅任务被取消")
+                raise
+            except Exception as e:
+                logger.error(f"订阅资源同步请求频道失败: {e}")
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe(RESOURCE_SYNC_REQUEST_CHANNEL)
+                    except Exception:
+                        pass
+                    try:
+                        await pubsub.close()
+                    except Exception:
+                        pass
+
+            if not self.running:
+                break
+            await asyncio.sleep(delay + random.uniform(0.0, 0.5))
+            delay = min(30.0, delay * 2.0)
+
     async def _handle_device_event(self, payload: dict) -> None:
         action = str(payload.get("action") or "").strip().lower()
         try:
@@ -819,6 +959,7 @@ class MonitorManager:
             logger.error(f"启动设备事件处理守护任务失败: {e}", exc_info=True)
         self.alert_sub_task = asyncio.create_task(self._subscribe_alert_updates())
         self.device_sub_task = asyncio.create_task(self._subscribe_device_updates())
+        self.resource_sync_sub_task = asyncio.create_task(self._subscribe_resource_sync_requests())
 
     async def stop(self):
         """停止监控服务"""
@@ -841,6 +982,14 @@ class MonitorManager:
                 pass
             self.device_sub_task = None
 
+        if self.resource_sync_sub_task:
+            self.resource_sync_sub_task.cancel()
+            try:
+                await self.resource_sync_sub_task
+            except asyncio.CancelledError:
+                pass
+            self.resource_sync_sub_task = None
+
         if self.device_event_consumer_task:
             self.device_event_consumer_task.cancel()
             try:
@@ -856,6 +1005,15 @@ class MonitorManager:
             except asyncio.CancelledError:
                 pass
             self.prime_task = None
+
+        for task in list(self._resource_sync_inflight.values()):
+            try:
+                task.cancel()
+            except Exception:
+                pass
+        if self._resource_sync_inflight:
+            await asyncio.gather(*self._resource_sync_inflight.values(), return_exceptions=True)
+        self._resource_sync_inflight.clear()
 
         if self._leader_lock_task:
             self._leader_lock_task.cancel()
@@ -1535,7 +1693,8 @@ class MonitorManager:
 
             try:
                 # 执行实际的采集逻辑 (Driver 层)
-                data = await device.collect_status()
+                async with self._get_device_job_lock(device_id):
+                    data = await device.collect_status()
             except Exception as e:
                 # 异常处理：分类错误类型，决定是否断开连接或重试
                 reason = str(e).splitlines()[0] if str(e) else "采集异常"
@@ -1692,7 +1851,8 @@ class MonitorManager:
             try:
                 # 根据任务名称调用相应的采集方法
                 if n == "interfaces" and hasattr(device, "collect_interfaces"):
-                    items = await device.collect_interfaces()
+                    async with self._get_device_job_lock(device_id):
+                        items = await device.collect_interfaces()
                     if items is not None:
                         # 放入后处理队列，异步写入 Redis
                         self._enqueue_postprocess_latest(int(device_id), {"type": "resources_postprocess", "data": {"interfaces": items}})
@@ -1715,7 +1875,8 @@ class MonitorManager:
                                 f"资源同步完成 inspect_id={inspect_id} job=interfaces what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
                             )
                 elif n == "routes" and hasattr(device, "collect_routes"):
-                    items = await device.collect_routes()
+                    async with self._get_device_job_lock(device_id):
+                        items = await device.collect_routes()
                     if items is not None:
                         self._enqueue_postprocess_latest(int(device_id), {"type": "resources_postprocess", "data": {"routes": items}})
                         cost_ms = int((time.monotonic() - start_at) * 1000)
@@ -1737,7 +1898,8 @@ class MonitorManager:
                                 f"资源同步完成 inspect_id={inspect_id} job=routes what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
                             )
                 elif n == "vlans" and hasattr(device, "collect_vlans"):
-                    items = await device.collect_vlans()
+                    async with self._get_device_job_lock(device_id):
+                        items = await device.collect_vlans()
                     if items is not None:
                         self._enqueue_postprocess_latest(int(device_id), {"type": "resources_postprocess", "data": {"vlans": items}})
                         cost_ms = int((time.monotonic() - start_at) * 1000)
@@ -1759,7 +1921,8 @@ class MonitorManager:
                                 f"资源同步完成 inspect_id={inspect_id} job=vlans what={what} cost_ms={cost_ms} ok=1{items_text}{cmds_text}"
                             )
                 elif n == "interfaces_slot0_detailed" and hasattr(device, "collect_interfaces_detailed"):
-                    items = await device.collect_interfaces_detailed(slot_id=0)
+                    async with self._get_device_job_lock(device_id):
+                        items = await device.collect_interfaces_detailed(slot_id=0)
                     if items is not None:
                         self._enqueue_postprocess_latest(int(device_id), {"type": "resources_postprocess", "data": {"interfaces_slot0_detailed": items}})
                         cost_ms = int((time.monotonic() - start_at) * 1000)

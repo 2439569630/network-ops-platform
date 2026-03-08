@@ -19,23 +19,21 @@ class HuaweiInterfaceRuntime:
     def from_output(cls, output: str) -> List["HuaweiInterfaceRuntime"]:
         results = []
         text = str(output or "")
-        # Skip header lines usually containing "Interface", "PHY", etc.
-        # Regex to match: GigabitEthernet0/0/0        up    up          0%     0%          0          0
         pattern = re.compile(
-            r"^(\S+)\s+([a-zA-Z*]+)\s+([a-zA-Z()]+)\s+(\d+%?)\s+(\d+%?)\s+(\d+)\s+(\d+)",
+            r"^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s*$",
             re.MULTILINE
         )
         
         for match in pattern.finditer(text):
             name, phy, proto, in_u, out_u, in_err, out_err = match.groups()
             results.append(cls(
-                name=name,
-                phy_state=phy,
-                protocol_state=proto,
-                in_uti=in_u,
-                out_uti=out_u,
-                in_errors=in_err,
-                out_errors=out_err
+                name=str(name or ""),
+                phy_state=str(phy or "").lower(),
+                protocol_state=str(proto or "").lower(),
+                in_uti=str(in_u or ""),
+                out_uti=str(out_u or ""),
+                in_errors=str(in_err or ""),
+                out_errors=str(out_err or ""),
             ))
         return results
 

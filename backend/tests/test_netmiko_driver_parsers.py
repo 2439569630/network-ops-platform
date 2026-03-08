@@ -9,6 +9,7 @@ from app.drivers.netmiko_driver import (
     parse_huawei_display_version,
     parse_huawei_uptime_from_display_version,
 )
+from app.drivers.models.huawei_runtime import HuaweiInterfaceRuntime
 
 
 # 单元测试：解析华为设备 CLI 输出
@@ -86,6 +87,33 @@ class TestHuaweiParsers(unittest.TestCase):
 
     def test_parse_display_health_empty(self) -> None:
         self.assertEqual(parse_huawei_display_health(""), {})
+
+    def test_parse_display_interface_brief_variants(self) -> None:
+        output = (
+            "PHY: Physical\n"
+            "*down: administratively down\n"
+            "(l): loopback\n"
+            "(s): spoofing\n"
+            "InUti/OutUti: input utility/output utility\n"
+            "Interface                   PHY   Protocol  InUti OutUti   inErrors  outErrors\n"
+            "Cellular0/0/0               down  down         0%     0%          0          0 \n"
+            "GigabitEthernet0/0/0        up    up        0.01%  0.01%          0          0 \n"
+            "GigabitEthernet0/0/1        *down down         0%     0%          0          0 \n"
+            "GigabitEthernet0/0/5        up    down      0.01%     0%          0          0 \n"
+            "NULL0                       up    up(s)        0%     0%          0          0 \n"
+            "Vlanif1                     up    up           --     --          0          0 \n"
+        )
+        items = HuaweiInterfaceRuntime.from_output(output)
+        by_name = {i.name: i for i in items}
+
+        self.assertIn("GigabitEthernet0/0/0", by_name)
+        self.assertIn("GigabitEthernet0/0/5", by_name)
+        self.assertIn("Vlanif1", by_name)
+        self.assertIn("NULL0", by_name)
+
+        self.assertEqual(by_name["GigabitEthernet0/0/0"].in_uti, "0.01%")
+        self.assertEqual(by_name["Vlanif1"].in_uti, "--")
+        self.assertEqual(by_name["NULL0"].protocol_state, "up(s)")
 
 
 # 集成测试用配置（通过环境变量或手动修改）

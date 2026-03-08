@@ -235,6 +235,12 @@ class BaseDevice:
             self._connect_abort.clear()
             try:
                 loop = asyncio.get_event_loop()
+                if self.connection is not None and not self.connected:
+                    try:
+                        await loop.run_in_executor(None, self.connection.disconnect)
+                    except Exception:
+                        pass
+                    self.connection = None
                 p = str(purpose or "").strip().lower()
                 if p not in {"startup", "steady"}:
                     p = "startup"
@@ -280,7 +286,7 @@ class BaseDevice:
                         self.connection = conn
                         self.connected = True
                         self.last_connect_error = None
-                        logger.info(f"已连接到设备 {self.device_name}({self.ip})")
+                        logger.info(f"已连接到设备 {self.device_name}({self.ip}:{getattr(self, 'port', '')})")
                         return True
                     except Exception as e:
                         self.last_connect_error = e
@@ -289,7 +295,7 @@ class BaseDevice:
                             level = logging.WARNING if attempt == 0 else logging.DEBUG
                             logger.log(
                                 level,
-                                f"设备 {self.device_name}({self.ip}) 连接尝试 {attempt + 1}/{max_retries_val} 失败: {msg}，正在重试...",
+                                f"设备 {self.device_name}({self.ip}:{getattr(self, 'port', '')}) 连接尝试 {attempt + 1}/{max_retries_val} 失败: {msg}，正在重试...",
                             )
                             if attempt == 0:
                                 await _emit_progress(
@@ -312,7 +318,7 @@ class BaseDevice:
                 # 简化错误日志，只保留关键信息
                 error_msg = self._compact_exception_message(e) or "连接失败"
                 self.last_connect_error = e
-                logger.error(f"连接设备 {self.device_name}({self.ip}) 失败: {error_msg}")
+                logger.error(f"连接设备 {self.device_name}({self.ip}:{getattr(self, 'port', '')}) 失败: {error_msg}")
                 await _emit_progress("failure", f"连接失败: {error_msg}")
                 self.connected = False
                 return False
@@ -366,10 +372,15 @@ class BaseDevice:
                 # - TCP 已断：写入会抛异常（RST/FIN/通道关闭）
                 self.connection.write_channel('\n')
                 return True
-            except Exception as e:
+            except Exception:
                 # 捕获所有异常，确保不会崩溃
                 # logger.warning(f"设备 {self.ip} 连接检查异常: {e}")
                 self.connected = False
+                try:
+                    self.connection.disconnect()
+                except Exception:
+                    pass
+                self.connection = None
                 return False
         self.connected = False
         return False

@@ -20,18 +20,24 @@ class RedisManager:
 
         logger.info("正在初始化 Redis 连接池...")
         try:
-            url = f"redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}" \
-                if settings.REDIS_PASSWORD else \
-                f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}"
+            host = str(settings.REDIS_HOST or "").strip() or "localhost"
+            port = int(settings.REDIS_PORT or 6379)
+            password_raw = settings.REDIS_PASSWORD
+            password = str(password_raw).strip() if password_raw is not None else ""
+            password = password or None
             
-            cls._pool = ConnectionPool.from_url(
-                url,
+            cls._pool = ConnectionPool(
+                host=host,
+                port=port,
+                password=password,
                 decode_responses=True,
                 max_connections=int(getattr(settings, "REDIS_MAX_CONNECTIONS", 20) or 20),
                 health_check_interval=30
             )
-            cls._pubsub_pool = ConnectionPool.from_url(
-                url,
+            cls._pubsub_pool = ConnectionPool(
+                host=host,
+                port=port,
+                password=password,
                 decode_responses=True,
                 max_connections=int(getattr(settings, "REDIS_PUBSUB_MAX_CONNECTIONS", 200) or 200),
                 health_check_interval=30,
