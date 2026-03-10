@@ -43,6 +43,7 @@ class UserService:
                 "email": u.email,
                 "avatar_url": getattr(u, "avatar_url", None),
                 "is_approved": u.is_approved,
+
                 "created_at": u.created_at
             }
             # Permissions is already JSONField, so it's a list or dict
@@ -294,6 +295,7 @@ class UserService:
         hashed_pw = get_password_hash(data.password)
         nickname = data.nickname or data.username
         
+
         user = await User.create(
             username=data.username,
             password=hashed_pw,

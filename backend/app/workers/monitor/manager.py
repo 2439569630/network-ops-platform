@@ -399,7 +399,7 @@ class MonitorManager:
         a = str(action or "").strip().lower()
         if a == "delete":
             return 4
-        if a == "update":
+        if a in {"update", "reload"}:
             return 3
         if a in {"add", "restore"}:
             return 2
@@ -807,7 +807,7 @@ class MonitorManager:
         if action in {"add", "restore"}:
             await self._ensure_device_running(device_id, recreate=False)
             return
-        if action == "update":
+        if action in {"update", "reload"}:
             await self._ensure_device_running(device_id, recreate=True)
             return
         if action == "delete":

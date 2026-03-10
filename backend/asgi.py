@@ -182,12 +182,12 @@ async def lifespan(app: FastAPI):
                 if not user_id:
                     hashed_pw = get_password_hash(password)
                     await db.execute(
-                        "INSERT INTO users (username, password, nickname, email, is_approved, permissions) "
-                        "VALUES ($1, $2, $3, NULL, TRUE, $4::jsonb) ON CONFLICT DO NOTHING",
+                        "INSERT INTO users (username, password, nickname, email, is_approved) "
+                        "VALUES ($1, $2, $3, NULL, TRUE) ON CONFLICT DO NOTHING",
                         username,
                         hashed_pw,
                         "超级管理员",
-                        json.dumps([]),
+                        # json.dumps([]),
                     )
                     user_id = await db.fetch_val("SELECT id FROM users WHERE username = $1 LIMIT 1", username)
 

@@ -12,7 +12,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """用户创建模型"""
     password: str = Field(..., min_length=6)
-    permissions: Optional[List[str]] = None
+    # permissions: Optional[List[str]] = None
     role_ids: Optional[List[int]] = None
 
 class UserUpdate(BaseModel):
@@ -24,7 +24,8 @@ class UserUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     """用户角色/权限更新模型"""
-    permissions: Optional[List[str]] = None
+    # permissions: Optional[List[str]] = None
+    pass
 
 class UserStatusUpdate(BaseModel):
     """用户状态更新模型"""
@@ -43,7 +44,7 @@ class UserResponse(UserBase):
     """用户响应模型"""
     id: int
     is_approved: bool
-    permissions: Optional[List[str]] = None
+    # permissions: Optional[List[str]] = None
     created_at: Optional[datetime] = None
 
     class Config:

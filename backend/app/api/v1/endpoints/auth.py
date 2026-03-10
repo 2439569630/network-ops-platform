@@ -977,7 +977,7 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
 
     # 4. 检查用户状态 (二次确认用户未被封禁)
     user = await db.fetch_one(
-        "SELECT id, username, permissions, is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1",
+        "SELECT id, username, is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1",
         uid,
     )
     if not user:
@@ -1001,7 +1001,8 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
 
     # 5. 权限检查 (是否允许登录)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    user_permissions = _normalize_permissions(user.get("permissions"))
+    # user_permissions = _normalize_permissions(user.get("permissions"))
+    user_permissions = []
     user_roles: list[str] = []
     try:
         role_permissions = await RbacService.get_user_permission_codes(user["id"])

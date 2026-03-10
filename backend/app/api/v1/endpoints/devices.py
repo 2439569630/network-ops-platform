@@ -30,6 +30,8 @@ from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
 from app.services.network_resource_service import network_resource_service
 
+from app.services.device_event_service import DEVICE_UPDATE_CHANNEL
+
 # 主设备管理路由
 router = APIRouter()
 # SSH 专用路由 (为了避免前缀冲突或逻辑分离)
@@ -270,27 +272,34 @@ async def update_device(
     return {"code": 200}
 
 
-@router.post("/reload")
+@router.post("/reload/{device_id}")
 async def reload_device(
-    data: DeviceReloadRequest,
+    device_id: int,
     user_data: dict = Depends(PermissionChecker(["sys:device:edit"])),
 ):
     """
-    手动触发设备重载。
-
-    通过 Redis 发布消息，通知监控 Worker 重新加载指定的设备。
+    重载设备监控任务。
+    
+    强制停止并重新启动设备的监控任务，用于配置变更不生效或任务卡死的情况。
     """
-    device_id = data.id
     try:
         redis = redis_manager.get_client()
         await redis.publish(
-            "device:reload",
-            json.dumps({"device_id": device_id, "requested_by": user_data.get("id")}),
+            DEVICE_UPDATE_CHANNEL,
+            json.dumps(
+                {
+                    "action": "reload",
+                    "device_id": int(device_id),
+                    "requested_by": str(user_data.get("id") or ""),
+                    "ts": float(time.time()),
+                },
+                ensure_ascii=False,
+            ),
         )
-        return {"code": 200, "message": "重载指令已发送"}
+        return {"code": 200, "message": "重载指令已下发"}
     except Exception as e:
-        logger.error(f"发送设备重载指令失败: {e}")
-        raise HTTPException(status_code=500, detail="发送重载指令失败")
+        logger.error(f"设备重载失败: {e}")
+        raise HTTPException(status_code=500, detail="重载失败")
 
 
 @router.post("/test_connect")

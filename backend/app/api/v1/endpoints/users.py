@@ -1299,7 +1299,7 @@ async def commit_user_import(
                 nicknames_ins.append(c["nickname"] or c["username"])
                 emails_ins.append(c["email"])
                 approved_ins.append(bool(approve_users))
-                perms_ins.append(default_perms_text)
+                # perms_ins.append(default_perms_text)
                 role_by_username[c["username"]] = c.get("role_id")
 
             done_hash = len(usernames_ins) + failed
@@ -1378,54 +1378,52 @@ async def commit_user_import(
                     chunk_nicknames = nicknames_ins[start:end]
                     chunk_emails = emails_ins[start:end]
                     chunk_approved = approved_ins[start:end]
-                    chunk_perms = perms_ins[start:end]
+                    # chunk_perms = perms_ins[start:end]
 
                     # 记录最后执行的 SQL 用于错误诊断
                     last_sql = """
-                        INSERT INTO users (username, password, nickname, email, is_approved, permissions)
-                        SELECT x.username, x.password, x.nickname, x.email, x.is_approved, x.permissions::jsonb
+                        INSERT INTO users (username, password, nickname, email, is_approved)
+                        SELECT x.username, x.password, x.nickname, x.email, x.is_approved
                         FROM UNNEST(
                             $1::text[],
                             $2::text[],
                             $3::text[],
                             $4::text[],
-                            $5::bool[],
-                            $6::text[]
-                        ) AS x(username, password, nickname, email, is_approved, permissions)
+                            $5::bool[]
+                        ) AS x(username, password, nickname, email, is_approved)
                         ON CONFLICT (username) DO NOTHING
                         RETURNING id, username
                     """
-                    sample_perm = chunk_perms[0] if chunk_perms else None
-                    sample_perm_type = type(sample_perm).__name__ if sample_perm is not None else None
-                    parsed_perm_kind: Optional[str] = None
-                    try:
-                        if isinstance(sample_perm, str) and sample_perm.strip():
-                            parsed = json.loads(sample_perm)
-                            parsed_perm_kind = type(parsed).__name__
-                    except Exception:
-                        parsed_perm_kind = "invalid_json"
+                    # sample_perm = chunk_perms[0] if chunk_perms else None
+                    # sample_perm_type = type(sample_perm).__name__ if sample_perm is not None else None
+                    # parsed_perm_kind: Optional[str] = None
+                    # try:
+                    #     if isinstance(sample_perm, str) and sample_perm.strip():
+                    #         parsed = json.loads(sample_perm)
+                    #         parsed_perm_kind = type(parsed).__name__
+                    # except Exception:
+                    #     parsed_perm_kind = "invalid_json"
                     last_sql_params = {
                         "chunk_range": [int(start), int(end)],
                         "chunk_len": int(len(chunk_usernames)),
                         "approved_sample": bool(chunk_approved[0]) if chunk_approved else None,
-                        "permissions_sample_type": sample_perm_type,
-                        "permissions_sample_parsed_kind": parsed_perm_kind,
-                        "permissions_sample_len": int(len(sample_perm)) if isinstance(sample_perm, str) else None,
+                        # "permissions_sample_type": sample_perm_type,
+                        # "permissions_sample_parsed_kind": parsed_perm_kind,
+                        # "permissions_sample_len": int(len(sample_perm)) if isinstance(sample_perm, str) else None,
                     }
                     
                     # 执行批量插入
                     inserted = await conn.fetch(
                         """
-                        INSERT INTO users (username, password, nickname, email, is_approved, permissions)
-                        SELECT x.username, x.password, x.nickname, x.email, x.is_approved, x.permissions::jsonb
+                        INSERT INTO users (username, password, nickname, email, is_approved)
+                        SELECT x.username, x.password, x.nickname, x.email, x.is_approved
                         FROM UNNEST(
                             $1::text[],
                             $2::text[],
                             $3::text[],
                             $4::text[],
-                            $5::bool[],
-                            $6::text[]
-                        ) AS x(username, password, nickname, email, is_approved, permissions)
+                            $5::bool[]
+                        ) AS x(username, password, nickname, email, is_approved)
                         ON CONFLICT (username) DO NOTHING
                         RETURNING id, username
                         """,
@@ -1434,7 +1432,7 @@ async def commit_user_import(
                         chunk_nicknames,
                         chunk_emails,
                         chunk_approved,
-                        chunk_perms,
+                        # chunk_perms,
                     )
 
                     inserted_map = {str(r["username"]): int(r["id"]) for r in (inserted or []) if r and r.get("username")}
