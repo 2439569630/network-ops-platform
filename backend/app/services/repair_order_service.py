@@ -353,6 +353,15 @@ class RepairOrderService:
         
         # Fetch work logs
         order['work_logs'] = await RepairOrderService.get_work_logs(order_id)
+
+        imgs = await RepairImage.filter(order_id=order_id, work_log_id__isnull=True).order_by("created_at").all()
+        order["images"] = []
+        for img in imgs or []:
+            url = str(img.url or "").strip()
+            if url:
+                order["images"].append(ImageStorageService.normalize_public_url(url))
+            else:
+                order["images"].append(f"/api/v1/repair-images/{int(img.id)}/content")
             
         return order
 
@@ -386,20 +395,48 @@ class RepairOrderService:
                 import datetime
                 updates['actual_completion_time'] = datetime.datetime.now()
             
-        if data.assignee_id:
-            if not skip_log:
-                await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给用户ID: {data.assignee_id}")
-            updates['assignee_id'] = data.assignee_id
-            
-            # Detect assignment change
-            if current.assignee_id != data.assignee_id:
-                new_assignee_id = data.assignee_id
+        if data.assignee_id is not None:
+            try:
+                aid = int(data.assignee_id)
+            except Exception:
+                aid = None
+            if aid is not None and aid > 0:
+                if not skip_log:
+                    await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给用户ID: {aid}")
+                updates['assignee_id'] = aid
+                if current.assignee_id != aid:
+                    new_assignee_id = aid
 
-        if data.priority:
-            updates['priority'] = data.priority
-            
-        if data.description:
-            updates['description'] = data.description
+        if data.title is not None:
+            t = str(data.title or "").strip()
+            if t:
+                updates["title"] = t
+
+        if data.priority is not None:
+            p = str(data.priority or "").strip()
+            if p:
+                updates['priority'] = p
+
+        if data.description is not None:
+            d = str(data.description or "").strip()
+            if d:
+                updates['description'] = d
+
+        if data.device_id is not None:
+            try:
+                did = int(data.device_id)
+            except Exception:
+                did = None
+            if did is not None and did > 0:
+                updates["device_id"] = did
+
+        if data.location_id is not None:
+            try:
+                lid = int(data.location_id)
+            except Exception:
+                lid = None
+            if lid is not None and lid > 0:
+                updates["location_id"] = lid
             
         if not updates:
             return True
@@ -413,8 +450,8 @@ class RepairOrderService:
             try:
                 # Use updated data if present, else current
                 # Note: RepairOrderUpdate fields are optional
-                t = data.title if getattr(data, 'title', None) else current.title
-                p = data.priority if getattr(data, 'priority', None) else current.priority
+                t = str(updates.get("title") or current.title)
+                p = str(updates.get("priority") or current.priority)
                 
                 await NotificationService.notify_repair_order_assigned(
                     order_id=order_id,
@@ -426,6 +463,36 @@ class RepairOrderService:
             except Exception as e:
                 logging.getLogger(__name__).error(f"发送派单通知失败: {e}")
 
+        return True
+
+    @staticmethod
+    async def delete_order(order_id: int) -> bool:
+        oid = int(order_id)
+        current = await RepairOrder.filter(id=oid).first()
+        if not current:
+            return False
+
+        work_log_ids = await WorkLog.filter(order_id=oid).values_list("id", flat=True)
+        work_log_ids = [int(x) for x in (work_log_ids or []) if x is not None]
+
+        img_query = Q(order_id=oid)
+        if work_log_ids:
+            img_query = img_query | Q(work_log_id__in=work_log_ids)
+
+        images = await RepairImage.filter(img_query).all()
+        for img in images or []:
+            provider = str(getattr(img, "storage_provider", "") or "").strip()
+            key = str(getattr(img, "object_key", "") or "").strip()
+            if provider == "remote_api":
+                if not key:
+                    raise RemoteImageApiError("删除工单失败: 图片 key 为空")
+                await ImageStorageService.delete_remote(key)
+
+        await RepairImage.filter(img_query).delete()
+        await WorkLog.filter(order_id=oid).delete()
+        await OrderReview.filter(order_id=oid).delete()
+        await OrderLog.filter(order_id=oid).delete()
+        await RepairOrder.filter(id=oid).delete()
         return True
 
     @staticmethod

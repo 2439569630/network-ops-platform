@@ -29,6 +29,7 @@ from tortoise.expressions import Q
 logger = logging.getLogger(__name__)
 
 RESOURCE_SYNC_REQUEST_CHANNEL = "device:resource:sync:request"
+DEVICE_RELOAD_CHANNEL = "device:reload"
 
 def normalize_period_seconds(value: Any, *, default_seconds: float, min_seconds: float = 1.0) -> float:
     if value is None:
@@ -91,6 +92,7 @@ class MonitorManager:
             cls._instance.alert_sub_task: Optional[asyncio.Task] = None
             cls._instance.device_sub_task: Optional[asyncio.Task] = None
             cls._instance.resource_sync_sub_task: Optional[asyncio.Task] = None
+            cls._instance.device_reload_sub_task: Optional[asyncio.Task] = None
             cls._instance.device_event_consumer_task: Optional[asyncio.Task] = None
             cls._instance._resource_sync_inflight: Dict[int, asyncio.Task] = {}
             cls._instance._leader_lock_token: Optional[str] = None
@@ -672,6 +674,64 @@ class MonitorManager:
             if cur is t:
                 self._resource_sync_inflight.pop(did, None)
 
+    async def _subscribe_device_reload_requests(self) -> None:
+        delay = 1.0
+        while self.running:
+            pubsub = None
+            try:
+                redis_client = redis_manager.get_pubsub_client()
+                pubsub = redis_client.pubsub()
+                await pubsub.subscribe(DEVICE_RELOAD_CHANNEL)
+                logger.info(f"已订阅设备重载请求频道: {DEVICE_RELOAD_CHANNEL}")
+                delay = 1.0
+
+                async for message in pubsub.listen():
+                    if not self.running:
+                        break
+                    if message.get("type") != "message":
+                        continue
+                    payload = None
+                    try:
+                        raw = message.get("data")
+                        if isinstance(raw, (bytes, bytearray)):
+                            raw = raw.decode("utf-8", errors="ignore")
+                        if isinstance(raw, str):
+                            payload = json.loads(raw) if raw else None
+                        elif isinstance(raw, dict):
+                            payload = raw
+                    except Exception:
+                        payload = None
+                    if not isinstance(payload, dict):
+                        continue
+                    try:
+                        did = int(payload.get("device_id"))
+                    except Exception:
+                        continue
+
+                    logger.info(f"收到设备 {did} 的重载请求")
+                    await self._ensure_device_running(did, recreate=True)
+
+            except asyncio.CancelledError:
+                logger.info("设备重载请求订阅任务被取消")
+                raise
+            except Exception as e:
+                logger.error(f"订阅设备重载请求频道失败: {e}")
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe(DEVICE_RELOAD_CHANNEL)
+                    except Exception:
+                        pass
+                    try:
+                        await pubsub.close()
+                    except Exception:
+                        pass
+
+            if not self.running:
+                break
+            await asyncio.sleep(delay + random.uniform(0.0, 0.5))
+            delay = min(30.0, delay * 2.0)
+
     async def _subscribe_resource_sync_requests(self) -> None:
         delay = 1.0
         while self.running:
@@ -960,6 +1020,7 @@ class MonitorManager:
         self.alert_sub_task = asyncio.create_task(self._subscribe_alert_updates())
         self.device_sub_task = asyncio.create_task(self._subscribe_device_updates())
         self.resource_sync_sub_task = asyncio.create_task(self._subscribe_resource_sync_requests())
+        self.device_reload_sub_task = asyncio.create_task(self._subscribe_device_reload_requests())
 
     async def stop(self):
         """停止监控服务"""
@@ -989,6 +1050,14 @@ class MonitorManager:
             except asyncio.CancelledError:
                 pass
             self.resource_sync_sub_task = None
+
+        if self.device_reload_sub_task:
+            self.device_reload_sub_task.cancel()
+            try:
+                await self.device_reload_sub_task
+            except asyncio.CancelledError:
+                pass
+            self.device_reload_sub_task = None
 
         if self.device_event_consumer_task:
             self.device_event_consumer_task.cancel()

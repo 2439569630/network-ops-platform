@@ -138,6 +138,7 @@ async def lifespan(app: FastAPI):
             await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN NOT NULL DEFAULT FALSE;')
             await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMPTZ NULL;')
             await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "deleted_by" INT NULL;')
+            await db.execute('ALTER TABLE IF EXISTS "users" ADD COLUMN IF NOT EXISTS "avatar_key" VARCHAR(1024) NULL;')
         except Exception as e:
             logger.error(f"用户表结构初始化失败: {e}")
 

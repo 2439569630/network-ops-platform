@@ -13,6 +13,7 @@ class RbacService:
     基于角色的访问控制(RBAC)服务类
     提供权限管理、角色管理以及用户权限验证等功能
     """
+    PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
         "sys:location:add": ["sys:location:view"],
@@ -38,7 +39,7 @@ class RbacService:
         "sys:repair:accept": ["sys:repair:view"],
         "sys:repair:handle": ["sys:repair:view", "sys:repair:accept"],
         "sys:repair:list_all": ["sys:repair:view"],
-        "sys:repair:manage": ["sys:repair:view", "sys:repair:handle", "sys:repair:accept", "sys:repair:list_all"],
+        "sys:repair:manage": ["sys:repair:view", "sys:repair:create", "sys:repair:handle", "sys:repair:accept", "sys:repair:list_all"],
         "sys:repair:image:add": ["sys:repair:image:view"],
         "sys:repair:image:edit": ["sys:repair:image:view"],
         "sys:repair:image:del": ["sys:repair:image:view"],
@@ -222,7 +223,10 @@ class RbacService:
 
     @staticmethod
     async def create_role(name: str, code: str, description: Optional[str]) -> int:
-        role = await Role.create(name=name, code=code, description=description)
+        code_norm = str(code or "").strip().lower()
+        if code_norm in RbacService.PROTECTED_ROLE_CODES:
+            raise ValueError("保留角色编码不可创建")
+        role = await Role.create(name=name, code=str(code or "").strip(), description=description)
         return role.id
 
     @staticmethod
@@ -232,15 +236,17 @@ class RbacService:
             return
         
         # 内置超级管理员角色保护
-        if role.code == 'superadmin':
+        role_code_norm = str(role.code or "").strip().lower()
+        if role_code_norm in RbacService.PROTECTED_ROLE_CODES:
             raise ValueError("内置超级管理员角色不可修改")
         
         if "name" in data:
             role.name = data["name"]
         if "code" in data:
-            new_code = str(data["code"]).strip()
-            if new_code == 'superadmin':
-                raise ValueError("不可将其他角色修改为 superadmin")
+            new_code = str(data["code"] or "").strip()
+            new_code_norm = new_code.lower()
+            if new_code_norm in RbacService.PROTECTED_ROLE_CODES:
+                raise ValueError("保留角色编码不可使用")
             role.code = new_code
         if "description" in data:
             role.description = data["description"]
@@ -250,8 +256,10 @@ class RbacService:
     @staticmethod
     async def delete_role(role_id: int) -> None:
         role = await Role.filter(id=role_id).first()
-        if role and role.code == 'superadmin':
-             raise ValueError("内置超级管理员角色不可删除")
+        if role:
+            code_norm = str(role.code or "").strip().lower()
+            if code_norm in RbacService.PROTECTED_ROLE_CODES:
+                raise ValueError("内置超级管理员角色不可删除")
 
         # Get affected users first
         users_in_role = await UserRole.filter(role_id=role_id).all()
@@ -306,6 +314,12 @@ class RbacService:
 
     @staticmethod
     async def set_default_role(role_id: int) -> None:
+        role = await Role.filter(id=int(role_id)).first()
+        if not role:
+            raise ValueError("角色不存在")
+        code_norm = str(role.code or "").strip().lower()
+        if code_norm in RbacService.PROTECTED_ROLE_CODES:
+            raise ValueError("不允许将超级管理员设为默认角色")
         # Transaction?
         await Role.filter(is_default=True).update(is_default=False)
         await Role.filter(id=role_id).update(is_default=True)
@@ -457,6 +471,7 @@ class RbacService:
 
     @staticmethod
     async def delete_permission(permission_id: int) -> None:
+        await RolePermission.filter(permission_id=permission_id).delete()
         await Permission.filter(id=permission_id).delete()
 
     @staticmethod
@@ -471,7 +486,11 @@ class RbacService:
     @staticmethod
     async def set_role_permissions(role_id: int, permission_ids: List[int]) -> None:
         role = await Role.filter(id=role_id).first()
-        if role and role.code == 'superadmin':
+        if role:
+            code_norm = str(role.code or "").strip().lower()
+        else:
+            code_norm = ""
+        if code_norm in RbacService.PROTECTED_ROLE_CODES:
              # 超级管理员无需配置权限（代码逻辑内置全开），但也禁止修改其关联
              # 或者我们可以允许修改，但实际上无效。
              # 为了避免误解，禁止修改。

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from app.core.database import db
 from app.core.security import PermissionChecker
 from app.core.system_config import SystemConfig
 from app.services.user_admin_audit_service import UserAdminAuditService
+from app.models.orm.audit import UserAdminAuditLog
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -42,6 +43,17 @@ _HIDDEN_CONFIG_KEYS = {
 _BLOCKED_GROUPS = {
     "monitor",
 }
+
+
+def _get_request_ip(request: Optional[Request]) -> Optional[str]:
+    if not request:
+        return None
+    try:
+        xff = request.headers.get("x-forwarded-for")
+        ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
+        return str(ip).strip() or None
+    except Exception:
+        return None
 
 async def _ensure_default_configs_exist(keys: list[str]) -> None:
     if not keys:
@@ -106,7 +118,9 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
         return {"code": 500, "message": "获取配置失败"}
 
 @router.post("/config/update", response_model=dict)
-async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionChecker(["sys:config:edit"]))):
+async def update_config(
+    data: ConfigUpdate, request: Request, user: dict = Depends(PermissionChecker(["sys:config:edit"]))
+):
     """
     更新系统配置
     
@@ -151,6 +165,11 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
             if next_group in _BLOCKED_GROUPS:
                 return {"code": 400, "message": "该配置项属于设备/监控配置，禁止在全局配置中维护"}
 
+        old_value_row = await db.fetch_one(
+            "SELECT value FROM system_settings WHERE key = $1", str(data.key)
+        )
+        old_value = old_value_row.get("value") if old_value_row else None
+
         # 4. 执行更新或插入 (Upsert)
         await db.execute(
             """
@@ -166,6 +185,34 @@ async def update_config(data: ConfigUpdate, user: dict = Depends(PermissionCheck
 
         # 5. 刷新系统配置缓存，使更改立即生效
         await SystemConfig.refresh()
+
+        # 6. 记录审计日志
+        try:
+            key = str(data.key or "").strip()
+            log_value = str(data.value or "")
+            log_old_value = str(old_value or "")
+            # 对敏感信息进行脱敏
+            if "password" in key.lower() or "token" in key.lower() or "secret" in key.lower():
+                log_value = "******"
+                log_old_value = "******"
+
+            await UserAdminAuditService.log(
+                action="system.config.update",
+                actor=user,
+                target_type="system",
+                target_label=key,
+                request_ip=_get_request_ip(request),
+                detail={
+                    "key": key,
+                    "value": log_value,
+                    "old_value": log_old_value,
+                    "description": next_desc,
+                    "group": next_group,
+                },
+            )
+        except Exception:
+            logger.exception("audit log for system.config.update failed")
+
         return {"code": 200, "message": "配置更新成功"}
     except Exception:
         logger.exception("update_config failed: key=%s", str(getattr(data, "key", "")))
@@ -179,6 +226,8 @@ async def list_user_admin_audit_logs(
     actor_username: Optional[str] = Query(None, max_length=100),
     action: Optional[str] = Query(None, max_length=100),
     target_user_id: Optional[int] = Query(None),
+    target_type: Optional[str] = Query(None, max_length=50),
+    target_id: Optional[int] = Query(None),
     start_at: Optional[datetime] = Query(None),
     end_at: Optional[datetime] = Query(None),
     user: dict = Depends(PermissionChecker(["sys:audit:view"])),
@@ -199,51 +248,35 @@ async def list_user_admin_audit_logs(
         end_at: 结束时间
     """
     try:
-        where = ["1=1"]
-        args: list = []
-        idx = 1
-        if actor_username:
-            where.append(f"actor_username ILIKE ${idx}")
-            args.append(f"%{str(actor_username).strip()}%")
-            idx += 1
-        if action:
-            where.append(f"action ILIKE ${idx}")
-            args.append(f"%{str(action).strip()}%")
-            idx += 1
-        if target_user_id is not None:
-            where.append(f"target_user_id = ${idx}")
-            args.append(int(target_user_id))
-            idx += 1
-        if start_at is not None:
-            where.append(f"created_at >= ${idx}")
-            args.append(start_at)
-            idx += 1
-        if end_at is not None:
-            where.append(f"created_at <= ${idx}")
-            args.append(end_at)
-            idx += 1
+        query_set = UserAdminAuditLog.all()
 
-        where_sql = " AND ".join(where)
-        total = await db.fetch_val(f"SELECT COUNT(1) FROM user_admin_audit_log WHERE {where_sql}", *args)
+        if actor_username:
+            query_set = query_set.filter(actor_username__icontains=str(actor_username).strip())
+        if action:
+            query_set = query_set.filter(action__icontains=str(action).strip())
+        if target_user_id is not None:
+            query_set = query_set.filter(target_user_id=int(target_user_id))
+        if target_type:
+            query_set = query_set.filter(target_type=str(target_type).strip())
+        if target_id is not None:
+            query_set = query_set.filter(target_id=int(target_id))
+        if start_at is not None:
+            query_set = query_set.filter(created_at__gte=start_at)
+        if end_at is not None:
+            query_set = query_set.filter(created_at__lte=end_at)
+
+        total = await query_set.count()
+        
         limit = int(page_size)
         offset = (int(page) - 1) * int(page_size)
-        limit_idx = idx
-        offset_idx = idx + 1
-        rows = await db.fetch_all(
-            f"""
-            SELECT id, actor_user_id, actor_username, action, target_user_id, request_ip, detail, created_at
-            FROM user_admin_audit_log
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT ${limit_idx} OFFSET ${offset_idx}
-            """,
-            *args,
-            limit,
-            offset,
-        )
-        items = [dict(r) for r in (rows or [])]
+
+        logs = await query_set.order_by("-created_at", "-id").offset(offset).limit(limit).values()
+
+        items = [dict(r) for r in (logs or [])]
         for it in items:
             it["action_label"] = UserAdminAuditService.get_action_label(it.get("action"))
+            if it.get("target_label") and it.get("action") == "system.config.update":
+                it["target_label"] = UserAdminAuditService.get_target_label(it.get("target_label"))
         return {
             "code": 200,
             "data": items,

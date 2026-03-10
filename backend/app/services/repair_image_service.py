@@ -8,6 +8,7 @@ from app.utils.remote_image_api import RemoteImageApiError
 
 class RepairImageService:
     MAX_IMAGE_BYTES = 20 * 1024 * 1024
+    MAX_ORDER_IMAGE_BYTES = 5 * 1024 * 1024
 
     @staticmethod
     async def create_remote_image(
@@ -15,9 +16,11 @@ class RepairImageService:
         uploader_id: int,
         order_id: Optional[int] = None,
         work_log_id: Optional[int] = None,
+        max_bytes: Optional[int] = None,
     ) -> RepairImage:
+        max_bytes_val = int(max_bytes) if max_bytes is not None else RepairImageService.MAX_IMAGE_BYTES
         policy = ImageUploadPolicy(
-            max_bytes=RepairImageService.MAX_IMAGE_BYTES,
+            max_bytes=max_bytes_val,
             allowed_extensions=(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"),
             require_image_content_type=True,
         )
@@ -41,12 +44,14 @@ class RepairImageService:
         uploader_id: int,
         order_id: Optional[int] = None,
         work_log_id: Optional[int] = None,
+        max_bytes: Optional[int] = None,
     ) -> RepairImage:
         return await RepairImageService.create_remote_image(
             file=file,
             uploader_id=uploader_id,
             order_id=order_id,
             work_log_id=work_log_id,
+            max_bytes=max_bytes,
         )
 
     @staticmethod

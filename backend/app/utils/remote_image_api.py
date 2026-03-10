@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
+from urllib.parse import urlparse, urlunparse
 
 from app.core.system_config import SystemConfig
 
@@ -23,6 +24,23 @@ def _join(base_url: str, path: str) -> str:
     b = _normalize_base_url(base_url)
     p = "/" + str(path or "").lstrip("/")
     return f"{b}{p}" if b else p
+
+
+def _fallback_http_40027_url(url: str) -> Optional[str]:
+    try:
+        parsed = urlparse(str(url or "").strip())
+    except Exception:
+        return None
+    if parsed.scheme != "https":
+        return None
+    host = parsed.hostname
+    if not host:
+        return None
+    port = parsed.port or 443
+    if port != 443:
+        return None
+    netloc = f"{host}:40027"
+    return urlunparse(("http", netloc, parsed.path, "", parsed.query, ""))
 
 
 @dataclass
@@ -48,8 +66,46 @@ class RemoteImageApiClient:
 
     async def _request_json(self, method: str, url: str, **kwargs) -> dict[str, Any]:
         timeout = kwargs.pop("timeout", 30.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.request(method, url, **kwargs)
+        fallback_url = _fallback_http_40027_url(url)
+        attempted_fallback = False
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.request(method, url, **kwargs)
+        except httpx.ConnectTimeout as e:
+            if fallback_url and not attempted_fallback:
+                attempted_fallback = True
+                try:
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        resp = await client.request(method, fallback_url, **kwargs)
+                except httpx.HTTPError as e2:
+                    raise RemoteImageApiError(f"外部图片服务连接超时: {url}; fallback={fallback_url}", status_code=504) from e2
+            else:
+                raise RemoteImageApiError(f"外部图片服务连接超时: {url}", status_code=504) from e
+        except httpx.ReadTimeout as e:
+            if fallback_url and not attempted_fallback:
+                attempted_fallback = True
+                try:
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        resp = await client.request(method, fallback_url, **kwargs)
+                except httpx.HTTPError as e2:
+                    raise RemoteImageApiError(f"外部图片服务响应超时: {url}; fallback={fallback_url}", status_code=504) from e2
+            else:
+                raise RemoteImageApiError(f"外部图片服务响应超时: {url}", status_code=504) from e
+        except httpx.ConnectError as e:
+            if fallback_url and not attempted_fallback:
+                attempted_fallback = True
+                try:
+                    async with httpx.AsyncClient(timeout=timeout) as client:
+                        resp = await client.request(method, fallback_url, **kwargs)
+                except httpx.HTTPError as e2:
+                    raise RemoteImageApiError(f"外部图片服务连接失败: {url}; fallback={fallback_url}", status_code=502) from e2
+            else:
+                reason = str(e) or str(getattr(e, "__cause__", "") or "") or e.__class__.__name__
+                raise RemoteImageApiError(f"外部图片服务连接失败: {url} ({reason})", status_code=502) from e
+        except httpx.HTTPError as e:
+            reason = str(e) or e.__class__.__name__
+            raise RemoteImageApiError(f"外部图片服务请求异常: {reason}", status_code=502) from e
         if resp.status_code == 429:
             raise RemoteImageApiError("外部图片服务请求受限(429)", status_code=429)
         if resp.status_code in (401, 403):

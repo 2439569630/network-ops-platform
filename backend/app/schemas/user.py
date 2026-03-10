@@ -13,6 +13,7 @@ class UserCreate(UserBase):
     """用户创建模型"""
     password: str = Field(..., min_length=6)
     permissions: Optional[List[str]] = None
+    role_ids: Optional[List[int]] = None
 
 class UserUpdate(BaseModel):
     """用户更新模型"""
@@ -36,6 +37,7 @@ class AdminUserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     is_email_notify: Optional[bool] = None
     is_approved: Optional[bool] = None
+    role_ids: Optional[List[int]] = None
 
 class UserResponse(UserBase):
     """用户响应模型"""

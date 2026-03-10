@@ -12,6 +12,7 @@ import os
 import asyncio
 import logging
 import re
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -24,9 +25,11 @@ from app.services.user_service import UserService
 from app.services.user_admin_audit_service import UserAdminAuditService
 from app.api import deps
 from app.core.security import PermissionChecker, user_is_super, get_disabled_permission_codes_cached, get_password_hash
+from app.services.image_storage_service import ImageStorageService
 from app.core.redis import redis_manager
 from app.core.database import db
 from app.models.orm.user import User
+from app.models.orm.rbac import Role
 from tortoise.expressions import Q
 from app.utils.remote_image_api import RemoteImageApiError
 from pydantic import BaseModel
@@ -120,21 +123,8 @@ _PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
 
 async def _get_user_role_codes(user_id: int) -> list[str]:
     """获取用户的角色代码列表"""
-    rows = await db.fetch_all(
-        """
-        SELECT r.code
-        FROM roles r
-        INNER JOIN user_roles ur ON ur.role_id = r.id
-        WHERE ur.user_id = $1
-        """,
-        int(user_id),
-    )
-    codes: list[str] = []
-    for r in rows or []:
-        c = str((r or {}).get("code") or "").strip()
-        if c:
-            codes.append(c)
-    return codes
+    codes = await Role.filter(user_roles__user_id=int(user_id)).values_list("code", flat=True)
+    return [str(c) for c in codes if c]
 
 
 async def _require_actor_superadmin_when_target_protected(target_user_id: int, actor: dict) -> None:
@@ -243,55 +233,7 @@ async def update_user_perms(
     current_user: dict = Depends(deps.get_current_user),
     _: dict = Depends(PermissionChecker(["sys:user:manage"]))
 ):
-    """
-    更新用户细粒度权限 (仅管理员)
-    
-    直接修改用户个人的权限列表 (覆盖原有权限)。
-    注意：这不同于角色授权，是用户级别的特殊权限设置。
-    
-    Args:
-        user_id: 目标用户 ID
-        permissions: 权限代码列表
-    """
-    try:
-        # 1. 权限检查
-        await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
-        from app.services.rbac_service import RbacService
-
-        raw = [str(p).strip() for p in (permissions or []) if str(p).strip()]
-        
-        # 2. 验证权限代码有效性
-        all_codes = await RbacService.get_all_permission_codes()
-        existing = {str(c).strip() for c in (all_codes or []) if str(c).strip()}
-
-        # 检查是否包含禁用的权限
-        disabled_raw = await get_disabled_permission_codes_cached()
-        disabled = {str(c).strip() for c in (disabled_raw or []) if str(c).strip()}
-
-        invalid = [p for p in raw if p not in existing]
-        if invalid:
-            return {"code": 400, "message": "包含不存在的权限码", "data": {"invalid": invalid}}
-
-        # 3. 展开权限 (支持通配符展开，虽然此处传入的通常是具体权限)
-        selected = [p for p in raw if p in existing and p not in disabled]
-        expanded = RbacService.expand_permission_codes(selected)
-        expanded = [c for c in expanded if c in existing and c not in disabled]
-
-        # 4. 更新用户权限字段
-        data = RoleUpdate(permissions=expanded)
-        await UserService.update_user_role(int(user_id), data)
-        
-        # 5. 记录审计日志
-        await UserAdminAuditService.log(
-            action="user.update_permissions",
-            actor=current_user,
-            target_user_id=int(user_id),
-            request_ip=_get_request_ip(request) if request else None,
-            detail={"permissions": expanded},
-        )
-        return {"code": 200, "message": "权限修改成功", "data": {"permissions": expanded}}
-    except Exception as e:
-        return {"code": 500, "message": f"修改权限失败: {str(e)}"}
+    return {"code": 501, "message": "此功能已停用。请通过角色管理用户权限。"}
 
 @router.post("/status", response_model=dict)
 async def update_user_status(
@@ -349,6 +291,7 @@ async def get_profile(current_user: dict = Depends(deps.get_current_user)):
 @router.post("/profile/update", response_model=dict)
 async def update_profile(
     data: UserUpdate,
+    request: Request,
     current_user: dict = Depends(deps.get_current_user)
 ):
     """
@@ -357,7 +300,21 @@ async def update_profile(
     用户自助修改昵称、密码、邮箱等。
     """
     try:
+        # Exclude password from audit log
+        log_detail = data.model_dump(exclude_none=True)
+        if "password" in log_detail:
+            del log_detail["password"]
+
         await UserService.update_profile(current_user.get("id"), data)
+
+        await UserAdminAuditService.log(
+            action="user.profile_update",
+            actor=current_user,
+            target_user_id=current_user.get("id"),
+            request_ip=_get_request_ip(request),
+            detail=log_detail,
+        )
+
         return {"code": 200, "message": "更新成功"}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
@@ -377,14 +334,35 @@ async def upload_avatar(
     支持图片格式校验，会调用远程图片存储服务。
     """
     try:
+        uid = int(current_user.get("id"))
+        existing = await User.filter(id=uid).first()
+        old_key = str(getattr(existing, "avatar_key", "") or "").strip() if existing else ""
+        if not old_key:
+            old_url = str(getattr(existing, "avatar_url", "") or "").strip() if existing else ""
+            if old_url:
+                try:
+                    parsed = urlparse(old_url)
+                    candidate = str(parsed.path or "").lstrip("/")
+                    if candidate:
+                        old_key = candidate
+                except Exception:
+                    pass
+
         # 1. 调用头像服务处理上传 (包含格式校验、压缩、转存)
         result = await AvatarService.upload_avatar(file)
         avatar_url = str(result.url or "").strip()
+        avatar_key = str(getattr(result, "key", "") or "").strip()
         if not avatar_url:
             return {"code": 500, "message": "头像上传失败: 返回链接为空"}
             
         # 2. 更新数据库记录
-        await User.filter(id=int(current_user.get("id"))).update(avatar_url=avatar_url)
+        await User.filter(id=uid).update(avatar_url=avatar_url, avatar_key=avatar_key or None)
+
+        if old_key and old_key != avatar_key:
+            try:
+                await ImageStorageService.delete_remote(old_key)
+            except Exception:
+                logger.exception("delete old avatar failed")
         return {"code": 200, "data": {"avatar_url": avatar_url}}
     except ValueError as e:
         return {"code": 400, "message": str(e)}
@@ -881,6 +859,15 @@ async def cancel_user_import(
             "已请求停止导入",
             detail={"phase": "canceled"},
         )
+        try:
+            await UserAdminAuditService.log(
+                action="user.import_cancel",
+                actor=current_user,
+                request_ip=_get_request_ip(None),
+                detail={"token": t},
+            )
+        except Exception:
+            logger.exception("audit log for user.import_cancel failed")
         return {"code": 200, "message": "已请求停止导入"}
     except Exception as e:
         return {"code": 500, "message": f"停止失败: {str(e)}"}
@@ -1036,12 +1023,14 @@ async def commit_user_import(
         
         # 建立角色代码到 ID 的映射
         role_id_by_code = {str(r["code"]).strip().lower(): int(r["id"]) for r in (roles_rows or []) if r and r.get("code")}
-        role_id_fallback = role_id_by_code.get(default_role_code) if default_role_code else None
+        protected = {"superadmin", "super_admin", "super-admin"}
+        role_id_fallback = role_id_by_code.get(default_role_code) if default_role_code and default_role_code not in protected else None
         system_default_role_id = None
         for r in roles_rows or []:
             try:
-                if bool(r.get("is_default")):
-                    system_default_role_id = int(r["id"])
+                code = str(r.get("code") or "").strip().lower()
+                if bool(r.get("is_default")) and code and code not in protected:
+                    system_default_role_id = int(r.get("id") or 0) or None
                     break
             except Exception:
                 continue
@@ -1505,6 +1494,26 @@ async def commit_user_import(
             "导入完成",
             detail={"phase": "done", "total": total_rows, "processed": total_rows, "created": created, "skipped": skipped, "failed": failed, "timing_ms": timing_ms},
         )
+        try:
+            await UserAdminAuditService.log(
+                action="user.import_commit",
+                actor=current_user,
+                request_ip=_get_request_ip(None),  # No request object here
+                detail={
+                    "token": token,
+                    "filename": parsed.get("filename", ""),
+                    "total_rows": total_rows,
+                    "created": created,
+                    "skipped": skipped,
+                    "failed": failed,
+                    "errors_count": len(errors),
+                    "on_duplicate": on_duplicate,
+                    "default_role_code": default_role_code,
+                    "approve_users": approve_users,
+                },
+            )
+        except Exception:
+            logger.exception("audit log for user.import_commit failed")
         return {
             "code": 200,
             "data": result,
@@ -1646,6 +1655,8 @@ async def admin_create_user(
     """
     try:
         user_id = await UserService.create_user(user_in)
+        if user_in.role_ids:
+            await UserService.update_user_roles(user_id, user_in.role_ids)
         await UserAdminAuditService.log(
             action="user.create",
             actor=current_user,
@@ -1690,6 +1701,8 @@ async def admin_update_user(
 
         # 4. 执行更新
         result = await UserService.admin_update_user(uid, data)
+        if data.role_ids is not None:
+            await UserService.update_user_roles(uid, data.role_ids)
         if not result.get("updated") and result.get("reason") == "empty":
             return {"code": 200, "message": "无更新内容"}
         if not result.get("updated"):

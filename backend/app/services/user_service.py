@@ -17,6 +17,7 @@ from app.core.security import bump_user_auth_version
 from app.models.orm.user import User
 from app.models.orm.device import NetworkDevice
 from app.models.orm.repair import RepairOrder
+from app.models.orm.rbac import Role, UserRole, Permission
 from tortoise.functions import Count
 from tortoise.expressions import Q
 
@@ -42,7 +43,6 @@ class UserService:
                 "email": u.email,
                 "avatar_url": getattr(u, "avatar_url", None),
                 "is_approved": u.is_approved,
-                "permissions": u.permissions if isinstance(u.permissions, list) else [],
                 "created_at": u.created_at
             }
             # Permissions is already JSONField, so it's a list or dict
@@ -74,6 +74,14 @@ class UserService:
             .offset((int(page) - 1) * int(page_size))
             .limit(int(page_size))
         )
+        user_ids = [user.id for user in rows]
+        user_roles = await db.fetch_all("SELECT ur.user_id, r.id, r.name, r.code FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ANY($1::int[])", user_ids)
+        roles_by_user = {}
+        for r in user_roles:
+            if r['user_id'] not in roles_by_user:
+                roles_by_user[r['user_id']] = []
+            roles_by_user[r['user_id']].append({"id": r['id'], "name": r['name'], "code": r['code']})
+
         items: list[dict] = []
         for u in rows:
             items.append(
@@ -85,7 +93,7 @@ class UserService:
                     "avatar_url": getattr(u, "avatar_url", None),
                     "is_email_notify": getattr(u, "is_email_notify", False),
                     "is_approved": u.is_approved,
-                    "permissions": u.permissions if isinstance(u.permissions, list) else [],
+                    "roles": roles_by_user.get(u.id, []),
                     "created_at": u.created_at,
                     "updated_at": u.updated_at,
                 }
@@ -112,11 +120,19 @@ class UserService:
         return roles
 
     @staticmethod
+    async def _get_user_permissions(user_id: int) -> list[str]:
+        permissions = await Permission.filter(
+            role_permissions__role__user_roles__user_id=user_id
+        ).distinct().values_list("code", flat=True)
+        return permissions
+
+    @staticmethod
     async def admin_get_user_detail(user_id: int) -> Optional[dict]:
         user = await User.filter(id=int(user_id)).first()
         if not user:
             return None
         roles = await UserService._get_user_roles(int(user_id))
+        permissions = await UserService._get_user_permissions(int(user_id))
         return {
             "id": user.id,
             "username": user.username,
@@ -127,8 +143,8 @@ class UserService:
             "is_approved": user.is_approved,
             "is_deleted": getattr(user, "is_deleted", False),
             "deleted_at": getattr(user, "deleted_at", None),
-            "deleted_by": getattr(user, "deleted_by", None),
-            "permissions": user.permissions if isinstance(user.permissions, list) else [],
+            "deleted_by_id": getattr(user, "deleted_by_id", None),
+            "permissions": permissions,
             "roles": roles,
             "created_at": user.created_at,
             "updated_at": user.updated_at,
@@ -215,17 +231,37 @@ class UserService:
         ids = sorted(list(set(ids)))
         if not ids:
             return 0
-        deleted = 0
+
         for uid in ids:
-            ok = await UserService.admin_delete_user(int(uid), actor_id=actor_id)
-            if ok:
-                deleted += 1
-        return int(deleted)
+            try:
+                await bump_user_auth_version(int(uid))
+            except Exception:
+                pass
+            try:
+                from app.services.rbac_service import RbacService
+                await RbacService.bump_user_perm_version(int(uid))
+            except Exception:
+                pass
+
+        from app.models.orm.rbac import UserRole
+        from app.models.orm.location import LocationNodeUser
+        from app.models.orm.alert import AlertSubscription
+        from app.models.orm.notification import SiteMessageRead, UserEmailVerification
+
+        await UserRole.filter(user_id__in=ids).delete()
+        await LocationNodeUser.filter(user_id__in=ids).delete()
+        await AlertSubscription.filter(subscriber_user_id__in=ids).delete()
+        await SiteMessageRead.filter(user_id__in=ids).delete()
+        await UserEmailVerification.filter(user_id__in=ids).delete()
+        
+        deleted_count = await User.filter(id__in=ids).delete()
+        return deleted_count
 
     @staticmethod
     async def get_user_by_id(user_id: int) -> Optional[dict]:
         user = await User.filter(id=user_id).first()
         if user:
+            permissions = await UserService._get_user_permissions(int(user_id))
             return {
                 "id": user.id,
                 "username": user.username,
@@ -233,7 +269,7 @@ class UserService:
                 "email": user.email,
                 "avatar_url": getattr(user, "avatar_url", None),
                 "is_approved": user.is_approved,
-                "permissions": user.permissions if isinstance(user.permissions, list) else [],
+                "permissions": permissions,
                 "created_at": user.created_at
             }
         return None
@@ -258,25 +294,21 @@ class UserService:
         hashed_pw = get_password_hash(data.password)
         nickname = data.nickname or data.username
         
-        perms = data.permissions
-        if perms is None:
-            perms = ["sys:monitor:view"]
-
         user = await User.create(
             username=data.username,
             password=hashed_pw,
             nickname=nickname,
             email=data.email,
-            is_approved=True,
-            permissions=perms
+            is_approved=True
         )
 
-        default_role_id = await db.fetch_val("SELECT id FROM roles WHERE is_default = TRUE LIMIT 1")
-        if default_role_id:
+        protected = {"superadmin", "super_admin", "super-admin"}
+        default_role = await db.fetch_one("SELECT id, code FROM roles WHERE is_default = TRUE LIMIT 1")
+        if default_role and str((default_role or {}).get("code") or "").strip().lower() not in protected:
             await db.execute(
                 "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                 int(user.id),
-                int(default_role_id),
+                int(default_role["id"]),
             )
         return user.id
 
@@ -286,26 +318,19 @@ class UserService:
         更新用户角色/权限
         并触发权限版本更新
         """
-        if data.permissions is not None:
-            from app.services.rbac_service import RbacService
-            from app.core.security import get_disabled_permission_codes_cached
+        pass
 
-            raw = [str(p).strip() for p in (data.permissions or []) if str(p).strip()]
-            all_codes = await RbacService.get_all_permission_codes()
-            existing = {str(c).strip() for c in (all_codes or []) if str(c).strip()}
+    @staticmethod
+    async def update_user_roles(user_id: int, role_ids: List[int]):
+        """
+        更新用户的角色
+        """
+        from app.models.orm.rbac import UserRole
 
-            disabled_raw = await get_disabled_permission_codes_cached()
-            disabled = {str(c).strip() for c in (disabled_raw or []) if str(c).strip()}
+        await UserRole.filter(user_id=user_id).delete()
+        if role_ids:
+            await UserRole.bulk_create([UserRole(user_id=user_id, role_id=role_id) for role_id in role_ids])
 
-            selected = [p for p in raw if p in existing and p not in disabled]
-            expanded = RbacService.expand_permission_codes(selected)
-            expanded = [c for c in expanded if c in existing and c not in disabled]
-
-            await User.filter(id=int(user_id)).update(permissions=expanded)
-            try:
-                await RbacService.bump_user_perm_version(int(user_id))
-            except Exception:
-                pass
 
     @staticmethod
     async def delete_user(user_id: int):

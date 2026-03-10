@@ -471,7 +471,7 @@ async def login(data: LoginForm, response: Response, request: Request):
         pass
 
     # 1. 查询用户基础信息
-    sql = "SELECT id, username, password, is_approved, permissions, email, is_email_notify FROM users WHERE username = $1"
+    sql = "SELECT id, username, password, is_approved, email, is_email_notify FROM users WHERE username = $1"
     user = await db.fetch_one(sql, username_input)
 
     if not user:
@@ -529,17 +529,12 @@ async def login(data: LoginForm, response: Response, request: Request):
     # 3. 生成 Token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    # 3.1 权限合并
-    user_permissions = _normalize_permissions(user.get("permissions"))
+    user_permissions = []
     user_roles: list[str] = []
     try:
         # 获取角色权限和角色列表
-        role_permissions = await RbacService.get_user_permission_codes(user["id"])
+        user_permissions = await RbacService.get_user_permission_codes(user["id"])
         user_roles = await RbacService.get_user_role_codes(user["id"])
-        
-        # 合并用户个人权限和角色权限，去重
-        merged = set(user_permissions) | set(role_permissions)
-        user_permissions = sorted(list(merged))
     except Exception:
         pass
     
@@ -857,6 +852,19 @@ async def password_reset_confirm(data: PasswordResetConfirmForm):
     
     # 5. 销毁 Token (一次性使用)
     await redis_client.delete(token_key)
+
+    # 6. 记录审计日志
+    try:
+        user_snapshot = {"id": user_id, "email": email_norm}
+        await UserAdminAuditService.log(
+            action="auth.password_reset",
+            actor=user_snapshot, # Use a snapshot as actor, since no user is logged in
+            target_user_id=int(user_id),
+            request_ip=None, # Cannot get IP here
+            detail={"source": "forgot_password"},
+        )
+    except Exception:
+        logger.exception("audit log for auth.password_reset failed")
     
     return {"code": 200, "message": "密码已重置"}
 
@@ -1179,6 +1187,18 @@ async def register(data: RegisterForm):
         await _get_or_init_perm_ver(int(user_id))
     except Exception:
         pass
+
+    # 6. 记录审计日志
+    try:
+        await UserAdminAuditService.log(
+            action="auth.register",
+            actor=None, # Public registration, no actor
+            target_user_id=int(user_id),
+            request_ip=None, # Cannot get request object here
+            detail={"username": username, "email": email, "nickname": nickname},
+        )
+    except Exception:
+        logger.exception("audit log for auth.register failed")
 
     return {"code": 200, "status": "success", "message": "注册成功，请等待管理员审核", "data": {"id": user_id}}
 

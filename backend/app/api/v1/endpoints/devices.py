@@ -93,6 +93,11 @@ class DeviceRecycleActionRequest(BaseModel):
     device_id: int
 
 
+class DeviceReloadRequest(BaseModel):
+    """设备重载请求参数"""
+    id: int
+
+
 class DeviceUpdateRequest(BaseModel):
     """设备更新请求参数"""
     device_id: int
@@ -263,6 +268,29 @@ async def update_device(
     )
     await device_service.update_device(int(data.device_id), patch, updated_by=str(user_data.get("id") or ""))
     return {"code": 200}
+
+
+@router.post("/reload")
+async def reload_device(
+    data: DeviceReloadRequest,
+    user_data: dict = Depends(PermissionChecker(["sys:device:edit"])),
+):
+    """
+    手动触发设备重载。
+
+    通过 Redis 发布消息，通知监控 Worker 重新加载指定的设备。
+    """
+    device_id = data.id
+    try:
+        redis = redis_manager.get_client()
+        await redis.publish(
+            "device:reload",
+            json.dumps({"device_id": device_id, "requested_by": user_data.get("id")}),
+        )
+        return {"code": 200, "message": "重载指令已发送"}
+    except Exception as e:
+        logger.error(f"发送设备重载指令失败: {e}")
+        raise HTTPException(status_code=500, detail="发送重载指令失败")
 
 
 @router.post("/test_connect")

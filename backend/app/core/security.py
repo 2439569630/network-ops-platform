@@ -421,15 +421,11 @@ async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = No
                 cached = None
 
     # 3. 缓存未命中，从数据库加载
-    # 3.1 获取用户直接分配的权限
-    user_row = await db.fetch_one("SELECT permissions FROM users WHERE id = $1", uid)
-    direct_perms = _normalize_permissions(user_row.get("permissions") if user_row else None)
-    
-    # 3.2 获取用户角色包含的权限
+    # 3.1 获取用户角色包含的权限
     role_perms = await RbacService.get_user_permission_codes(uid)
-    
-    # 3.3 合并并去重
-    merged = sorted(list({str(p) for p in (direct_perms + role_perms) if str(p).strip()}))
+
+    # 3.2 合并并去重
+    merged = sorted(list({str(p) for p in role_perms if str(p).strip()}))
     
     # 3.4 展开通配符权限 (如 'sys:user:*' -> 'sys:user:view', 'sys:user:edit')
     merged = RbacService.expand_permission_codes(merged)
@@ -478,6 +474,15 @@ async def verify_token(token: Optional[str] = Cookie(None)):
         if user_id is not None:
             uid = int(user_id)
             
+            # 检查账户状态
+            try:
+                row = await db.fetch_one('SELECT is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1', uid)
+            except Exception:
+                row = None # Fail closed
+            
+            if not row or row.get("is_approved") is False or row.get("is_deleted") is True:
+                raise UnicornException(401, "账号已禁用或不存在", error_code="AUTH_ACCOUNT_DISABLED")
+
             # 3. 检查认证版本号 (Auth Version)
             # 用于实现"踢人下线"或"修改密码后强制登出"
             # 当用户修改密码或管理员强制下线时，Redis 中的 auth_ver 会增加
@@ -491,12 +496,6 @@ async def verify_token(token: Optional[str] = Cookie(None)):
             except Exception:
                 raise UnicornException(401, "Token无效", error_code="AUTH_TOKEN_INVALID")
             if token_auth_ver_int != int(redis_auth_ver):
-                try:
-                    row = await db.fetch_one('SELECT is_approved, COALESCE(is_deleted, FALSE) AS is_deleted FROM users WHERE id = $1', uid)
-                except Exception:
-                    row = None
-                if row and (row.get("is_approved") is False or row.get("is_deleted") is True):
-                    raise UnicornException(401, "账号已封禁，请联系管理员", error_code="AUTH_ACCOUNT_DISABLED")
                 new_login = await get_user_auth_session_info(uid)
                 raise UnicornException(401, "会话已失效，请重新登录", error_code="AUTH_SESSION_REVOKED", data={"new_login": new_login})
 

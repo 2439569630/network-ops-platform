@@ -30,18 +30,18 @@ class UserRole(models.Model):
     # However, these are existing tables.
     # I'll add an ID field to the table via migration script like I did for site_message_reads.
     id = fields.BigIntField(pk=True)
-    user_id = fields.IntField()
-    role_id = fields.IntField()
+    user = fields.ForeignKeyField("models.User", related_name="user_roles")
+    role = fields.ForeignKeyField("models.Role", related_name="user_roles")
 
     class Meta:
         table = "user_roles"
-        unique_together = (("user_id", "role_id"),)
+        unique_together = (("user", "role"),)
 
 class RolePermission(models.Model):
     # Same here, likely needs ID.
     id = fields.BigIntField(pk=True)
-    role_id = fields.IntField()
-    permission_id = fields.IntField()
+    role = fields.ForeignKeyField("models.Role", related_name="role_permissions")
+    permission = fields.ForeignKeyField("models.Permission", related_name="role_permissions")
 
     class Meta:
         table = "role_permissions"

@@ -17,6 +17,7 @@ class RepairOrderUpdate(BaseModel):
     priority: Optional[str] = None
     status: Optional[str] = None
     device_id: Optional[int] = None
+    location_id: Optional[int] = None
     assignee_id: Optional[int] = None
     estimated_time: Optional[datetime] = None
 
