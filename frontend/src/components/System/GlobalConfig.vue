@@ -2,8 +2,8 @@
   <div class="global-config-page">
     <div class="page-header">
       <div class="header-title">
-        <div class="title">通知与图床配置</div>
-        <div class="subtitle">仅维护邮件与图片服务相关参数</div>
+        <div class="title">系统配置</div>
+        <div class="subtitle">自动热更新所操作配置</div>
       </div>
       <div class="header-meta">
         <el-tag v-if="dirtyItems.length" type="warning" effect="plain" size="small">

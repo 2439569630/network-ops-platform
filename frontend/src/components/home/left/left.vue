@@ -94,7 +94,7 @@
                         </el-menu-item>
                         <el-menu-item index="config" @click="goto('/user/config')" v-if="hasPerm('sys:config:view')">
                             <el-icon><Tools /></el-icon>
-                            <span>通知与图床配置</span>
+                            <span>系统配置</span>
                         </el-menu-item>
                     </el-sub-menu>
                     
