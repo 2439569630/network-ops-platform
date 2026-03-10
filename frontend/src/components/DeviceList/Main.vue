@@ -86,12 +86,13 @@
                             <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
                                 <el-button text circle type="success" :icon="Connection" @click="connectSSH(item)" :disabled="!isSshEnabled(item)" />
                             </el-tooltip>
-                                                        <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
-                                <el-button text circle type="danger" :icon="Delete" @click="handleDelete(item)" />
-                            </el-tooltip>
-                            <el-tooltip content="重载设备" placement="top" :show-after="500">
+                            <el-tooltip content="重载监控" placement="top" :show-after="500" v-if="canEdit">
                                 <el-button text circle type="warning" :icon="Refresh" @click="handleReload(item)" />
                             </el-tooltip>
+                            <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
+                                <el-button text circle type="danger" :icon="Delete" @click="handleDelete(item)" />
+                            </el-tooltip>
+
                         </div>
                     </div>
                 </div>
@@ -160,6 +161,9 @@
                                 <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
                                     <el-button text circle type="success" :icon="Connection" size="small" @click="connectSSH(row)" :disabled="!isSshEnabled(row)" />
                                 </el-tooltip>
+                                <el-tooltip content="重载监控" placement="top" :show-after="500" v-if="canEdit">
+                                    <el-button text circle type="warning" :icon="Refresh" size="small" @click="handleReload(row)" />
+                                </el-tooltip>
                                 <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
                                     <el-button text circle type="danger" :icon="Delete" size="small" @click="handleDelete(row)" />
                                 </el-tooltip>
@@ -195,6 +199,7 @@ let nowTimer = null
 const isCardView = computed(() => store.getdataCardType() === 0);
 const deviceList = computed(() => store.getPaginatedData());
 const canSsh = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:ssh:connect')))
+const canEdit = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:edit')))
 const canDelete = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:device:del')))
 
 // 方法
@@ -247,6 +252,8 @@ const getProgressColor = (percentage) => {
     if (percentage < 80) return '#e6a23c';
     return '#f56c6c';
 };
+
+
 
 const handleDelete = (item) => {
     ElMessageBox.confirm(

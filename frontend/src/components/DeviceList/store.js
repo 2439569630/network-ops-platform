@@ -364,6 +364,27 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
+    const reloadDevice = async (device) => {
+        try {
+            const id = typeof device === 'object' ? device.id : device
+            if (!id) throw new Error('设备ID无效')
+            
+            const response = await axios.post(`/api/v1/user/device/reload/${id}`)
+            if (response.data.code === 200) {
+                return true
+            } else {
+                throw new Error(response.data.message || '重载指令下发失败')
+            }
+        } catch (error) {
+            console.error("设备重载失败：", error)
+            ElMessage({
+                message: error.response?.data?.message || error.message || '重载失败',
+                type: 'error'
+            })
+            return false
+        }
+    }
+
     // 兼容旧 API 命名 (如果需要，可以直接修改组件调用)
     const getServerDveiceData = (type) => {
         if (type !== undefined) {
@@ -410,6 +431,7 @@ export const useDeviceStore = defineStore('device', () => {
         stopRealtime,
         reloadDevice,
         deleteDevice,
+        reloadDevice,
         // 兼容旧方法名，建议组件改用 setFilterType 或 refreshData
         getServerDveiceData,
         resetForLogout
