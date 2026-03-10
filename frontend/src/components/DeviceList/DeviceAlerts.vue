@@ -5,16 +5,15 @@
         <div class="card-header">
           <span class="title">预警规则</span>
           <div class="header-actions">
-            <el-dropdown trigger="click" @command="applyTemplate">
+            <!-- <el-dropdown trigger="click" @command="applyTemplate">
               <el-button size="small">添加模板</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="basic">基础模板（离线+CPU/内存/磁盘）</el-dropdown-item>
                   <el-dropdown-item command="temp">温度模板（temperature）</el-dropdown-item>
                   <el-dropdown-item command="if_counts">接口模板（down计数）</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
-            </el-dropdown>
+            </el-dropdown> -->
             <el-button size="small" @click="openSubscriptionDialog">订阅通知</el-button>
             <el-button type="primary" size="small" @click="openAddDialog">添加规则</el-button>
           </div>
@@ -581,27 +580,7 @@ const deleteSubscription = async () => {
 
 const applyTemplate = async (name) => {
   if (!props.deviceId) return
-  let offlineDuration = 0
-  if (String(name) === 'basic') {
-    try {
-      const res = await axios.get(`/api/v1/user/device/config/${props.deviceId}`)
-      const cfg = res?.data?.data || {}
-      const interval = Number(cfg.interval ?? 60)
-      const thr = Number(cfg.offline_fail_threshold ?? 3)
-      if (Number.isFinite(interval) && Number.isFinite(thr) && interval > 0 && thr > 0) {
-        offlineDuration = Math.round(interval * thr)
-      }
-    } catch (e) {
-      offlineDuration = 0
-    }
-  }
   const templates = {
-    basic: [
-      { metric: 'online_status', operator: '=', threshold: 0, severity: 'critical', duration: offlineDuration, is_enabled: true },
-      { metric: 'cpu_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
-      { metric: 'memory_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
-      { metric: 'disk_usage', operator: '>=', threshold: 90, severity: 'warning', duration: 300, is_enabled: true },
-    ],
     temp: [
       { metric: 'temperature', operator: '>=', threshold: 75, severity: 'warning', duration: 120, is_enabled: true },
     ],

@@ -22,7 +22,7 @@
                     >返回列表</el-button>
                      <!-- 管理员特殊权限：修改状态 -->
                     <el-button 
-                        v-if="isAdmin" 
+                        v-if="canManageRepair" 
                         type="warning" 
                         plain 
                         icon="Edit"
@@ -30,6 +30,22 @@
                         :size="isMobile ? 'small' : 'default'"
                         class="status-btn-mobile"
                     >{{ isMobile ? '改状态' : '修改状态' }}</el-button>
+
+                    <el-button
+                        v-if="canEditOrder"
+                        type="primary"
+                        plain
+                        @click="openEditDialog"
+                        :size="isMobile ? 'small' : 'default'"
+                    >{{ isMobile ? '编辑' : '编辑工单' }}</el-button>
+
+                    <el-button
+                        v-if="canDeleteOrder"
+                        type="danger"
+                        plain
+                        @click="handleDeleteOrder"
+                        :size="isMobile ? 'small' : 'default'"
+                    >{{ isMobile ? '删除' : '删除工单' }}</el-button>
                     
                     <el-button icon="Refresh" circle @click="fetchDetail" :size="isMobile ? 'small' : 'default'" />
                 </div>
@@ -69,6 +85,19 @@
                             <label>问题描述</label>
                             <div class="content description-box">{{ order?.description }}</div>
                         </div>
+                        <div v-if="order?.images?.length" class="info-item full-width">
+                            <label>报修图片</label>
+                            <div class="content order-images">
+                                <el-image
+                                    v-for="(img, idx) in order.images"
+                                    :key="idx"
+                                    :src="img"
+                                    :preview-src-list="order.images"
+                                    fit="cover"
+                                    class="log-image"
+                                ></el-image>
+                            </div>
+                        </div>
                         <div class="info-item">
                             <label>报修位置</label>
                             <div class="content"><el-icon><Location /></el-icon> {{ fullLocationPath || order?.location_name || '未指定' }}</div>
@@ -85,7 +114,7 @@
                 </el-card>
 
                 <!-- 关联设备 -->
-                <el-card v-if="order?.location_id || order?.location_name" class="device-card" :shadow="isMobile ? 'never' : 'hover'">
+                <el-card v-if="canViewRelatedDevices && (order?.location_id || order?.location_name)" class="device-card" :shadow="isMobile ? 'never' : 'hover'">
                     <template #header>
                         <div class="card-title">
                             <el-icon><Monitor /></el-icon> 关联设备
@@ -246,9 +275,9 @@
                     
                     <div class="action-buttons">
                         <!-- 管理员: 派单 -->
-                        <div v-if="isAdmin && order?.status === 'pending'" class="action-group">
-                             <el-button type="primary" class="block-btn" @click="dialogAssignVisible = true">指派维修人员</el-button>
-                             <el-button class="block-btn" @click="handleAutoAssign">自动智能派单</el-button>
+                        <div v-if="canManageRepair && order?.status === 'pending'" class="action-group">
+                             <el-button type="primary" class="block-btn" :disabled="assignSubmitting" @click="dialogAssignVisible = true">指派维修人员</el-button>
+                             <el-button v-if="order?.assignee_id == null" class="block-btn" :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动智能派单</el-button>
                         </div>
 
                         <!-- 维修人员: 接单 -->
@@ -257,7 +286,7 @@
                          </div>
 
                         <!-- 处理中: 完成 -->
-                        <div v-if="(isMaintenance || isAdmin) && order?.status === 'processing'" class="action-group">
+                        <div v-if="(isMaintenance || canManageRepair) && order?.status === 'processing'" class="action-group">
                              <el-button type="success" class="block-btn" @click="handleComplete">完成工单</el-button>
                         </div>
 
@@ -268,6 +297,10 @@
                                     <el-button type="danger" link>取消工单</el-button>
                                 </template>
                              </el-popconfirm>
+                         </div>
+
+                         <div v-if="canDeleteOrder" class="action-group mt-4">
+                             <el-button type="danger" class="block-btn" @click="handleDeleteOrder">删除工单</el-button>
                          </div>
                          
                          <div v-if="['completed', 'closed', 'cancelled'].includes(order?.status)" class="no-action">
@@ -304,9 +337,9 @@
     <!-- Mobile Fixed Footer Actions -->
     <div v-if="isMobile && ['pending', 'processing'].includes(order?.status)" class="mobile-footer-actions">
         <!-- 管理员: 派单 -->
-        <div v-if="isAdmin && order?.status === 'pending'" class="action-group">
-            <el-button type="primary" @click="dialogAssignVisible = true">指派</el-button>
-            <el-button @click="handleAutoAssign">自动派单</el-button>
+        <div v-if="canManageRepair && order?.status === 'pending'" class="action-group">
+            <el-button type="primary" :disabled="assignSubmitting" @click="dialogAssignVisible = true">指派</el-button>
+            <el-button v-if="order?.assignee_id == null" :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动派单</el-button>
         </div>
 
         <!-- 维修人员: 接单 -->
@@ -315,7 +348,7 @@
         </div>
 
         <!-- 处理中: 完成 -->
-        <div v-if="(isMaintenance || isAdmin) && order?.status === 'processing'" class="action-group">
+        <div v-if="(isMaintenance || canManageRepair) && order?.status === 'processing'" class="action-group">
             <el-button type="success" @click="handleComplete">完成</el-button>
         </div>
         
@@ -370,6 +403,44 @@
         <template #footer>
             <el-button @click="dialogStatusVisible = false">取消</el-button>
             <el-button type="primary" @click="handleForceUpdateStatus">保存修改</el-button>
+        </template>
+    </el-dialog>
+
+    <!-- 弹窗：编辑工单 -->
+    <el-dialog v-model="dialogEditVisible" title="编辑工单" width="520px" append-to-body>
+        <el-form label-position="top">
+            <el-form-item label="故障标题">
+                <el-input v-model="editForm.title" maxlength="50" show-word-limit />
+            </el-form-item>
+            <el-form-item label="报修位置">
+                <el-cascader
+                    v-model="editForm.location_id"
+                    :options="locationTreeData"
+                    :props="{ value: 'id', label: 'label', children: 'children', checkStrictly: true, emitPath: false }"
+                    placeholder="请选择故障位置"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                    v-loading="locationTreeLoading"
+                    :disabled="locationTreeForbidden"
+                    :show-all-levels="false"
+                />
+            </el-form-item>
+            <el-form-item label="紧急程度">
+                <el-select v-model="editForm.priority" placeholder="请选择" style="width: 100%">
+                    <el-option label="低" value="low" />
+                    <el-option label="中" value="medium" />
+                    <el-option label="高" value="high" />
+                    <el-option label="紧急" value="emergency" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="详细描述">
+                <el-input v-model="editForm.description" type="textarea" :rows="5" resize="none" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="dialogEditVisible = false">取消</el-button>
+            <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
         </template>
     </el-dialog>
 
@@ -451,10 +522,12 @@ let nowTimer = null
 const roleCodes = ref([]);
 const permissions = ref([]);
 const isSuper = ref(false);
+const currentUserId = ref(null);
 const fullLocationPath = ref('');
 const locationTreeLoading = ref(false);
 const locationTreeLoaded = ref(false);
 const locationTreeForbidden = ref(false);
+const locationTreeData = ref([]);
 const locationNodeById = reactive({});
 const store = homeDataStore();
 
@@ -464,6 +537,7 @@ const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 // Dialogs
 const dialogAssignVisible = ref(false);
 const dialogStatusVisible = ref(false);
+const dialogEditVisible = ref(false);
 const dialogWorkLogVisible = ref(false);
 
 // Data
@@ -472,6 +546,9 @@ const assignForm = reactive({ assignee_id: null });
 const statusForm = reactive({ status: '', remark: '' });
 const workLogForm = reactive({ content: '', images: [] });
 const workLogSubmitting = ref(false);
+const assignSubmitting = ref(false);
+const editForm = reactive({ title: '', description: '', priority: 'medium', location_id: null });
+const editSubmitting = ref(false);
 
 const processedLogs = computed(() => {
     if (!order.value?.logs) return [];
@@ -503,11 +580,24 @@ const processedLogs = computed(() => {
 });
 
 // Computeds
-const isAdmin = computed(() => isSuper.value);
+const canManageRepair = computed(() => isSuper.value || permissions.value.includes('sys:repair:manage'));
+const isAdmin = computed(() => canManageRepair.value);
 const isMaintenance = computed(() => roleCodes.value.includes('yunwei') || permissions.value.includes('sys:repair:accept'));
+const canEditOrder = computed(() => {
+    if (isSuper.value) return true;
+    if (permissions.value.includes('sys:repair:manage')) return true;
+    const uid = currentUserId.value;
+    if (!uid || !order.value) return false;
+    if (Number(order.value.submitter_id) !== Number(uid)) return false;
+    if (order.value.status !== 'pending') return false;
+    if (order.value.assignee_id != null) return false;
+    return true;
+});
+const canDeleteOrder = computed(() => isSuper.value || permissions.value.includes('sys:repair:manage'));
 const canUploadRepairImages = computed(() => isSuper.value || permissions.value.includes('sys:repair:image:add'));
 const canDeleteRepairImages = computed(() => isSuper.value || permissions.value.includes('sys:repair:image:del'));
 const canSsh = computed(() => isSuper.value || permissions.value.includes('sys:ssh:connect'));
+const canViewRelatedDevices = computed(() => isSuper.value || permissions.value.includes('sys:device:list'));
 
 const repairImageFileList = ref([]);
 const repairImageIdByUid = reactive({});
@@ -587,7 +677,7 @@ const getStatusType = (val) => {
 
 const getActionLabel = (val) => ({
     create: '创建工单', assign: '指派工单', accept: '接单', complete: '完成工单', 
-    auto_assign: '自动派单', cancel: '取消工单', review: '评价', update_status: '更新状态', remark: '添加备注'
+    auto_assign: '自动派单', cancel: '取消工单', review: '评价', update_status: '更新状态', remark: '添加备注', edit: '编辑工单'
 }[val] || val);
 
 const getLogType = (action) => {
@@ -637,7 +727,8 @@ const loadLocationTreeIfNeeded = async () => {
     try {
         const res = await axios.get('/api/v1/locations/tree');
         if (res?.data?.code === 200) {
-            buildLocationNodeIndex(res.data.data || []);
+            locationTreeData.value = res.data.data || [];
+            buildLocationNodeIndex(locationTreeData.value);
             locationTreeLoaded.value = true;
         }
     } catch (e) {
@@ -764,6 +855,8 @@ const fetchMaintenanceUsers = async () => {
 
 const handleAssign = async () => {
     if (!assignForm.assignee_id) return;
+    if (assignSubmitting.value) return;
+    assignSubmitting.value = true;
     try {
         const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, { assignee_id: assignForm.assignee_id });
         if (res.data.code === 200) {
@@ -773,10 +866,15 @@ const handleAssign = async () => {
         }
     } catch (e) {
         ElMessage.error('操作失败');
+    } finally {
+        assignSubmitting.value = false;
     }
 };
 
 const handleAutoAssign = async () => {
+    if (assignSubmitting.value) return;
+    if (order.value?.assignee_id != null) return;
+    assignSubmitting.value = true;
     try {
         const res = await axios.post(`/api/v1/repair-orders/${orderId}/assign`, {});
         if (res.data.code === 200) {
@@ -787,6 +885,8 @@ const handleAutoAssign = async () => {
         }
     } catch (e) {
         ElMessage.error('操作失败');
+    } finally {
+        assignSubmitting.value = false;
     }
 };
 
@@ -832,6 +932,79 @@ const handleCancel = async () => {
             }
         });
     } catch (e) {}
+}
+
+const handleDeleteOrder = async () => {
+    const id = order.value?.id ?? orderId;
+    if (!id) return;
+    try {
+        await ElMessageBox.confirm('确定要删除该工单吗？此操作不可恢复。', '删除确认', {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+        });
+        const res = await axios.delete(`/api/v1/repair-orders/${id}`);
+        if (res.data.code === 200) {
+            ElMessage.success('删除成功');
+            router.push('/user/repair/list');
+            return;
+        }
+        ElMessage.error(res.data.message || '删除失败');
+    } catch (e) {
+        return;
+    }
+}
+
+const openEditDialog = async () => {
+    if (!canEditOrder.value) return;
+    if (!order.value) {
+        await fetchDetail();
+    }
+    editForm.title = String(order.value?.title || '');
+    editForm.description = String(order.value?.description || '');
+    editForm.priority = String(order.value?.priority || 'medium') || 'medium';
+    editForm.location_id = order.value?.location_id ?? null;
+    dialogEditVisible.value = true;
+    await loadLocationTreeIfNeeded();
+}
+
+const submitEdit = async () => {
+    if (!canEditOrder.value) return;
+    const title = String(editForm.title || '').trim();
+    const description = String(editForm.description || '').trim();
+    const priority = String(editForm.priority || '').trim();
+    if (!title) {
+        ElMessage.warning('请输入故障标题');
+        return;
+    }
+    if (!description) {
+        ElMessage.warning('请输入详细描述');
+        return;
+    }
+    if (!priority) {
+        ElMessage.warning('请选择紧急程度');
+        return;
+    }
+    editSubmitting.value = true;
+    try {
+        const res = await axios.put(`/api/v1/repair-orders/${orderId}`, {
+            title,
+            description,
+            priority,
+            location_id: editForm.location_id
+        });
+        if (res.data.code === 200) {
+            ElMessage.success('更新成功');
+            dialogEditVisible.value = false;
+            fetchDetail();
+            return;
+        }
+        ElMessage.error(res.data.message || '更新失败');
+    } catch (e) {
+        ElMessage.error('更新失败');
+    } finally {
+        editSubmitting.value = false;
+    }
 }
 
 const handleForceUpdateStatus = async () => {
@@ -1018,12 +1191,13 @@ onMounted(async () => {
             const roles = Array.isArray(store.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : [];
             roleCodes.value = roles;
             isSuper.value = Boolean(store.isSuper);
+            currentUserId.value = session?.id ?? null;
             const perms = await store.fetchPermissions();
             permissions.value = Array.isArray(perms) ? perms : [];
         }
     } catch {}
     fetchDetail();
-    if (isSuper.value) {
+    if (canManageRepair.value) {
         fetchMaintenanceUsers();
     }
 });
@@ -1276,6 +1450,11 @@ onBeforeUnmount(() => {
 }
 .work-log-images {
     margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.order-images {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;

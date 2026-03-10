@@ -22,7 +22,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="metric" label="Metric" width="80" />
-        <el-table-column prop="updated_at" label="更新时间" width="180" />
+        <!-- <el-table-column prop="updated_at" label="更新时间" width="180" /> -->
       </el-table>
     </el-card>
   </div>

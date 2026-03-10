@@ -107,6 +107,27 @@
             </el-form-item>
           </div>
 
+          <el-divider />
+
+          <!-- 4. Images -->
+          <div class="form-section">
+            <h3 class="section-title"><el-icon><Picture /></el-icon> 现场图片（可选）</h3>
+            <el-form-item>
+              <el-upload
+                v-model:file-list="orderImageFileList"
+                list-type="picture-card"
+                :before-upload="beforeOrderImageSelect"
+                :auto-upload="false"
+                :on-change="handleOrderImageChange"
+                :limit="6"
+                accept="image/*"
+              >
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+              <div class="el-upload__tip">最多上传 6 张图片，单张图片最大 5MB。</div>
+            </el-form-item>
+          </div>
+
           <!-- Actions -->
           <div class="form-actions" :class="{ 'fixed-footer': isMobile }">
             <el-button @click="resetForm(repairFormRef)" :size="isMobile ? 'default' : 'large'" v-if="!isMobile">重置</el-button>
@@ -134,7 +155,7 @@ import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { 
   Edit, EditPen, Monitor, InfoFilled, WarningFilled, Document, 
   Promotion, Check, CoffeeCup, Timer, Warning, CircleCloseFilled,
-  Location
+  Location, Picture, Plus
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import axios from '@/axios/axios';
@@ -156,6 +177,8 @@ const form = reactive({
   priority: 'medium',
   description: ''
 });
+
+const orderImageFileList = ref([]);
 
 const priorityOptions = [
   { value: 'low', label: '低', desc: '不影响使用', icon: 'CoffeeCup' },
@@ -198,6 +221,45 @@ const resetForm = (formEl) => {
   formEl.resetFields();
   form.priority = 'medium';
   form.location_id = null;
+  orderImageFileList.value = [];
+};
+
+const beforeOrderImageSelect = (file) => {
+  const type = String(file?.type || '');
+  if (!type.startsWith('image/')) {
+    ElMessage.error('仅支持图片文件');
+    return false;
+  }
+  const maxBytes = 5 * 1024 * 1024;
+  const size = Number(file?.size || 0);
+  if (size > maxBytes) {
+    ElMessage.error('图片过大(最大 5MB)');
+    return false;
+  }
+  return true;
+};
+
+const handleOrderImageChange = (file, fileList) => {
+  const raw = file?.raw;
+  if (!raw) {
+    ElMessage.error('图片读取失败，请重新选择');
+    orderImageFileList.value = (fileList || []).filter((x) => x?.uid !== file?.uid);
+    return;
+  }
+  const type = String(raw?.type || '');
+  if (!type.startsWith('image/')) {
+    ElMessage.error('仅支持图片文件');
+    orderImageFileList.value = (fileList || []).filter((x) => x?.uid !== file?.uid);
+    return;
+  }
+  const maxBytes = 5 * 1024 * 1024;
+  const size = Number(raw?.size || 0);
+  if (size > maxBytes) {
+    ElMessage.error('图片过大(最大 5MB)');
+    orderImageFileList.value = (fileList || []).filter((x) => x?.uid !== file?.uid);
+    return;
+  }
+  orderImageFileList.value = fileList || [];
 };
 
 const submitForm = async (formEl) => {
@@ -214,7 +276,50 @@ const submitForm = async (formEl) => {
         };
         const res = await axios.post('/api/v1/repair-orders/', payload);
         if (res.data && res.data.code === 200) {
-          ElMessage.success('报修单提交成功');
+          const id = res.data?.data?.id;
+          const files = Array.isArray(orderImageFileList.value) ? orderImageFileList.value : [];
+          let uploaded = 0;
+          let failed = 0;
+          const maxBytes = 5 * 1024 * 1024;
+          for (const f of files) {
+            const raw = f?.raw;
+            if (!raw) {
+              failed += 1;
+              ElMessage.error('图片读取失败，请重新选择');
+              continue;
+            }
+            const type = String(raw?.type || '');
+            if (!type.startsWith('image/')) {
+              failed += 1;
+              ElMessage.error('仅支持图片文件');
+              continue;
+            }
+            const size = Number(raw?.size || 0);
+            if (size > maxBytes) {
+              failed += 1;
+              ElMessage.error('图片过大(最大 5MB)');
+              continue;
+            }
+            const formData = new FormData();
+            formData.append('file', raw);
+            if (id) formData.append('order_id', String(id));
+            try {
+              const up = await axios.post('/api/v1/repair-images/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              if (up.data?.code === 200) uploaded += 1;
+              else {
+                failed += 1;
+                ElMessage.error(up.data?.message || '图片上传失败');
+              }
+            } catch (e) {
+              failed += 1;
+              ElMessage.error(e?.response?.data?.message || '图片上传失败');
+            }
+          }
+          if (uploaded > 0 && failed === 0) ElMessage.success(`报修单提交成功，已上传 ${uploaded} 张图片`);
+          else if (uploaded > 0 && failed > 0) ElMessage.warning(`报修单提交成功，成功上传 ${uploaded} 张，失败 ${failed} 张`);
+          else ElMessage.success('报修单提交成功');
           router.push('/user/repair/list');
         } else {
           ElMessage.error(res.data.message || '提交失败');

@@ -27,6 +27,27 @@
           @keyup.enter="handleSearch"
           @clear="handleSearch"
         />
+        <el-select
+          v-model="query.target_type"
+          placeholder="目标类型"
+          clearable
+          class="filter-item"
+          @change="handleSearch"
+        >
+          <el-option label="用户(user)" value="user" />
+          <el-option label="角色(role)" value="role" />
+          <el-option label="权限(permission)" value="permission" />
+          <el-option label="禁用权限列表(permission.disabled_list)" value="permission.disabled_list" />
+          <el-option label="系统(system)" value="system" />
+        </el-select>
+        <el-input
+          v-model="query.target_id"
+          placeholder="目标ID"
+          clearable
+          class="filter-item"
+          @keyup.enter="handleSearch"
+          @clear="handleSearch"
+        />
         <el-input
           v-model="query.target_user_id"
           placeholder="目标用户ID"
@@ -71,8 +92,19 @@
               <span class="value">{{ item.target_user_id }}</span>
             </div>
             <div class="info-row">
+              <span class="label">目标对象:</span>
+              <span class="value">{{ formatTarget(item) }}</span>
+            </div>
+            <div class="info-row" v-if="summarizeChange(item)">
+              <span class="label">变更:</span>
+              <span class="value">{{ summarizeChange(item) }}</span>
+            </div>
+            <div class="info-row">
               <span class="label">IP地址:</span>
               <span class="value">{{ item.request_ip }}</span>
+            </div>
+            <div class="card-actions">
+              <el-button size="small" @click="openDetail(item)">详情</el-button>
             </div>
           </div>
         </div>
@@ -93,8 +125,25 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="target_user_id" label="目标用户ID" width="120" />
+        <el-table-column label="目标" min-width="220">
+          <template #default="{ row }">
+            <div class="target-cell">
+              <div class="target-main">{{ formatTarget(row) }}</div>
+              <div class="target-sub" v-if="row.target_user_id">target_user_id={{ row.target_user_id }}</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="变更" min-width="260">
+          <template #default="{ row }">
+            <span class="change-text">{{ summarizeChange(row) || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="request_ip" label="IP" width="140" />
+        <el-table-column label="详情" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row)">查看</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pagination">
@@ -111,6 +160,45 @@
         />
       </div>
     </el-card>
+
+    <el-dialog v-model="detailDialogVisible" title="审计详情" width="720px" append-to-body>
+      <div class="detail-grid" v-if="detailRow">
+        <div class="detail-row">
+          <span class="detail-label">时间</span>
+          <span class="detail-value">{{ formatTime(detailRow.created_at) }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">操作者</span>
+          <span class="detail-value">{{ detailRow.actor_username || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">动作</span>
+          <span class="detail-value">{{ detailRow.action_label || detailRow.action || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">目标</span>
+          <span class="detail-value">{{ formatTarget(detailRow) }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">IP</span>
+          <span class="detail-value">{{ detailRow.request_ip || '-' }}</span>
+        </div>
+        <div class="detail-row" v-if="summarizeChange(detailRow)">
+          <span class="detail-label">变更</span>
+          <span class="detail-value">{{ summarizeChange(detailRow) }}</span>
+        </div>
+      </div>
+      <el-divider />
+      <el-input
+        type="textarea"
+        :rows="16"
+        :readonly="true"
+        :model-value="formatDetailJson(detailRow?.detail)"
+      />
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -123,6 +211,8 @@ const loading = ref(false);
 const tableData = ref([]);
 const total = ref(0);
 const isMobile = ref(false);
+const detailDialogVisible = ref(false);
+const detailRow = ref(null);
 
 const checkMobile = () => {
   isMobile.value = window.innerWidth < 768;
@@ -143,6 +233,8 @@ const query = reactive({
   page_size: 50,
   actor_username: '',
   action: '',
+  target_type: '',
+  target_id: '',
   target_user_id: '',
   timeRange: null
 });
@@ -158,6 +250,77 @@ const formatTime = (v) => {
   }
 };
 
+const formatTarget = (row) => {
+  if (!row) return '-';
+  const t = String(row.target_type || '').trim();
+  const id = row.target_id ?? null;
+  const label = String(row.target_label || '').trim();
+  if (t) {
+    const parts = [t];
+    if (label) parts.push(label);
+    if (id !== null && id !== undefined && id !== '') parts.push(`id=${id}`);
+    return parts.join(' ');
+  }
+  if (row.target_user_id !== null && row.target_user_id !== undefined && row.target_user_id !== '') {
+    return `user id=${row.target_user_id}`;
+  }
+  return '-';
+};
+
+const normalizeDetail = (detail) => {
+  if (!detail) return null;
+  if (typeof detail === 'object') return detail;
+  if (typeof detail === 'string') {
+    try {
+      return JSON.parse(detail);
+    } catch {
+      return { raw: detail };
+    }
+  }
+  return { raw: String(detail) };
+};
+
+const summarizeChange = (row) => {
+  const d = normalizeDetail(row?.detail);
+  if (!d) return '';
+  const parts = [];
+  const pushList = (label, arr) => {
+    const a = Array.isArray(arr) ? arr.filter(Boolean) : [];
+    if (a.length) parts.push(`${label}(${a.length}) ${a.slice(0, 6).join(', ')}${a.length > 6 ? '...' : ''}`);
+  };
+
+  pushList('新增权限', d.added_permission_codes || d.added_permissions);
+  pushList('移除权限', d.removed_permission_codes || d.removed_permissions);
+  pushList('新增角色', d.added_role_codes);
+  pushList('移除角色', d.removed_role_codes);
+
+  if (d.before_default || d.after_default) {
+    const b = d.before_default ? (d.before_default.code || d.before_default.id) : '-';
+    const a = d.after_default ? (d.after_default.code || d.after_default.id) : '-';
+    parts.push(`默认角色 ${b} -> ${a}`);
+  }
+
+  if (parts.length) return parts.join('；');
+  if (d.before && d.after) return '存在变更前/后快照';
+  if (d.role || d.permission) return '对象信息变更';
+  return '';
+};
+
+const formatDetailJson = (detail) => {
+  const d = normalizeDetail(detail);
+  if (!d) return '';
+  try {
+    return JSON.stringify(d, null, 2);
+  } catch {
+    return String(detail);
+  }
+};
+
+const openDetail = (row) => {
+  detailRow.value = row || null;
+  detailDialogVisible.value = true;
+};
+
 const fetchLogs = async () => {
   loading.value = true;
   try {
@@ -167,6 +330,13 @@ const fetchLogs = async () => {
       actor_username: query.actor_username || undefined,
       action: query.action || undefined
     };
+    if (query.target_type) {
+      params.target_type = String(query.target_type).trim();
+    }
+    if (query.target_id) {
+      const n = Number(query.target_id);
+      if (!Number.isNaN(n)) params.target_id = n;
+    }
     if (query.target_user_id) {
       const n = Number(query.target_user_id);
       if (!Number.isNaN(n)) params.target_user_id = n;
@@ -199,16 +369,12 @@ const resetFilter = async () => {
   query.page_size = 50;
   query.actor_username = '';
   query.action = '';
+  query.target_type = '';
+  query.target_id = '';
   query.target_user_id = '';
   query.timeRange = null;
   await fetchLogs();
 };
-
-onMounted(() => {
-  checkMobile();
-  window.addEventListener('resize', checkMobile);
-  fetchLogs();
-});
 </script>
 
 <style scoped>
@@ -262,6 +428,45 @@ onMounted(() => {
   margin-top: 2px;
   font-size: 12px;
   color: #6b7280;
+}
+.target-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.target-main {
+  font-weight: 600;
+}
+.target-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.change-text {
+  font-size: 13px;
+  color: #111827;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+.detail-row {
+  display: flex;
+  gap: 8px;
+}
+.detail-label {
+  min-width: 56px;
+  color: #6b7280;
+}
+.detail-value {
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 /* Mobile Responsive */

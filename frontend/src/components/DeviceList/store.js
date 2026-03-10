@@ -300,6 +300,28 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
+    // 重载设备
+    const reloadDevice = async (device) => {
+        try {
+            if (!device || !device.id) {
+                throw new Error('无效的设备信息');
+            }
+            const response = await axios.post('/api/v1/user/device/reload', { id: device.id });
+            if (response.data.code === 200) {
+                return true;
+            } else {
+                throw new Error(response.data.message || '重载失败');
+            }
+        } catch (error) {
+            console.error("重载设备失败：", error);
+            ElMessage({
+                message: error.response?.data?.message || error.message || '重载设备失败',
+                type: 'error'
+            });
+            return false;
+        }
+    };
+
     // 删除设备
     const deleteDevice = async (device) => {
         try {
@@ -386,6 +408,7 @@ export const useDeviceStore = defineStore('device', () => {
         setPageSize,
         startRealtime,
         stopRealtime,
+        reloadDevice,
         deleteDevice,
         // 兼容旧方法名，建议组件改用 setFilterType 或 refreshData
         getServerDveiceData,

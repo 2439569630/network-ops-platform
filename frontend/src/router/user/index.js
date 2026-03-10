@@ -124,19 +124,19 @@ const homeRoutes = [
                 path: 'repair/apply',
                 name: 'repair-apply',
                 component: () => import('@/components/Repair/Apply.vue'),
-                meta: { title: '提交工单' }
+                meta: { title: '提交工单', perms: ['sys:repair:create', 'sys:repair:manage'] }
             },
             {
                 path: 'repair/list',
                 name: 'repair-list',
                 component: () => import('@/components/Repair/List.vue'),
-                meta: { title: '工单列表' }
+                meta: { title: '工单列表', perms: ['sys:repair:view', 'sys:repair:accept', 'sys:repair:handle', 'sys:repair:list_all', 'sys:repair:manage'] }
             },
             {
                 path: 'repair/detail/:id',
                 name: 'repair-detail',
                 component: () => import('@/components/Repair/Detail.vue'),
-                meta: { title: '工单详情' }
+                meta: { title: '工单详情', perms: ['sys:repair:view', 'sys:repair:accept', 'sys:repair:handle', 'sys:repair:list_all', 'sys:repair:manage'] }
             }
         ]
     }

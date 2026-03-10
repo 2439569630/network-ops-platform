@@ -965,18 +965,44 @@ const saveCurrentRole = async () => {
 const handleRoleCommand = async (cmd, role) => {
   if (cmd === 'delete') {
     try {
-      await ElMessageBox.confirm(`确定删除角色 ${role.name} 吗？`, '警告', { type: 'warning' });
+      await ElMessageBox.confirm(
+        `确定删除角色 ${role.name} 吗？`,
+        '警告',
+        { type: 'warning' }
+      );
+
       const res = await axios.delete(`/api/v1/rbac/roles/${role.id}`);
+
       if (res.data.code === 200) {
         ElMessage.success('删除成功');
-        if (currentRole.value?.id === role.id) currentRole.value = null;
+
+        if (currentRole.value?.id === role.id) {
+          currentRole.value = null;
+        }
+
         fetchRoles();
+      } else {
+        // ⭐ 这里处理业务错误
+        ElMessage.error(res.data.message || '删除失败');
       }
-    } catch {}
+
+    } catch (e) {
+      // ⭐ 处理 axios 或 confirm 取消
+      if (e === 'cancel' || e === 'close') return;
+
+      const msg =
+        e.response?.data?.message ||
+        e.message ||
+        '请求失败';
+
+      ElMessage.error(msg);
+    }
+
   } else if (cmd === 'default') {
-      await handleSetDefaultRole(role);
+    await handleSetDefaultRole(role);
+
   } else if (cmd === 'copy') {
-      ElMessage.info('复制功能开发中...');
+    ElMessage.info('复制功能开发中...');
   }
 };
 

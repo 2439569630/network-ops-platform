@@ -75,7 +75,7 @@
                         </div>
                     </div>
                     
-                    <div class="order-card-footer" v-if="(isYunwei && activeTab === 'assigned') || canCancel(order) || canReview(order)">
+                    <div class="order-card-footer" v-if="(isYunwei && activeTab === 'assigned') || canCancel(order) || canReview(order) || canDeleteOrder">
                          <!-- 运维操作 -->
                         <template v-if="isYunwei && activeTab === 'assigned'">
                             <el-button 
@@ -114,6 +114,14 @@
                                 class="action-btn"
                                 @click.stop="reviewOrder(order.id)"
                             >评价</el-button>
+                            <el-button
+                                v-if="canDeleteOrder"
+                                type="danger"
+                                plain
+                                size="small"
+                                class="action-btn"
+                                @click.stop="deleteOrder(order.id)"
+                            >删除</el-button>
                          </template>
                     </div>
                 </el-card>
@@ -166,7 +174,7 @@
                 <span style="font-size: 13px; color: #909399">{{ formatDate(scope.row.created_at) }}</span>
             </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right" align="center">
+        <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="scope">
             <el-button type="primary" link size="small" @click="viewDetail(scope.row.id)">详情</el-button>
             <el-button 
@@ -183,6 +191,13 @@
                 size="small" 
                 @click="reviewOrder(scope.row.id)"
             >评价</el-button>
+            <el-button
+                v-if="canDeleteOrder"
+                type="danger"
+                link
+                size="small"
+                @click="deleteOrder(scope.row.id)"
+            >删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -257,6 +272,10 @@ const activeTab = ref('assigned');
 const isAdminOrManage = computed(() => {
     return store.isSuper || 
            (store.permissions && (store.permissions.includes('sys:repair:manage') || store.permissions.includes('sys:repair:list_all')));
+});
+
+const canDeleteOrder = computed(() => {
+    return store.isSuper || (store.permissions && store.permissions.includes('sys:repair:manage'));
 });
 
 const isYunwei = computed(() => {
@@ -382,6 +401,25 @@ const handleTabChange = (tab) => {
 
 const viewDetail = (id) => {
     router.push(`/user/repair/detail/${id}`);
+};
+
+const deleteOrder = async (id) => {
+    try {
+        await ElMessageBox.confirm('确定要删除该工单吗？此操作不可恢复。', '删除确认', {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+        });
+        const res = await axios.delete(`/api/v1/repair-orders/${id}`);
+        if (res.data.code === 200) {
+            ElMessage.success('删除成功');
+            fetchOrders();
+            return;
+        }
+        ElMessage.error(res.data.message || '删除失败');
+    } catch (e) {
+        return;
+    }
 };
 
 const canCancel = (row) => {

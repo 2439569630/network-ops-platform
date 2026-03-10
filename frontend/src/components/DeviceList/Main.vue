@@ -86,8 +86,11 @@
                             <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
                                 <el-button text circle type="success" :icon="Connection" @click="connectSSH(item)" :disabled="!isSshEnabled(item)" />
                             </el-tooltip>
-                            <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
+                                                        <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
                                 <el-button text circle type="danger" :icon="Delete" @click="handleDelete(item)" />
+                            </el-tooltip>
+                            <el-tooltip content="重载设备" placement="top" :show-after="500">
+                                <el-button text circle type="warning" :icon="Refresh" @click="handleReload(item)" />
                             </el-tooltip>
                         </div>
                     </div>
@@ -160,6 +163,9 @@
                                 <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
                                     <el-button text circle type="danger" :icon="Delete" size="small" @click="handleDelete(row)" />
                                 </el-tooltip>
+                                <el-tooltip content="重载设备" placement="top" :show-after="500">
+                                    <el-button text circle type="warning" :icon="Refresh" size="small" @click="handleReload(row)" />
+                                </el-tooltip>
                             </div>
                         </template>
                     </el-table-column>
@@ -172,7 +178,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Odometer } from '@element-plus/icons-vue';
+import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Odometer, Refresh } from '@element-plus/icons-vue';
 import { useDeviceStore } from './store';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
@@ -270,6 +276,35 @@ const handleDelete = (item) => {
         .catch(() => {
             // 取消
         });
+};
+
+const handleReload = (item) => {
+    ElMessageBox.confirm(
+        '确定要重载该设备吗？这将重启设备的监控进程。',
+        '提示',
+        {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning',
+        }
+    )
+    .then(async () => {
+        const success = await store.reloadDevice(item);
+        if (success) {
+            ElMessage({
+                type: 'success',
+                message: '重载指令已发送',
+            });
+        } else {
+            ElMessage({
+                type: 'error',
+                message: '重载失败',
+            });
+        }
+    })
+    .catch(() => {
+        // 取消
+    });
 };
 
 // 生命周期
