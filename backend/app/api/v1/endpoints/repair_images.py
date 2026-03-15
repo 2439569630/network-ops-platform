@@ -15,7 +15,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 async def _can_view_image(img, current_user: dict) -> bool:
-    if user_is_super(current_user):
+    if await user_has_permission(current_user, "sys:repair:manage"):
         return True
     uid = int(current_user.get("id") or 0)
     if uid and int(getattr(img, "uploader_id", 0) or 0) == uid:

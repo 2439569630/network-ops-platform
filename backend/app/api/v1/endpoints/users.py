@@ -22,6 +22,7 @@ from typing import List, Optional, Any
 from app.schemas.user import UserCreate, UserResponse, RoleUpdate, UserUpdate, UserStatusUpdate, AdminUserUpdate
 from app.services.avatar_service import AvatarService
 from app.services.user_service import UserService
+from app.services.rbac_service import RbacService
 from app.services.user_admin_audit_service import UserAdminAuditService
 from app.api import deps
 from app.core.security import PermissionChecker, user_is_super, get_disabled_permission_codes_cached, get_password_hash
@@ -170,10 +171,20 @@ async def delete_users_batch(
     # 1. 自我保护检查
     if current_user.get("id") in user_ids:
         return {"code": 400, "message": "不能删除自己"}
+    
+    # 0. 系统保护：初始超级管理员不可删除
+    if 1 in user_ids:
+        return {"code": 403, "message": "批量操作包含系统初始超级管理员，请移除后再试"}
         
     try:
         # 2. 权限检查：确保操作者有权删除每一个目标用户
         for uid in user_ids or []:
+            # 1. 权限检查：防止越权删除超管
+            target_roles = await _get_user_role_codes(int(uid))
+            target_is_super = bool({str(c).strip().lower() for c in target_roles} & _PROTECTED_ROLE_CODES)
+            if target_is_super:
+                 return {"code": 403, "message": f"用户 ID {uid} 为超级管理员，不可直接删除"}
+            
             await _require_actor_superadmin_when_target_protected(int(uid), current_user)
             
         # 3. 执行批量删除
@@ -224,16 +235,6 @@ async def reset_user_password(
         return {"code": 400, "message": str(e)}
     except Exception as e:
         return {"code": 500, "message": f"密码重置失败: {str(e)}"}
-
-@router.post("/update_perms", response_model=dict)
-async def update_user_perms(
-    request: Request,
-    user_id: int = Body(...),
-    permissions: List[str] = Body(...),
-    current_user: dict = Depends(deps.get_current_user),
-    _: dict = Depends(PermissionChecker(["sys:user:manage"]))
-):
-    return {"code": 501, "message": "此功能已停用。请通过角色管理用户权限。"}
 
 @router.post("/status", response_model=dict)
 async def update_user_status(
@@ -406,12 +407,6 @@ async def get_email_verify_pending(current_user: dict = Depends(deps.get_current
     查询当前用户是否发起了邮箱验证请求。
     """
     try:
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-            if "sys:email:verify" in {str(c) for c in (disabled or [])}:
-                return {"code": 403, "message": "邮箱验证权限已关闭"}
-        except Exception:
-            pass
         data = await UserService.get_pending_email_verification(int(current_user.get("id")))
         return {"code": 200, "data": data}
     except Exception as e:
@@ -429,20 +424,12 @@ async def request_email_verify(
     发送验证邮件到指定邮箱。
     """
     try:
-        # 1. 功能开关检查
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-            if "sys:email:verify" in {str(c) for c in (disabled or [])}:
-                return {"code": 403, "message": "邮箱验证权限已关闭"}
-        except Exception:
-            pass
-            
-        # 2. 获取客户端信息
+        # 1. 获取客户端信息
         xff = request.headers.get("x-forwarded-for")
         ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request.client else None)
         base_url = str(request.base_url).rstrip("/")
         
-        # 3. 发送验证邮件
+        # 2. 发送验证邮件
         payload = await UserService.request_email_verification(
             user_id=int(current_user.get("id")),
             email=data.email,
@@ -463,42 +450,11 @@ async def confirm_email_verify(token: str):
     处理验证链接点击，返回 HTML 页面展示结果。
     """
     try:
-        # 1. 功能开关检查
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-            if "sys:email:verify" in {str(c) for c in (disabled or [])}:
-                # 返回 HTML 错误页
-                html = """
-                <!doctype html>
-                <html lang="zh-CN">
-                <head>
-                  <meta charset="utf-8" />
-                  <meta name="viewport" content="width=device-width, initial-scale=1" />
-                  <title>邮箱验证不可用</title>
-                  <style>
-                    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans','Liberation Sans',sans-serif; padding: 24px; }
-                    .card { max-width: 560px; margin: 10vh auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
-                    h1 { font-size: 18px; margin: 0 0 8px; }
-                    p { margin: 0; color: #374151; line-height: 1.6; }
-                  </style>
-                </head>
-                <body>
-                  <div class="card">
-                    <h1>邮箱验证不可用</h1>
-                    <p>当前系统已关闭邮箱验证功能，请联系管理员。</p>
-                  </div>
-                </body>
-                </html>
-                """
-                return HTMLResponse(content=html, status_code=403)
-        except Exception:
-            pass
-            
-        # 2. 执行验证
+        # 1. 执行验证
         result = await UserService.confirm_email_verification(token)
         email = result.get("email") or ""
         
-        # 3. 返回成功 HTML
+        # 2. 返回成功 HTML
         html = f"""
         <!doctype html>
         <html lang="zh-CN">
@@ -1626,7 +1582,7 @@ async def admin_get_user_detail(
     """
     获取用户详情 (管理端)
     
-    管理员获取指定用户的完整信息，包括角色、权限等。
+    管理员获取指定用户的完整信息，包括角色等。
     """
     try:
         data = await UserService.admin_get_user_detail(int(user_id))
@@ -1652,6 +1608,12 @@ async def admin_create_user(
     可设置用户名、密码、昵称、邮箱等信息。
     """
     try:
+        # 0. 检查 role_ids 是否合法
+        if user_in.role_ids is not None:
+            if not user_in.role_ids:
+                raise HTTPException(status_code=400, detail="用户至少需要一个角色")
+            await UserService._require_actor_superadmin_when_assigning_protected_roles(user_in.role_ids, current_user)
+
         user_id = await UserService.create_user(user_in)
         if user_in.role_ids:
             await UserService.update_user_roles(user_id, user_in.role_ids)
@@ -1697,6 +1659,12 @@ async def admin_update_user(
             if email and not _is_valid_email(email):
                 return {"code": 400, "message": "邮箱格式不正确"}
 
+        # 3.5 角色权限检查
+        if data.role_ids is not None:
+            if not data.role_ids:
+                raise HTTPException(status_code=400, detail="用户至少需要一个角色")
+            await UserService._require_actor_superadmin_when_assigning_protected_roles(data.role_ids, current_user)
+
         # 4. 执行更新
         result = await UserService.admin_update_user(uid, data)
         if data.role_ids is not None:
@@ -1736,7 +1704,22 @@ async def admin_delete_user(
     """
     if int(user_id) == int(current_user.get("id") or 0):
         return {"code": 400, "message": "不能删除自己"}
+        
+    # 0. 系统保护：初始超级管理员不可删除
+    if int(user_id) == 1:
+        return {"code": 403, "message": "系统初始超级管理员不可删除"}
+        
     try:
+        # 1. 权限检查：防止越权删除超管
+        # 先检查目标是否为超级管理员
+        target_roles = await _get_user_role_codes(int(user_id))
+        target_is_super = bool({str(c).strip().lower() for c in target_roles} & _PROTECTED_ROLE_CODES)
+        
+        if target_is_super:
+            # 即使操作者是超管，也不允许直接删除超管账号（防止误删）
+            # 必须先将目标用户移出超管组
+            return {"code": 403, "message": "不可直接删除超级管理员，请先移除其超级管理员角色"}
+            
         await _require_actor_superadmin_when_target_protected(int(user_id), current_user)
         ok = await UserService.admin_delete_user(int(user_id), actor_id=current_user.get("id"))
         if not ok:

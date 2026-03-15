@@ -30,8 +30,6 @@ from app.models.orm.user import User
 router = APIRouter()
 
 async def _can_manage_rbac(user: dict) -> bool:
-    if user_is_super(user):
-        return True
     return bool(await user_has_permission(user, "sys:role:manage"))
 
 

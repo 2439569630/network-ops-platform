@@ -88,9 +88,6 @@ async def init_rbac_db():
         print("角色数据写入成功")
 
         permissions_seed = [
-            {"name": "登录", "code": "sys:auth:login", "description": ""},
-            {"name": "注册", "code": "sys:auth:register", "description": ""},
-            {"name": "邮箱验证", "code": "sys:email:verify", "description": ""},
             {"name": "系统概览", "code": "sys:dashboard:view", "description": ""},
             {"name": "查看监控", "code": "sys:monitor:view", "description": ""},
             {"name": "消息中心", "code": "sys:message:access", "description": ""},
@@ -145,7 +142,6 @@ async def init_rbac_db():
             "superadmin": [p["code"] for p in permissions_seed],
             "admin": [p["code"] for p in permissions_seed],
             "yunwei": [
-                "sys:auth:login",
                 "sys:dashboard:view",
                 "sys:monitor:view",
                 "sys:message:access",
@@ -165,7 +161,6 @@ async def init_rbac_db():
                 "sys:ssh:connect",
             ],
             "shisheng": [
-                "sys:auth:login",
                 "sys:dashboard:view",
                 "sys:monitor:view",
                 "sys:message:access",

@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def _terminate_process(proc: subprocess.Popen, timeout_seconds: float = 8.0) -> None:
+    if proc is None:
+        return
     if proc.poll() is not None:
         return
     try:
@@ -67,28 +69,6 @@ def main() -> int:
 
     stdio_prefix = str(os.getenv("SUPERVISOR_STDIO_PREFIX", "1")).strip().lower() not in {"0", "false", "no", "off"}
 
-    fastapi_log_fp = None
-    monitor_log_fp = None
-    config_push_log_fp = None
-    fastapi_log_path = ""
-    monitor_log_path = ""
-    config_push_log_path = ""
-
-    if not (fastapi_to_stdio and monitor_to_stdio and config_push_to_stdio):
-        log_dir = os.getenv("SUPERVISOR_LOG_DIR", "").strip() or os.getenv("LOG_DIR", "").strip() or "/tmp/bise-dev-logs"
-        try:
-            os.makedirs(log_dir, exist_ok=True)
-        except Exception:
-            log_dir = "/tmp"
-            os.makedirs(log_dir, exist_ok=True)
-
-        if not fastapi_to_stdio:
-            fastapi_log_path = os.path.join(log_dir, "fastapi.log")
-        if not monitor_to_stdio:
-            monitor_log_path = os.path.join(log_dir, "monitor.log")
-        if not config_push_to_stdio:
-            config_push_log_path = os.path.join(log_dir, "config_push.log")
-
     fastapi_host = os.getenv("FASTAPI_HOST", "0.0.0.0")
     fastapi_port = os.getenv("FASTAPI_PORT", "8000")
     fastapi_reload = str(os.getenv("FASTAPI_RELOAD", "")).strip() in {"1", "true", "TRUE", "yes", "YES"}
@@ -108,6 +88,7 @@ def main() -> int:
         logger.warning("FASTAPI_RELOAD is enabled; forcing FASTAPI_WORKERS=1")
         fastapi_workers_int = 1
 
+    # Check port availability only once at startup
     if not _check_port_available(fastapi_host, fastapi_port_int):
         logger.error(f"FastAPI port is already in use: {fastapi_host}:{fastapi_port_int}")
         logger.error("Stop the existing process or set FASTAPI_PORT to another value.")
@@ -131,167 +112,209 @@ def main() -> int:
     monitor_cmd = [python_exe, os.path.join(project_root, "processes", "monitor_daemon.py")]
     config_push_cmd = [python_exe, os.path.join(project_root, "processes", "config_push_worker.py")]
 
-    logger.info(f"Starting FastAPI: {' '.join(fastapi_cmd)}")
-    logger.info(f"Starting Monitor daemon: {' '.join(monitor_cmd)}")
-    logger.info(f"Starting ConfigPush worker: {' '.join(config_push_cmd)}")
-    if fastapi_to_stdio and monitor_to_stdio and config_push_to_stdio:
-        logger.info("Child logs: stdout/stderr")
-    else:
-        if fastapi_log_path:
-            logger.info(f"FastAPI logs: {fastapi_log_path}")
-            fastapi_log_fp = open(fastapi_log_path, "a", encoding="utf-8", buffering=1)
-        if monitor_log_path:
-            logger.info(f"Monitor logs: {monitor_log_path}")
-            monitor_log_fp = open(monitor_log_path, "a", encoding="utf-8", buffering=1)
-        if config_push_log_path:
-            logger.info(f"ConfigPush logs: {config_push_log_path}")
-            config_push_log_fp = open(config_push_log_path, "a", encoding="utf-8", buffering=1)
-
-    try:
-        fastapi_stdout = subprocess.PIPE if (fastapi_to_stdio and stdio_prefix) else (None if fastapi_to_stdio else fastapi_log_fp)
-        fastapi_stderr = subprocess.PIPE if (fastapi_to_stdio and stdio_prefix) else (None if fastapi_to_stdio else fastapi_log_fp)
-        monitor_stdout = subprocess.PIPE if (monitor_to_stdio and stdio_prefix) else (None if monitor_to_stdio else monitor_log_fp)
-        monitor_stderr = subprocess.PIPE if (monitor_to_stdio and stdio_prefix) else (None if monitor_to_stdio else monitor_log_fp)
-        config_push_stdout = subprocess.PIPE if (config_push_to_stdio and stdio_prefix) else (None if config_push_to_stdio else config_push_log_fp)
-        config_push_stderr = subprocess.PIPE if (config_push_to_stdio and stdio_prefix) else (None if config_push_to_stdio else config_push_log_fp)
-
-        base_env = os.environ.copy()
-
-        fastapi_env = base_env.copy()
-        fastapi_env["SERVICE_NAME"] = "fastapi"
-        fastapi_env["LOG_BASENAME"] = "fastapi"
-
-        monitor_env = base_env.copy()
-        monitor_env["SERVICE_NAME"] = "monitor"
-        monitor_env["LOG_BASENAME"] = "monitor"
-
-        config_push_env = base_env.copy()
-        config_push_env["SERVICE_NAME"] = "config_push"
-        config_push_env["LOG_BASENAME"] = "config_push"
-
-        io_lock = threading.Lock()
-
-        def _forward_pipe(prefix: str, stream_name: str, pipe):
-            try:
-                while True:
-                    line = pipe.readline()
-                    if not line:
-                        break
-                    with io_lock:
-                        sys.stdout.write(f"[{prefix} {stream_name}] {line}")
-                        sys.stdout.flush()
-            except Exception:
-                return
-            finally:
-                try:
-                    pipe.close()
-                except Exception:
-                    pass
-
-        fastapi_proc = subprocess.Popen(
-            fastapi_cmd,
-            cwd=project_root,
-            env=fastapi_env,
-            stdout=fastapi_stdout,
-            stderr=fastapi_stderr,
-            text=fastapi_stdout == subprocess.PIPE or fastapi_stderr == subprocess.PIPE,
-            bufsize=1,
-        )
-
-        monitor_proc = subprocess.Popen(
-            monitor_cmd,
-            cwd=project_root,
-            env=monitor_env,
-            stdout=monitor_stdout,
-            stderr=monitor_stderr,
-            text=monitor_stdout == subprocess.PIPE or monitor_stderr == subprocess.PIPE,
-            bufsize=1,
-        )
-
-        config_push_proc = subprocess.Popen(
-            config_push_cmd,
-            cwd=project_root,
-            env=config_push_env,
-            stdout=config_push_stdout,
-            stderr=config_push_stderr,
-            text=config_push_stdout == subprocess.PIPE or config_push_stderr == subprocess.PIPE,
-            bufsize=1,
-        )
-
-        threads: list[threading.Thread] = []
-        if stdio_prefix:
-            if fastapi_proc.stdout is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("fastapi", "stdout", fastapi_proc.stdout), daemon=True))
-            if fastapi_proc.stderr is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("fastapi", "stderr", fastapi_proc.stderr), daemon=True))
-            if monitor_proc.stdout is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("monitor", "stdout", monitor_proc.stdout), daemon=True))
-            if monitor_proc.stderr is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("monitor", "stderr", monitor_proc.stderr), daemon=True))
-            if config_push_proc.stdout is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("config_push", "stdout", config_push_proc.stdout), daemon=True))
-            if config_push_proc.stderr is not None:
-                threads.append(threading.Thread(target=_forward_pipe, args=("config_push", "stderr", config_push_proc.stderr), daemon=True))
-
-        for t in threads:
-            t.start()
-    except Exception:
-        for fp in (fastapi_log_fp, monitor_log_fp, config_push_log_fp):
-            if fp is None:
-                continue
-            try:
-                fp.close()
-            except Exception:
-                pass
-        raise
-
     stopping = False
+    restart_requested = False
 
     def _handle_signal(signum, _frame=None):
-        nonlocal stopping
-        if stopping:
-            return
-        stopping = True
-        logger.info(f"Supervisor received signal {signum}, stopping children...")
-        _terminate_process(fastapi_proc)
-        _terminate_process(monitor_proc)
-        _terminate_process(config_push_proc)
+        nonlocal stopping, restart_requested
+        if signum == signal.SIGHUP:
+            logger.info("Supervisor received SIGHUP, scheduling restart...")
+            restart_requested = True
+        else:
+            if stopping:
+                return
+            stopping = True
+            logger.info(f"Supervisor received signal {signum}, stopping children...")
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
+    # On Windows, SIGHUP is not available.
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, _handle_signal)
 
-    exit_code = 0
-    while True:
-        fcode = fastapi_proc.poll()
-        mcode = monitor_proc.poll()
-        ccode = config_push_proc.poll()
-        if fcode is None and mcode is None and ccode is None:
-            time.sleep(0.5)
-            continue
+    while not stopping:
+        # Loop for restarts
+        if restart_requested:
+            restart_requested = False
+            # Wait a bit before restart to allow port release if needed (though we terminate processes)
+            time.sleep(1)
 
-        if not stopping:
-            logger.error(f"Child exited (fastapi={fcode}, monitor={mcode}, config_push={ccode}); stopping the other one...")
+        fastapi_log_fp = None
+        monitor_log_fp = None
+        config_push_log_fp = None
+        fastapi_log_path = ""
+        monitor_log_path = ""
+        config_push_log_path = ""
+
+        if not (fastapi_to_stdio and monitor_to_stdio and config_push_to_stdio):
+            log_dir = os.getenv("SUPERVISOR_LOG_DIR", "").strip() or os.getenv("LOG_DIR", "").strip() or "/tmp/bise-dev-logs"
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+            except Exception:
+                log_dir = "/tmp"
+                os.makedirs(log_dir, exist_ok=True)
+
+            if not fastapi_to_stdio:
+                fastapi_log_path = os.path.join(log_dir, "fastapi.log")
+            if not monitor_to_stdio:
+                monitor_log_path = os.path.join(log_dir, "monitor.log")
+            if not config_push_to_stdio:
+                config_push_log_path = os.path.join(log_dir, "config_push.log")
+
+        logger.info(f"Starting FastAPI: {' '.join(fastapi_cmd)}")
+        logger.info(f"Starting Monitor daemon: {' '.join(monitor_cmd)}")
+        logger.info(f"Starting ConfigPush worker: {' '.join(config_push_cmd)}")
+        
+        if fastapi_to_stdio and monitor_to_stdio and config_push_to_stdio:
+            logger.info("Child logs: stdout/stderr")
+        else:
+            if fastapi_log_path:
+                logger.info(f"FastAPI logs: {fastapi_log_path}")
+                fastapi_log_fp = open(fastapi_log_path, "a", encoding="utf-8", buffering=1)
+            if monitor_log_path:
+                logger.info(f"Monitor logs: {monitor_log_path}")
+                monitor_log_fp = open(monitor_log_path, "a", encoding="utf-8", buffering=1)
+            if config_push_log_path:
+                logger.info(f"ConfigPush logs: {config_push_log_path}")
+                config_push_log_fp = open(config_push_log_path, "a", encoding="utf-8", buffering=1)
+
+        fastapi_proc = None
+        monitor_proc = None
+        config_push_proc = None
+        
+        try:
+            fastapi_stdout = subprocess.PIPE if (fastapi_to_stdio and stdio_prefix) else (None if fastapi_to_stdio else fastapi_log_fp)
+            fastapi_stderr = subprocess.PIPE if (fastapi_to_stdio and stdio_prefix) else (None if fastapi_to_stdio else fastapi_log_fp)
+            monitor_stdout = subprocess.PIPE if (monitor_to_stdio and stdio_prefix) else (None if monitor_to_stdio else monitor_log_fp)
+            monitor_stderr = subprocess.PIPE if (monitor_to_stdio and stdio_prefix) else (None if monitor_to_stdio else monitor_log_fp)
+            config_push_stdout = subprocess.PIPE if (config_push_to_stdio and stdio_prefix) else (None if config_push_to_stdio else config_push_log_fp)
+            config_push_stderr = subprocess.PIPE if (config_push_to_stdio and stdio_prefix) else (None if config_push_to_stdio else config_push_log_fp)
+
+            base_env = os.environ.copy()
+
+            fastapi_env = base_env.copy()
+            fastapi_env["SERVICE_NAME"] = "fastapi"
+            fastapi_env["LOG_BASENAME"] = "fastapi"
+
+            monitor_env = base_env.copy()
+            monitor_env["SERVICE_NAME"] = "monitor"
+            monitor_env["LOG_BASENAME"] = "monitor"
+
+            config_push_env = base_env.copy()
+            config_push_env["SERVICE_NAME"] = "config_push"
+            config_push_env["LOG_BASENAME"] = "config_push"
+
+            io_lock = threading.Lock()
+
+            def _forward_pipe(prefix: str, stream_name: str, pipe):
+                try:
+                    while True:
+                        line = pipe.readline()
+                        if not line:
+                            break
+                        with io_lock:
+                            sys.stdout.write(f"[{prefix} {stream_name}] {line}")
+                            sys.stdout.flush()
+                except Exception:
+                    return
+                finally:
+                    try:
+                        pipe.close()
+                    except Exception:
+                        pass
+
+            fastapi_proc = subprocess.Popen(
+                fastapi_cmd,
+                cwd=project_root,
+                env=fastapi_env,
+                stdout=fastapi_stdout,
+                stderr=fastapi_stderr,
+                text=fastapi_stdout == subprocess.PIPE or fastapi_stderr == subprocess.PIPE,
+                bufsize=1,
+            )
+
+            monitor_proc = subprocess.Popen(
+                monitor_cmd,
+                cwd=project_root,
+                env=monitor_env,
+                stdout=monitor_stdout,
+                stderr=monitor_stderr,
+                text=monitor_stdout == subprocess.PIPE or monitor_stderr == subprocess.PIPE,
+                bufsize=1,
+            )
+
+            config_push_proc = subprocess.Popen(
+                config_push_cmd,
+                cwd=project_root,
+                env=config_push_env,
+                stdout=config_push_stdout,
+                stderr=config_push_stderr,
+                text=config_push_stdout == subprocess.PIPE or config_push_stderr == subprocess.PIPE,
+                bufsize=1,
+            )
+
+            threads: list[threading.Thread] = []
+            if stdio_prefix:
+                if fastapi_proc.stdout is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("fastapi", "stdout", fastapi_proc.stdout), daemon=True))
+                if fastapi_proc.stderr is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("fastapi", "stderr", fastapi_proc.stderr), daemon=True))
+                if monitor_proc.stdout is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("monitor", "stdout", monitor_proc.stdout), daemon=True))
+                if monitor_proc.stderr is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("monitor", "stderr", monitor_proc.stderr), daemon=True))
+                if config_push_proc.stdout is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("config_push", "stdout", config_push_proc.stdout), daemon=True))
+                if config_push_proc.stderr is not None:
+                    threads.append(threading.Thread(target=_forward_pipe, args=("config_push", "stderr", config_push_proc.stderr), daemon=True))
+
+            for t in threads:
+                t.start()
+            
+            # Monitor loop
+            while not stopping and not restart_requested:
+                fcode = fastapi_proc.poll()
+                mcode = monitor_proc.poll()
+                ccode = config_push_proc.poll()
+                if fcode is None and mcode is None and ccode is None:
+                    time.sleep(0.5)
+                    continue
+
+                logger.error(f"Child exited (fastapi={fcode}, monitor={mcode}, config_push={ccode}); stopping the other one...")
+                # One child died, we stop everything and exit (unless restart logic changes to auto-restart)
+                # For now, if a child dies unexpectedly, we exit Supervisor (original behavior)
+                stopping = True 
+                break
+            
+            # Cleanup processes
+            if stopping or restart_requested:
+                 logger.info("Stopping children...")
+                 _terminate_process(fastapi_proc)
+                 _terminate_process(monitor_proc)
+                 _terminate_process(config_push_proc)
+
+        except Exception:
+            # If start failed
+            logger.exception("Error during process management")
+            stopping = True
             _terminate_process(fastapi_proc)
             _terminate_process(monitor_proc)
             _terminate_process(config_push_proc)
+        
+        finally:
+            for fp in (fastapi_log_fp, monitor_log_fp, config_push_log_fp):
+                if fp is None:
+                    continue
+                try:
+                    fp.close()
+                except Exception:
+                    pass
+        
+        if stopping:
+            break
+        # If restart_requested, the loop continues and restarts processes
 
-        if fcode is not None and fcode != 0:
-            exit_code = int(fcode)
-        elif mcode is not None and mcode != 0:
-            exit_code = int(mcode)
-        elif ccode is not None and ccode != 0:
-            exit_code = int(ccode)
-        break
-
-    for fp in (fastapi_log_fp, monitor_log_fp, config_push_log_fp):
-        if fp is None:
-            continue
-        try:
-            fp.close()
-        except Exception:
-            pass
-
-    return exit_code
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from datetime import datetime
 
 @dataclass
@@ -10,6 +10,5 @@ class User:
     password: str
     nickname: str
     is_approved: bool
-    permissions: Optional[List[str]] = None
     email: Optional[str] = None
     created_at: Optional[datetime] = None

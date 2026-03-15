@@ -2,7 +2,6 @@ import json
 from typing import Optional, Any
 
 from app.core.database import db
-from app.models.orm.audit import UserAdminAuditLog
 
 
 
@@ -116,6 +115,8 @@ class UserAdminAuditService:
         detail: Optional[Any] = None,
     ) -> None:
         try:
+            await UserAdminAuditService._ensure_table()
+
             actor_user_id = None
             actor_username = None
             if actor:
@@ -128,22 +129,37 @@ class UserAdminAuditService:
             payload = None
             if detail is not None:
                 try:
-                    # 确保 detail 是可序列化为 JSON 的
                     json.dumps(detail)
                     payload = detail
                 except Exception:
                     payload = {"raw": str(detail)}
 
-            await UserAdminAuditLog.create(
-                actor_user_id=actor_user_id,
-                actor_username=actor_username,
-                action=str(action or ""),
-                target_user_id=int(target_user_id) if target_user_id is not None else None,
-                target_type=str(target_type or "").strip() or None,
-                target_id=int(target_id) if target_id is not None else None,
-                target_label=str(target_label or "").strip() or None,
-                request_ip=str(request_ip or "").strip() or None,
-                detail=payload,
+            detail_json = json.dumps(payload, ensure_ascii=False) if payload is not None else None
+
+            await db.execute(
+                """
+                INSERT INTO user_admin_audit_log (
+                    actor_user_id,
+                    actor_username,
+                    action,
+                    target_user_id,
+                    target_type,
+                    target_id,
+                    target_label,
+                    request_ip,
+                    detail
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                """,
+                actor_user_id,
+                actor_username,
+                str(action or ""),
+                int(target_user_id) if target_user_id is not None else None,
+                str(target_type or "").strip() or None,
+                int(target_id) if target_id is not None else None,
+                str(target_label or "").strip() or None,
+                str(request_ip or "").strip() or None,
+                detail_json,
             )
         except Exception:
             return

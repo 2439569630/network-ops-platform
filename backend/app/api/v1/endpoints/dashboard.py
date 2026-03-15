@@ -338,10 +338,9 @@ async def websocket_dashboard_overview(websocket: WebSocket):
     if not user:
         return
 
-    if not user_is_super(user):
-        if not await user_has_permission(user, "sys:dashboard:view"):
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    if not await user_has_permission(user, "sys:dashboard:view"):
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     ws_lock = asyncio.Lock()
     force_refresh = asyncio.Event()

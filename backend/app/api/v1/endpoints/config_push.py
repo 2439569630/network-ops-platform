@@ -149,14 +149,13 @@ async def config_push_ws(websocket: WebSocket, job_id: int, token: str | None = 
         return
         
     # 权限检查
-    if not user_is_super(user):
-        if not await user_has_permission(user, "sys:config:push"):
-            try:
-                await websocket.send_text("系统: 权限不足\r\n")
-            except Exception:
-                pass
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    if not await user_has_permission(user, "sys:config:push"):
+        try:
+            await websocket.send_text("系统: 权限不足\r\n")
+        except Exception:
+            pass
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     # 1. 权限检查：确保用户有权查看此任务
     # 超级管理员可查看所有，普通用户只能查看自己创建的任务

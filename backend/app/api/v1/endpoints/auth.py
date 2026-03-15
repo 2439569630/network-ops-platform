@@ -31,7 +31,6 @@ from app.core.security import (
     get_user_permissions_cached, 
     decode_access_token, 
     decode_refresh_token, 
-    get_disabled_permission_codes_cached, 
     get_or_init_user_auth_version, 
     bump_user_auth_version, 
     set_user_auth_session_info, 
@@ -42,7 +41,6 @@ from app.core.system_config import SystemConfig
 from app.services.rbac_service import RbacService
 from app.services.notification_service import NotificationService
 from app.utils.notification_sender import send_email
-from app.utils.pg_json import jsonb_param
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -540,19 +538,6 @@ async def login(data: LoginForm, response: Response, request: Request):
     
     # 3.2 超级管理员判断
     is_super = user_is_super({"roles": user_roles})
-    
-    # 3.3 检查是否有登录权限 (sys:auth:login)
-    # 如果系统配置禁用了登录功能，且用户不是超级管理员，则拒绝登录
-    if not is_super:
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-            if "sys:auth:login" in {str(c) for c in (disabled or [])}:
-                return JSONResponse(
-                    status_code=403,
-                    content={"code": 403, "message": "登录权限已关闭", "status": "error"},
-                )
-        except Exception:
-            pass
 
     # 3.4 获取权限版本和认证版本
     perm_ver = await _get_or_init_perm_ver(user["id"])
@@ -1001,7 +986,6 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
 
     # 5. 权限检查 (是否允许登录)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    # user_permissions = _normalize_permissions(user.get("permissions"))
     user_permissions = []
     user_roles: list[str] = []
     try:
@@ -1013,18 +997,6 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = Cooki
         pass
 
     is_super = user_is_super({"roles": user_roles})
-    if not is_super:
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-            if "sys:auth:login" in {str(c) for c in (disabled or [])}:
-                response.delete_cookie(key="token")
-                response.delete_cookie(key="refresh_token")
-                return JSONResponse(
-                    status_code=403,
-                    content={"code": 403, "message": "登录权限已关闭", "status": "error"},
-                )
-        except Exception:
-            pass
 
     # 6. 生成新 Token (Token 轮换)
     perm_ver = await _get_or_init_perm_ver(user["id"])
@@ -1112,15 +1084,6 @@ async def register(data: RegisterForm):
     会赋予默认角色。
     """
     # 1. 检查注册权限
-    try:
-        disabled = await get_disabled_permission_codes_cached()
-        if "sys:auth:register" in {str(c) for c in (disabled or [])}:
-            return JSONResponse(
-                status_code=403,
-                content={"code": 403, "status": "error", "message": "注册权限已关闭"},
-            )
-    except Exception:
-        pass
     
     username = (data.username or "").strip()
     password = str(data.password or "")
@@ -1141,21 +1104,19 @@ async def register(data: RegisterForm):
     nickname = (data.nickname or "").strip() or username
     email = (data.email or "").strip() or None
     hashed_pw = get_password_hash(password)
-    perms_json = jsonb_param(["sys:monitor:view"]) # 赋予基础默认权限
 
     # 3. 创建用户记录
     # is_approved 默认为 false，需要管理员审核
     user_id = await db.fetch_val(
         """
-        INSERT INTO users (username, password, nickname, email, is_approved, permissions)
-        VALUES ($1, $2, $3, $4, false, $5::jsonb)
+        INSERT INTO users (username, password, nickname, email, is_approved)
+        VALUES ($1, $2, $3, $4, false)
         RETURNING id
         """,
         username,
         hashed_pw,
         nickname,
         email,
-        perms_json,
     )
 
     # 4. 赋予默认角色
@@ -1205,14 +1166,12 @@ async def register(data: RegisterForm):
 
 @router.get("/permissions")
 async def get_my_permissions(token_payload: dict = Depends(verify_token)):
-    """获取当前用户的权限列表"""
     user_id = token_payload.get("id")
     if user_id is None:
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "未登录", "status": "error"},
         )
-    # 使用缓存获取用户权限，减少数据库查询
     perms = await get_user_permissions_cached(int(user_id), perm_ver=token_payload.get("perm_ver"))
     return {"code": 200, "status": "success", "data": {"perm_ver": token_payload.get("perm_ver"), "permissions": perms}}
 

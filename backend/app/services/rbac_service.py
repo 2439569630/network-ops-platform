@@ -1,5 +1,8 @@
 
 from typing import List, Optional, Dict, Any
+import logging
+import json
+from app.core.config import settings
 from app.core.database import db
 from app.core.redis import redis_manager
 
@@ -8,12 +11,16 @@ from app.models.orm.rbac import Role, Permission, UserRole, RolePermission
 from app.models.orm.user import User
 from tortoise.expressions import Q
 
+logger = logging.getLogger(__name__)
+
 class RbacService:
     """
     基于角色的访问控制(RBAC)服务类
     提供权限管理、角色管理以及用户权限验证等功能
     """
     PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
+    DISABLED_PERMISSIONS_CONFIG_KEY = "rbac:disabled_permissions"
+    DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
         "sys:location:add": ["sys:location:view"],
@@ -47,9 +54,6 @@ class RbacService:
 
     # 系统预定义权限列表
     SYSTEM_PERMISSIONS: List[Dict[str, str]] = [
-        {"name": "登录", "code": "sys:auth:login", "description": "允许用户登录系统"},
-        {"name": "注册", "code": "sys:auth:register", "description": "允许用户注册新账号"},
-        {"name": "邮箱验证", "code": "sys:email:verify", "description": "允许用户进行邮箱验证"},
         {"name": "系统概览", "code": "sys:dashboard:view", "description": "允许查看仪表盘概览信息"},
         {"name": "查看监控", "code": "sys:monitor:view", "description": "允许查看系统监控数据"},
         {"name": "消息中心", "code": "sys:message:access", "description": "允许访问消息中心"},
@@ -95,6 +99,11 @@ class RbacService:
         {"name": "编辑工单图片", "code": "sys:repair:image:edit", "description": "允许修改工单图片关联或元信息"},
         {"name": "删除工单图片", "code": "sys:repair:image:del", "description": "允许删除工单图片"},
     ]
+    REMOVED_PERMISSION_CODES = {
+        "sys:auth:login",
+        "sys:auth:register",
+        "sys:email:verify",
+    }
 
     @staticmethod
     def expand_permission_codes(codes: List[str]) -> List[str]:
@@ -163,6 +172,8 @@ class RbacService:
         if include_custom:
             for p in db_perms:
                 code = str(p.code or "")
+                if code in RbacService.REMOVED_PERMISSION_CODES:
+                    continue
                 if code and code not in system_codes:
                     directory.append({
                         "id": p.id,
@@ -203,6 +214,8 @@ class RbacService:
     async def restore_system_permission(code: Optional[str]) -> bool:
         c = str(code or "").strip()
         if not c:
+            return False
+        if c in RbacService.REMOVED_PERMISSION_CODES:
             return False
         default = next((p for p in RbacService.SYSTEM_PERMISSIONS if str(p.get("code") or "").strip() == c), None)
         if not default:
@@ -448,10 +461,12 @@ class RbacService:
     @staticmethod
     async def list_permissions() -> List[dict]:
         perms = await Permission.all().order_by("id")
-        return [dict(p) for p in perms]
+        return [dict(p) for p in perms if str(getattr(p, "code", "") or "") not in RbacService.REMOVED_PERMISSION_CODES]
 
     @staticmethod
     async def create_permission(name: str, code: str, description: Optional[str]) -> int:
+        if str(code or "").strip() in RbacService.REMOVED_PERMISSION_CODES:
+            raise ValueError("该权限码已被系统移除，不允许创建")
         p = await Permission.create(name=name, code=code, description=description)
         return p.id
 
@@ -460,6 +475,8 @@ class RbacService:
         p = await Permission.filter(id=permission_id).first()
         if not p:
             return
+        if "code" in data and str(data.get("code") or "").strip() in RbacService.REMOVED_PERMISSION_CODES:
+            raise ValueError("该权限码已被系统移除，不允许使用")
         
         if "name" in data:
             p.name = data["name"]
@@ -553,7 +570,7 @@ class RbacService:
     @staticmethod
     async def get_all_permission_codes() -> List[str]:
         perms = await Permission.all()
-        return [p.code for p in perms if p.code]
+        return [p.code for p in perms if p.code and str(p.code) not in RbacService.REMOVED_PERMISSION_CODES]
 
     @staticmethod
     async def bump_user_perm_version(user_id: int) -> int:
@@ -591,3 +608,211 @@ class RbacService:
         if not perm:
             return
         await RolePermission.get_or_create(role_id=role.id, permission_id=perm.id)
+
+    @staticmethod
+    def _user_version_key_ttl_seconds() -> int:
+        token_ttl = int(getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60) or 60) * 60
+        return max(int(token_ttl * 2), 60 * 60 * 24 * 30)
+
+    @staticmethod
+    def _normalize_role_codes(value) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            out: List[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                if isinstance(item, dict):
+                    code = item.get("code")
+                    if code is None:
+                        continue
+                    out.append(str(code))
+                else:
+                    out.append(str(item))
+            return out
+        if isinstance(value, str):
+            s = value.strip()
+            return [s] if s else []
+        return []
+
+    @staticmethod
+    def _normalize_permission_codes(value) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            out: List[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                s = str(item).strip()
+                if s:
+                    out.append(s)
+            return out
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return []
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return RbacService._normalize_permission_codes(parsed)
+            except Exception:
+                return []
+            return []
+        return []
+
+    @staticmethod
+    async def _get_or_init_user_perm_version(user_id: int) -> int:
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return 1
+        key = f"authz:ver:user:{int(user_id)}"
+        try:
+            raw = await redis_client.get(key)
+        except Exception:
+            return 1
+        if raw is None:
+            try:
+                await redis_client.set(key, "1", ex=RbacService._user_version_key_ttl_seconds())
+            except Exception:
+                return 1
+            return 1
+        try:
+            v = int(raw)
+            if v > 0:
+                try:
+                    await redis_client.expire(key, RbacService._user_version_key_ttl_seconds())
+                except Exception:
+                    pass
+                return v
+        except Exception:
+            pass
+        try:
+            await redis_client.set(key, "1", ex=RbacService._user_version_key_ttl_seconds())
+        except Exception:
+            return 1
+        return 1
+
+    @staticmethod
+    async def get_disabled_permission_codes_cached() -> List[str]:
+        redis_client = redis_manager.get_client()
+        cached = None
+        try:
+            cached = await redis_client.get(RbacService.DISABLED_PERMISSIONS_REDIS_KEY)
+        except Exception:
+            cached = None
+        if cached:
+            try:
+                parsed = json.loads(cached)
+                codes = RbacService._normalize_permission_codes(parsed)
+                return sorted(list(set(codes)))
+            except Exception:
+                pass
+
+        row = await db.fetch_one(
+            "SELECT value FROM system_settings WHERE key = $1",
+            RbacService.DISABLED_PERMISSIONS_CONFIG_KEY,
+        )
+        codes = RbacService._normalize_permission_codes(row.get("value") if row else None)
+        codes = sorted(list(set(codes)))
+        try:
+            await redis_client.set(RbacService.DISABLED_PERMISSIONS_REDIS_KEY, json.dumps(codes), ex=60)
+        except Exception:
+            pass
+        return codes
+
+    @staticmethod
+    async def apply_disabled_permissions(perms: List[str]) -> List[str]:
+        disabled = await RbacService.get_disabled_permission_codes_cached()
+        if not disabled:
+            return perms
+        disabled_set = {str(c) for c in disabled}
+        return [str(p) for p in (perms or []) if str(p) not in disabled_set]
+
+    @staticmethod
+    async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> List[str]:
+        uid = int(user_id)
+        ver = perm_ver
+        if ver is None:
+            ver = await RbacService._get_or_init_user_perm_version(uid)
+        try:
+            ver = int(ver)
+            if ver <= 0:
+                ver = await RbacService._get_or_init_user_perm_version(uid)
+        except Exception:
+            ver = await RbacService._get_or_init_user_perm_version(uid)
+
+        redis_client = None
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            redis_client = None
+
+        cache_key = f"authz:perms:user:{uid}:v{int(ver)}"
+        if redis_client is not None:
+            try:
+                cached = await redis_client.get(cache_key)
+            except Exception:
+                cached = None
+            if cached:
+                try:
+                    parsed = json.loads(cached)
+                    if isinstance(parsed, list):
+                        perms = [str(x) for x in parsed if x is not None]
+                        return await RbacService.apply_disabled_permissions(perms)
+                except Exception:
+                    cached = None
+
+        role_perms = await RbacService.get_user_permission_codes(uid)
+        merged = sorted(list({str(p) for p in role_perms if str(p).strip()}))
+        merged = RbacService.expand_permission_codes(merged)
+
+        if redis_client is not None:
+            try:
+                await redis_client.set(cache_key, json.dumps(merged), ex=3600)
+            except Exception:
+                pass
+        return await RbacService.apply_disabled_permissions(merged)
+
+    @staticmethod
+    def is_super_user(user: dict) -> bool:
+        if user.get("is_super") is True:
+            return True
+        roles = {str(c).strip().lower() for c in RbacService._normalize_role_codes(user.get("roles")) if str(c).strip()}
+        if roles & RbacService.PROTECTED_ROLE_CODES:
+            return True
+        return False
+
+    @staticmethod
+    async def check_permission(user: dict, permission_code: str) -> bool:
+        """
+        Check if user has permission.
+        Must verify:
+        1. User has permission (or is super admin)
+        2. Permission is globally enabled
+        If permission.enabled == false, reject access.
+        """
+        if not user:
+            return False
+
+        # Check global enabled status explicitly
+        # Note: get_user_permissions_cached calls apply_disabled_permissions internally,
+        # so if a permission is disabled, it won't be in the user's permission list.
+        # But we should be explicit if needed.
+        # However, checking if it is disabled first is good practice.
+        disabled_codes = await RbacService.get_disabled_permission_codes_cached()
+        if permission_code in disabled_codes:
+            # Explicit rejection if disabled globally
+            return False
+
+        if RbacService.is_super_user(user):
+            return True
+
+        user_id = user.get("id")
+        if user_id is None:
+            return False
+
+        perms = await RbacService.get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
+        return str(permission_code) in {str(p) for p in (perms or [])}

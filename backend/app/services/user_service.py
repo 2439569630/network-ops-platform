@@ -1,4 +1,5 @@
 import json
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile, File, Query
 from typing import List, Optional
 from datetime import datetime, timezone
 import hashlib
@@ -17,7 +18,7 @@ from app.core.security import bump_user_auth_version
 from app.models.orm.user import User
 from app.models.orm.device import NetworkDevice
 from app.models.orm.repair import RepairOrder
-from app.models.orm.rbac import Role, UserRole, Permission
+from app.models.orm.rbac import Role, UserRole
 from tortoise.functions import Count
 from tortoise.expressions import Q
 
@@ -46,7 +47,6 @@ class UserService:
 
                 "created_at": u.created_at
             }
-            # Permissions is already JSONField, so it's a list or dict
             result.append(u_dict)
         return result
 
@@ -121,19 +121,11 @@ class UserService:
         return roles
 
     @staticmethod
-    async def _get_user_permissions(user_id: int) -> list[str]:
-        permissions = await Permission.filter(
-            role_permissions__role__user_roles__user_id=user_id
-        ).distinct().values_list("code", flat=True)
-        return permissions
-
-    @staticmethod
     async def admin_get_user_detail(user_id: int) -> Optional[dict]:
         user = await User.filter(id=int(user_id)).first()
         if not user:
             return None
         roles = await UserService._get_user_roles(int(user_id))
-        permissions = await UserService._get_user_permissions(int(user_id))
         return {
             "id": user.id,
             "username": user.username,
@@ -145,7 +137,6 @@ class UserService:
             "is_deleted": getattr(user, "is_deleted", False),
             "deleted_at": getattr(user, "deleted_at", None),
             "deleted_by_id": getattr(user, "deleted_by_id", None),
-            "permissions": permissions,
             "roles": roles,
             "created_at": user.created_at,
             "updated_at": user.updated_at,
@@ -262,7 +253,6 @@ class UserService:
     async def get_user_by_id(user_id: int) -> Optional[dict]:
         user = await User.filter(id=user_id).first()
         if user:
-            permissions = await UserService._get_user_permissions(int(user_id))
             return {
                 "id": user.id,
                 "username": user.username,
@@ -270,7 +260,6 @@ class UserService:
                 "email": user.email,
                 "avatar_url": getattr(user, "avatar_url", None),
                 "is_approved": user.is_approved,
-                "permissions": permissions,
                 "created_at": user.created_at
             }
         return None
@@ -321,6 +310,42 @@ class UserService:
         并触发权限版本更新
         """
         pass
+
+    @staticmethod
+    async def user_is_superadmin(user_id: int) -> bool:
+        """
+        判断用户是否是超级管理员
+        通过 UserRole -> Role.code="superadmin" 判断
+        """
+        from app.models.orm.rbac import UserRole
+        return await UserRole.filter(
+            user_id=user_id,
+            role__code="superadmin"
+        ).exists()
+
+    @staticmethod
+    async def _require_actor_superadmin_when_assigning_protected_roles(role_ids: List[int], current_user: dict):
+        """
+        分配受保护角色时的安全检查
+        如果 role_ids 包含 superadmin 角色，且 current_user 不是 superadmin，则抛出 403
+        """
+        if not role_ids:
+            return
+
+        from app.models.orm.rbac import Role
+
+        # 查询 Role.code="superadmin"
+        super_role = await Role.filter(code="superadmin").first()
+        if not super_role:
+            return
+
+        # 如果 role_ids 包含该角色
+        if super_role.id in role_ids:
+            # 且 current_user 不是 superadmin
+            user_id = int(current_user.get("id"))
+            is_super = await UserService.user_is_superadmin(user_id)
+            if not is_super:
+                raise HTTPException(status_code=403, detail="Privilege Escalation: Only superadmin can assign superadmin role")
 
     @staticmethod
     async def update_user_roles(user_id: int, role_ids: List[int]):

@@ -7,6 +7,8 @@ from app.models.orm.audit import UserAdminAuditLog
 from pydantic import BaseModel
 from typing import Optional
 import logging
+import os
+import signal
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -217,6 +219,30 @@ async def update_config(
     except Exception:
         logger.exception("update_config failed: key=%s", str(getattr(data, "key", "")))
         return {"code": 500, "message": "更新失败"}
+
+
+@router.post("/restart", response_model=dict)
+async def restart_system(
+    user: dict = Depends(PermissionChecker(["sys:server:restart"])),
+):
+    """
+    重启系统服务
+    
+    向 Supervisor 发送 SIGHUP 信号，触发所有子进程重启。
+    只有超级管理员或拥有 sys:server:restart 权限的用户可以执行。
+    """
+    try:
+        # 获取父进程 ID (supervisor)
+        ppid = os.getppid()
+        # 发送 SIGHUP 信号
+        if hasattr(signal, "SIGHUP"):
+            os.kill(ppid, signal.SIGHUP)
+            return {"code": 200, "message": "系统重启指令已发送"}
+        else:
+            return {"code": 400, "message": "当前系统不支持 SIGHUP 重启"}
+    except Exception:
+        logger.exception("Failed to send restart signal")
+        return {"code": 500, "message": "重启失败"}
 
 
 @router.get("/audit/user-admin", response_model=dict)

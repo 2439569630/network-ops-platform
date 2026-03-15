@@ -55,40 +55,12 @@ def _normalize_permission_codes(value) -> list[str]:
 
 async def get_disabled_permission_codes_cached() -> list[str]:
     """获取缓存的禁用权限代码列表"""
-    redis_client = redis_manager.get_client()
-    cached = None
-    try:
-        cached = await redis_client.get(DISABLED_PERMISSIONS_REDIS_KEY)
-    except Exception:
-        cached = None
-    if cached:
-        try:
-            parsed = json.loads(cached)
-            codes = _normalize_permission_codes(parsed)
-            return sorted(list(set(codes)))
-        except Exception:
-            pass
-
-    row = await db.fetch_one(
-        "SELECT value FROM system_settings WHERE key = $1",
-        DISABLED_PERMISSIONS_CONFIG_KEY,
-    )
-    codes = _normalize_permission_codes(row.get("value") if row else None)
-    codes = sorted(list(set(codes)))
-    try:
-        await redis_client.set(DISABLED_PERMISSIONS_REDIS_KEY, json.dumps(codes), ex=60)
-    except Exception:
-        pass
-    return codes
+    return await RbacService.get_disabled_permission_codes_cached()
 
 
 async def apply_disabled_permissions(perms: list[str]) -> list[str]:
     """过滤被禁用的权限"""
-    disabled = await get_disabled_permission_codes_cached()
-    if not disabled:
-        return perms
-    disabled_set = {str(c) for c in disabled}
-    return [str(p) for p in (perms or []) if str(p) not in disabled_set]
+    return await RbacService.apply_disabled_permissions(perms)
 
 class UnicornException(Exception):
     """统一异常类"""
@@ -194,12 +166,7 @@ def user_has_role(user: dict, role_code: str) -> bool:
 
 def user_is_super(user: dict) -> bool:
     """检查用户是否为超级管理员"""
-    if user.get("is_super") is True:
-        return True
-    roles = {str(c).strip().lower() for c in _normalize_role_codes(user.get("roles")) if str(c).strip()}
-    if roles & {"superadmin", "super_admin", "super-admin"}:
-        return True
-    return False
+    return RbacService.is_super_user(user)
 
 def _decode_token(token: str, *, secret: str) -> Optional[dict]:
     try:
@@ -249,36 +216,7 @@ def _normalize_permissions(value) -> list[str]:
 
 async def _get_or_init_user_perm_version(user_id: int) -> int:
     """获取或初始化用户权限版本号"""
-    try:
-        redis_client = redis_manager.get_client()
-    except Exception:
-        return 1
-    key = f"authz:ver:user:{int(user_id)}"
-    try:
-        raw = await redis_client.get(key)
-    except Exception:
-        return 1
-    if raw is None:
-        try:
-            await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
-        except Exception:
-            return 1
-        return 1
-    try:
-        v = int(raw)
-        if v > 0:
-            try:
-                await redis_client.expire(key, _user_version_key_ttl_seconds())
-            except Exception:
-                pass
-            return v
-    except Exception:
-        pass
-    try:
-        await redis_client.set(key, "1", ex=_user_version_key_ttl_seconds())
-    except Exception:
-        return 1
-    return 1
+    return await RbacService._get_or_init_user_perm_version(user_id)
 
 async def get_or_init_user_auth_version(user_id: int) -> int:
     """获取或初始化用户认证版本号"""
@@ -376,78 +314,13 @@ async def get_user_auth_session_info(user_id: int) -> Optional[dict]:
 async def get_user_permissions_cached(user_id: int, perm_ver: Optional[int] = None) -> list[str]:
     """
     获取用户权限列表（带缓存）
-    
-    采用多级缓存策略：
-    1. 内存/Redis 缓存 (短期)
-    2. 数据库查询 (长期)
-    
-    同时引入版本号控制 (perm_ver)，当用户权限变更时版本号增加，
-    强制后续请求重新加载权限，实现权限变更的即时生效。
     """
-    uid = int(user_id)
-    # 1. 获取权限版本号
-    # 如果未提供或版本号无效，强制从 Redis 获取最新版本
-    ver = perm_ver
-    if ver is None:
-        ver = await _get_or_init_user_perm_version(uid)
-    try:
-        ver = int(ver)
-        if ver <= 0:
-            ver = await _get_or_init_user_perm_version(uid)
-    except Exception:
-        ver = await _get_or_init_user_perm_version(uid)
-
-    redis_client = None
-    try:
-        redis_client = redis_manager.get_client()
-    except Exception:
-        redis_client = None
-
-    # 2. 尝试从 Redis 缓存获取
-    # Key 格式包含版本号，版本变更后 Key 自动失效
-    cache_key = f"authz:perms:user:{uid}:v{int(ver)}"
-    if redis_client is not None:
-        try:
-            cached = await redis_client.get(cache_key)
-        except Exception:
-            cached = None
-        if cached:
-            try:
-                parsed = json.loads(cached)
-                if isinstance(parsed, list):
-                    perms = [str(x) for x in parsed if x is not None]
-                    return await apply_disabled_permissions(perms)
-            except Exception:
-                cached = None
-
-    # 3. 缓存未命中，从数据库加载
-    # 3.1 获取用户角色包含的权限
-    role_perms = await RbacService.get_user_permission_codes(uid)
-
-    # 3.2 合并并去重
-    merged = sorted(list({str(p) for p in role_perms if str(p).strip()}))
-    
-    # 3.4 展开通配符权限 (如 'sys:user:*' -> 'sys:user:view', 'sys:user:edit')
-    merged = RbacService.expand_permission_codes(merged)
-
-    # 4. 写入缓存
-    if redis_client is not None:
-        try:
-            await redis_client.set(cache_key, json.dumps(merged), ex=3600)
-        except Exception:
-            pass
-    return await apply_disabled_permissions(merged)
+    return await RbacService.get_user_permissions_cached(user_id, perm_ver)
 
 
 async def user_has_permission(user: dict, perm: str) -> bool:
     """检查用户是否拥有指定权限"""
-    if user_is_super(user):
-        return True
-    user_id = user.get("id")
-    if user_id is None:
-        return False
-    perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
-    return str(perm) in {str(p) for p in (perms or [])}
+    return await RbacService.check_permission(user, perm)
 
 
 async def verify_token(token: Optional[str] = Cookie(None)):
@@ -607,22 +480,22 @@ class PermissionChecker:
         self.require_all = bool(require_all)
 
     async def __call__(self, user: dict = Depends(verify_token)):
-        if user_is_super(user):
-            return user
-
-        user_id = user.get("id")
-        if user_id is None:
-            raise UnicornException(401, "未登录", error_code="AUTH_NOT_LOGGED_IN")
-        perms = await get_user_permissions_cached(int(user_id), perm_ver=user.get("perm_ver"))
-        perms_set = {str(p) for p in (perms or [])}
-
         required = [str(p) for p in self.required_permissions if str(p).strip()]
         if not required:
             return user
 
-        allowed = all(p in perms_set for p in required) if self.require_all else any(p in perms_set for p in required)
-        if not allowed:
-            raise UnicornException(403, "权限不足")
+        if self.require_all:
+            for p in required:
+                if not await RbacService.check_permission(user, p):
+                    raise UnicornException(403, "权限不足")
+        else:
+            has_any = False
+            for p in required:
+                if await RbacService.check_permission(user, p):
+                    has_any = True
+                    break
+            if not has_any:
+                raise UnicornException(403, "权限不足")
         return user
 
 allow_admin = RoleChecker(["admin"])

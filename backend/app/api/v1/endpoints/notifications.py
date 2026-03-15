@@ -389,10 +389,9 @@ async def websocket_system_alerts(websocket: WebSocket):
     user = await verify_token_ws(websocket, token)
     if not user:
         return
-    if not user_is_super(user):
-        if not await user_has_permission(user, "sys:notify:history"):
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    if not await user_has_permission(user, "sys:notify:history"):
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     try:
         redis_client = redis_manager.get_pubsub_client()

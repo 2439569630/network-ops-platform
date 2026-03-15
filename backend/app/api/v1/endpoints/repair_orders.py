@@ -125,7 +125,7 @@ async def get_order(
         uid = current_user.get("id")
         
         # Check permissions
-        can_view_all = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:manage") or await user_has_permission(current_user, "sys:repair:list_all")
+        can_view_all = await user_has_permission(current_user, "sys:repair:manage") or await user_has_permission(current_user, "sys:repair:list_all")
         can_view_assigned = await user_has_permission(current_user, "sys:repair:accept") or user_has_role(current_user, "yunwei")
 
         # 1. Submitter always has access
@@ -165,7 +165,7 @@ async def update_order_info(
         if uid is None:
             return {"code": 401, "message": "未登录"}
 
-        is_admin = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:manage")
+        is_admin = await user_has_permission(current_user, "sys:repair:manage")
         if not is_admin:
             if order.get("submitter_id") != uid:
                 return {"code": 403, "message": "无权编辑此工单"}
@@ -332,8 +332,7 @@ async def add_work_log(
             return {"code": 404, "message": "工单不存在"}
             
         # Only assignee can add logs, or admin
-        is_super = user_is_super(current_user)
-        can_manage = is_super or await user_has_permission(current_user, "sys:repair:manage")
+        can_manage = await user_has_permission(current_user, "sys:repair:manage")
         is_assignee = order.get("assignee_id") == current_user["id"]
         
         if not (can_manage or is_assignee):
@@ -374,8 +373,7 @@ async def complete_order(
         return {"code": 400, "message": "仅处理中工单可完成"}
         
     # 2. 权限检查
-    is_super = user_is_super(current_user)
-    can_manage = is_super or await user_has_permission(current_user, "sys:repair:manage")
+    can_manage = await user_has_permission(current_user, "sys:repair:manage")
     if not can_manage:
         if order.get("assignee_id") != current_user.get("id"):
             return {"code": 403, "message": "只能完成指派给自己的工单"}
@@ -423,7 +421,7 @@ async def cancel_order(
         return {"code": 400, "message": "工单已结束，无法取消"}
         
     uid = current_user.get("id")
-    can_manage = user_is_super(current_user) or await user_has_permission(current_user, "sys:repair:manage")
+    can_manage = await user_has_permission(current_user, "sys:repair:manage")
     is_submitter = order.get("submitter_id") == uid
     if not can_manage:
         if not is_submitter:

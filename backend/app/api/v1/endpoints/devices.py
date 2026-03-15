@@ -604,13 +604,12 @@ async def websocket_device_detail(websocket: WebSocket, device_id: int):
         return
         
     # 权限检查
-    if not user_is_super(user):
-        allowed = await user_has_permission(user, "sys:device:list")
-        if not allowed:
-            allowed = await user_has_permission(user, "sys:dashboard:view")
-        if not allowed:
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    allowed = await user_has_permission(user, "sys:device:list")
+    if not allowed:
+        allowed = await user_has_permission(user, "sys:dashboard:view")
+    if not allowed:
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     monitor = MonitorManager()
     # 1. 订阅内存队列 (处理本机产生的监控数据)
@@ -696,10 +695,9 @@ async def websocket_device_list(websocket: WebSocket):
     if not user:
         logger.warning("WebSocket authentication failed")
         return
-    if not user_is_super(user):
-        if not await user_has_permission(user, "sys:device:list"):
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    if not await user_has_permission(user, "sys:device:list"):
+        await websocket.close(code=4003, reason="权限不足")
+        return
     logger.info(f"WebSocket authenticated for user: {user.get('id')}")
     
     # WebSocket 发送锁，防止并发写入冲突
@@ -827,21 +825,20 @@ async def websocket_device_resources(websocket: WebSocket, device_id: int):
         return
 
     # 权限检查
-    if not user_is_super(user):
-        allowed = False
-        for perm in (
-            "sys:device:list",
-            "sys:dashboard:view",
-            "sys:device:interface:view",
-            "sys:device:route:view",
-            "sys:device:vlan:view",
-        ):
-            if await user_has_permission(user, perm):
-                allowed = True
-                break
-        if not allowed:
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    allowed = False
+    for perm in (
+        "sys:device:list",
+        "sys:dashboard:view",
+        "sys:device:interface:view",
+        "sys:device:route:view",
+        "sys:device:vlan:view",
+    ):
+        if await user_has_permission(user, perm):
+            allowed = True
+            break
+    if not allowed:
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     did = int(device_id)
     guard_task = asyncio.create_task(_ws_auth_guard(websocket, user))
@@ -961,14 +958,13 @@ async def ssh_websocket(websocket: WebSocket, ip: str):
     guard_task = None
 
     # 1. 权限检查
-    if not user_is_super(user):
-        if not await user_has_permission(user, "sys:ssh:connect"):
-            try:
-                await websocket.send_text("系统: 权限不足\r\n")
-            except Exception:
-                pass
-            await websocket.close(code=4003, reason="权限不足")
-            return
+    if not await user_has_permission(user, "sys:ssh:connect"):
+        try:
+            await websocket.send_text("系统: 权限不足\r\n")
+        except Exception:
+            pass
+        await websocket.close(code=4003, reason="权限不足")
+        return
 
     # 2. 查找设备信息 (账号密码)
     row = None
