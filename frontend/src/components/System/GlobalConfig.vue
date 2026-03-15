@@ -119,6 +119,34 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane
+            v-if="hasPerm('sys:server:restart')"
+            label="系统维护"
+            name="maintenance"
+          >
+            <div class="group-panel">
+              <div class="group-header">
+                <div class="group-name">系统维护</div>
+                <div class="group-desc">系统级操作与维护</div>
+              </div>
+
+              <el-row :gutter="16">
+                <el-col :xs="24" :sm="24" :md="12" :lg="12">
+                  <div class="config-card">
+                    <div class="meta">
+                      <div class="label-row">
+                        <div class="label">重启服务</div>
+                      </div>
+                      <div class="key">重启所有后端子进程 (FastAPI, Monitor, Worker)</div>
+                    </div>
+                    <div class="control">
+                      <el-button type="danger" @click="handleRestart">立即重启</el-button>
+                    </div>
+                  </div>
+                </el-col>
+              </el-row>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </div>
     </el-card>
@@ -128,8 +156,18 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import axios from '@/axios/axios';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { CopyDocument } from '@element-plus/icons-vue';
+import { homeDataStore } from '@/components/home/home/data';
+
+const store = homeDataStore();
+const isSuper = computed(() => Boolean(store.isSuper));
+const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));
+
+const hasPerm = (perm) => {
+    if (isSuper.value) return true;
+    return permissions.value.includes(perm);
+};
 
 const loading = ref(false);
 const configs = ref([]);
@@ -163,7 +201,8 @@ const groupDescriptions = {
 const getGroupLabel = (group) => {
   const map = {
     notification: '消息渠道配置',
-    repair: '图片服务配置'
+    repair: '图片服务配置',
+    maintenance: '系统维护'
   };
   return map[group] || group;
 };
@@ -314,6 +353,27 @@ const handleTestEmail = async () => {
     ElMessage.error('发送失败: ' + (error.response?.data?.detail?.message || error.message));
   }
 };
+
+const handleRestart = async () => {
+  try {
+    await ElMessageBox.confirm('确定要重启所有后端子进程吗？此操作可能导致短暂的服务中断。', '系统重启', {
+      confirmButtonText: '确定重启',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    
+    const res = await axios.post('/api/v1/system/restart');
+    if (res.data.code === 200) {
+      ElMessage.success(res.data.message || '系统重启指令已发送');
+    } else {
+      ElMessage.error(res.data.message || '重启失败');
+    }
+  } catch (error) {
+    if (error === 'cancel') return;
+    ElMessage.error('重启失败: ' + (error.response?.data?.detail?.message || error.message));
+  }
+};
+
 </script>
 
 <style scoped>

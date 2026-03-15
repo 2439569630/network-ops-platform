@@ -198,7 +198,7 @@
                                 </el-tag>
                             </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="80" align="center" fixed="right">
+                    <el-table-column label="操作" width="150" align="center" fixed="right">
                         <template #default="{ row }">
                              <el-button 
                                 type="danger" 

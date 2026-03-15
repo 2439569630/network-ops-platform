@@ -86,7 +86,7 @@
                             <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
                                 <el-button text circle type="success" :icon="Connection" @click="connectSSH(item)" :disabled="!isSshEnabled(item)" />
                             </el-tooltip>
-                            <el-tooltip content="重载监控" placement="top" :show-after="500" v-if="canEdit">
+                            <el-tooltip content="重载设备" placement="top" :show-after="500" v-if="canEdit">
                                 <el-button text circle type="warning" :icon="Refresh" @click="handleReload(item)" />
                             </el-tooltip>
                             <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
@@ -152,7 +152,7 @@
                             </div>
                         </template>
                     </el-table-column>
-                    <el-table-column label="操作" width="150" fixed="right" align="center">
+                    <el-table-column label="操作" width="200" fixed="right" align="center">
                         <template #default="{ row }">
                             <div :class="$style.actionButtons">
                                 <el-tooltip content="查看详情" placement="top" :show-after="500">
@@ -160,9 +160,6 @@
                                 </el-tooltip>
                                 <el-tooltip content="SSH连接" placement="top" :show-after="500" v-if="canSsh">
                                     <el-button text circle type="success" :icon="Connection" size="small" @click="connectSSH(row)" :disabled="!isSshEnabled(row)" />
-                                </el-tooltip>
-                                <el-tooltip content="重载监控" placement="top" :show-after="500" v-if="canEdit">
-                                    <el-button text circle type="warning" :icon="Refresh" size="small" @click="handleReload(row)" />
                                 </el-tooltip>
                                 <el-tooltip content="删除设备" placement="top" :show-after="500" v-if="canDelete">
                                     <el-button text circle type="danger" :icon="Delete" size="small" @click="handleDelete(row)" />
