@@ -171,13 +171,6 @@
                             placeholder="例如: 00:1B:44:11:3A:B7" 
                         />
                     </el-form-item>
-                    <el-form-item label="位置" prop="location" class="form-item">
-                        <el-input 
-                            v-model="deviceForm.location" 
-                            placeholder="例如: 机房A-01柜" 
-                            :prefix-icon="Location"
-                        />
-                    </el-form-item>
                 </div>
                 
                 <el-form-item label="IPv6地址" prop="ipv6" class="full-width">
@@ -285,7 +278,6 @@ const deviceForm = reactive({
     ipv4: '',
     ipv6: '',
     mac: '',
-    location: '',
     ssh_port: 22,
     status: '在线'
 })

@@ -191,17 +191,19 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', checkMobile);
 });
 
-const ALLOWED_GROUPS = new Set(['notification', 'repair']);
+const ALLOWED_GROUPS = new Set(['notification', 'repair', 'security']);
 
 const groupDescriptions = {
   notification: '邮件通知渠道配置（不涉及设备监控参数）',
-  repair: '图片服务相关配置'
+  repair: '图片服务相关配置',
+  security: '系统安全相关配置'
 };
 
 const getGroupLabel = (group) => {
   const map = {
     notification: '消息渠道配置',
     repair: '图片服务配置',
+    security: '系统安全',
     maintenance: '系统维护'
   };
   return map[group] || group;

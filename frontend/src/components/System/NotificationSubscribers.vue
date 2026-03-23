@@ -3,7 +3,7 @@
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span class="title">预警通知订阅</span>
+          <span class="title">告警通知订阅</span>
           <el-button :icon="Refresh" circle @click="fetchData" />
         </div>
       </template>

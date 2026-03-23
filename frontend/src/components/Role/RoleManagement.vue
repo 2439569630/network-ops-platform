@@ -283,11 +283,13 @@
                         size="small"
                         link
                         :type="isGloballyDisabled(perm.code) ? 'success' : 'danger'"
+                        :disabled="isGlobalDisableLocked(perm.code)"
                         :loading="disabledSavingCode === String(perm.code || '').trim()"
                         @click.stop="toggleGlobalDisabledForPerm(perm.code)"
                       >
                         {{ isGloballyDisabled(perm.code) ? '启用' : '禁用' }}
                       </el-button>
+                      <el-tag v-if="isGlobalDisableLocked(perm.code)" size="small" type="warning">仅管理语义</el-tag>
                       <el-tag size="small" :type="perm.in_directory ? 'success' : 'info'">{{ perm.in_directory ? '系统' : '自定义' }}</el-tag>
                       <el-tag v-if="perm.exists === false" size="small" type="warning">未同步</el-tag>
                     </div>
@@ -332,10 +334,11 @@
                     <el-form-item label="全局禁用">
                       <el-switch
                         :model-value="isGloballyDisabled(currentPermForm.code)"
-                        :disabled="!currentPerm?.id"
+                        :disabled="!currentPerm?.id || isGlobalDisableLocked(currentPermForm.code)"
                         @change="(val) => setGlobalDisabledForPerm(currentPermForm.code, val)"
                       />
                     </el-form-item>
+                    <div v-if="isGlobalDisableLocked(currentPermForm.code)" class="perm-manage-only-tip">该权限仅用于管理授权，不参与运行时业务开关。</div>
                     <!-- <el-form-item label="类型">
                       <el-radio-group v-model="currentPermForm.type">
                         <el-radio label="menu">菜单</el-radio>
@@ -349,7 +352,7 @@
            </div>
            
            <div class="right-panel empty-state" v-else v-show="!isMobile">
-             <el-empty description="请选择或新建权限" />
+             <el-empty description="请选择权限" />
            </div>
         </div>
 
@@ -808,6 +811,14 @@ const isGloballyDisabled = (code) => {
   return disabledPermCodes.value.includes(c);
 };
 
+const NON_DISABLEABLE_PERM_CODES = new Set(['sys:notify:email']);
+
+const isGlobalDisableLocked = (code) => {
+  const c = String(code || '').trim();
+  if (!c) return false;
+  return NON_DISABLEABLE_PERM_CODES.has(c);
+};
+
 const setDisabledCodes = (codes) => {
   disabledPermCodes.value = (codes || [])
     .map(c => String(c || '').trim())
@@ -823,6 +834,10 @@ const updateDisabledOnServer = async (codes, loadingCode = '') => {
     const res = await axios.put('/api/v1/rbac/permissions/disabled', payload);
     if (res.data.code === 200) {
       setDisabledCodes(res.data.data?.codes || []);
+      const ignored = Array.isArray(res.data.data?.ignored_codes) ? res.data.data.ignored_codes : [];
+      if (ignored.length) {
+        ElMessage.warning(`以下权限仅保留管理语义，已忽略全局禁用：${ignored.join(', ')}`);
+      }
       ElMessage.success(res.data.message || '保存成功');
     } else {
       ElMessage.error(res.data.message || '保存失败');
@@ -837,6 +852,7 @@ const updateDisabledOnServer = async (codes, loadingCode = '') => {
 const toggleGlobalDisabledForPerm = async (code) => {
   const c = String(code || '').trim();
   if (!c) return;
+  if (isGlobalDisableLocked(c)) return;
   const set = new Set(disabledPermCodes.value || []);
   if (set.has(c)) set.delete(c);
   else set.add(c);
@@ -846,6 +862,7 @@ const toggleGlobalDisabledForPerm = async (code) => {
 const setGlobalDisabledForPerm = async (code, disabled) => {
   const c = String(code || '').trim();
   if (!c) return;
+  if (isGlobalDisableLocked(c)) return;
   const set = new Set(disabledPermCodes.value || []);
   if (disabled) set.add(c);
   else set.delete(c);
@@ -1765,6 +1782,13 @@ const handlePermDelete = async (perm) => {
 .perm-tree-item:hover .delete-btn,
 .perm-tree-item:hover .global-disable-btn {
   opacity: 1;
+}
+
+.perm-manage-only-tip {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-top: -4px;
+  margin-bottom: 12px;
 }
 
 /* Scrollbar */

@@ -387,6 +387,7 @@ const resetFilter = async () => {
 .header-title .title {
   font-size: 18px;
   font-weight: 600;
+  color: #111827;
 }
 .header-title .subtitle {
   font-size: 12px;

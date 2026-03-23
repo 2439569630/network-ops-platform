@@ -75,8 +75,8 @@ const homeRoutes = [
             {
                 path: 'audit',
                 name: 'audit',
-                component: () => import('@/components/System/UserAdminAudit.vue'),
-                meta: { title: '系统操作审计', perms: ['sys:audit:view'] }
+                component: () => import('@/components/System/AuditCenter.vue'),
+                meta: { title: '系统日志与审计中心', perms: ['sys:audit:view'] }
             },
             {
                 path: 'user-import',
@@ -118,7 +118,7 @@ const homeRoutes = [
                 path: 'notification-subscribers',
                 name: 'notification-subscribers',
                 component: () => import('@/components/System/NotificationSubscribers.vue'),
-                meta: { title: '预警通知订阅', perms: ['sys:alert:subscribe', 'sys:user:list'] }
+                meta: { title: '告警通知订阅', perms: ['sys:alert:subscribe', 'sys:user:list'] }
             },
             {
                 path: 'repair/apply',

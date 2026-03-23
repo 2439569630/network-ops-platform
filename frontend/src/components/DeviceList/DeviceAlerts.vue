@@ -3,7 +3,7 @@
     <el-card shadow="never" class="alert-card">
       <template #header>
         <div class="card-header">
-          <span class="title">预警规则</span>
+          <span class="title">告警规则</span>
           <div class="header-actions">
             <!-- <el-dropdown trigger="click" @command="applyTemplate">
               <el-button size="small">添加模板</el-button>
@@ -14,7 +14,7 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown> -->
-            <el-button size="small" @click="openSubscriptionDialog">订阅通知</el-button>
+            <el-button size="small" @click="openSubscriptionDialog">配置通知</el-button>
             <el-button type="primary" size="small" @click="openAddDialog">添加规则</el-button>
           </div>
         </div>
@@ -215,6 +215,8 @@
             <el-checkbox label="site">站内消息</el-checkbox>
             <el-checkbox label="email">邮箱</el-checkbox>
           </el-checkbox-group>
+          <div class="form-tip">站内通知已实现并默认可用</div>
+          <div class="form-tip">邮件通知需在系统配置中启用并完成邮件服务配置后生效</div>
         </el-form-item>
 
         <el-form-item label="告警级别">

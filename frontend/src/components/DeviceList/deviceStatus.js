@@ -124,3 +124,66 @@ export function isSshEnabled(device) {
   if (display === '待加载' || display === '初始化中' || display === '未知' || display === '无运行态') return false
   return true
 }
+
+function parseAgeSeconds(device) {
+  const n = Number(device && (device.age_seconds ?? device.ageSeconds ?? 0))
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return n
+}
+
+function parseLastUpdatedEpoch(device) {
+  const raw = device && (device.last_updated ?? device.lastUpdated ?? '')
+  const n = Number.parseFloat(String(raw || '').trim())
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n
+}
+
+function formatDateTime(epochSeconds) {
+  const d = new Date(epochSeconds * 1000)
+  if (Number.isNaN(d.getTime())) return '--'
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
+}
+
+export function getDataHealthText(device, nowEpochMs) {
+  void nowEpochMs
+  const connectivity = normalizeConnectivity(device)
+  const stale = !!(device && device.stale)
+  const fsm = normalizeFsmState(device)
+  if (connectivity !== 'online') return '不可用'
+  if (stale) return '已过期'
+  if (fsm === 'degraded') return '部分异常'
+  return '正常'
+}
+
+export function getDataHealthHint(device, nowEpochMs) {
+  void nowEpochMs
+  const connectivity = normalizeConnectivity(device)
+  const stale = !!(device && device.stale)
+  const fsm = normalizeFsmState(device)
+  const age = Math.round(parseAgeSeconds(device))
+  if (connectivity !== 'online') return '设备当前离线，CPU/MEM/DISK 指标暂不可用'
+  if (stale) return age > 0 ? `设备在线，但监控数据已过期（约 ${age} 秒未更新）` : '设备在线，但监控数据已过期'
+  if (fsm === 'degraded') return '设备在线但存在异常，监控数据可能出现波动'
+  return age > 0 ? `设备在线，监控数据正常（最近 ${age} 秒内更新）` : '设备在线，监控数据正常'
+}
+
+export function getLastUpdatedText(device) {
+  const ts = parseLastUpdatedEpoch(device)
+  if (!ts) return '--'
+  return formatDateTime(ts)
+}
+
+export function getLastUpdatedHint(device, nowEpochMs) {
+  void nowEpochMs
+  const age = Math.round(parseAgeSeconds(device))
+  const ts = parseLastUpdatedEpoch(device)
+  if (!ts) return '暂无有效更新时间'
+  if (age <= 0) return '更新时间已同步'
+  return `距今约 ${age} 秒`
+}

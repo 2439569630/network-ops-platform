@@ -32,18 +32,18 @@
             <div :class="$style.stats">
               <div :class="$style.statItem">
                 <div :class="$style.statLabel">CPU</div>
-                <div :class="$style.statValue">{{ formatPercent(detail.cpuUsage) }}</div>
-                <el-progress :percentage="clampPercent(detail.cpuUsage)" :show-text="false" :stroke-width="8" />
+                <div :class="$style.statValue">{{ formatMetricValue(detail.cpuUsage) }}</div>
+                <el-progress :percentage="progressValue(detail.cpuUsage)" :show-text="false" :stroke-width="8" />
               </div>
               <div :class="$style.statItem">
                 <div :class="$style.statLabel">内存</div>
-                <div :class="$style.statValue">{{ formatPercent(detail.memoryUsage) }}</div>
-                <el-progress :percentage="clampPercent(detail.memoryUsage)" :show-text="false" :stroke-width="8" />
+                <div :class="$style.statValue">{{ formatMetricValue(detail.memoryUsage) }}</div>
+                <el-progress :percentage="progressValue(detail.memoryUsage)" :show-text="false" :stroke-width="8" />
               </div>
               <div :class="$style.statItem">
                 <div :class="$style.statLabel">磁盘</div>
-                <div :class="$style.statValue">{{ formatPercent(detail.diskUsage) }}</div>
-                <el-progress :percentage="clampPercent(detail.diskUsage)" :show-text="false" :stroke-width="8" />
+                <div :class="$style.statValue">{{ formatMetricValue(detail.diskUsage) }}</div>
+                <el-progress :percentage="progressValue(detail.diskUsage)" :show-text="false" :stroke-width="8" />
               </div>
             </div>
 
@@ -51,6 +51,18 @@
               <div :class="$style.metaItem">
                 <span :class="$style.metaLabel">运行时长</span>
                 <span :class="$style.metaValue">{{ detail.uptime || '未知' }}</span>
+              </div>
+              <div :class="$style.metaItem">
+                <span :class="$style.metaLabel">数据状态</span>
+                <el-tooltip :content="dataHealthHint" placement="top" :show-after="400">
+                  <span :class="$style.metaValue">{{ dataHealthText }}</span>
+                </el-tooltip>
+              </div>
+              <div :class="$style.metaItem">
+                <span :class="$style.metaLabel">最近更新</span>
+                <el-tooltip :content="lastUpdatedHint" placement="top" :show-after="400">
+                  <span :class="$style.metaValue">{{ lastUpdatedText }}</span>
+                </el-tooltip>
               </div>
               <div :class="$style.metaItem">
                 <span :class="$style.metaLabel">系统版本</span>
@@ -124,7 +136,7 @@
           <DeviceVlans :device-id="deviceId" />
         </el-tab-pane>
 
-        <el-tab-pane label="预警" name="alerts">
+        <el-tab-pane label="告警通知" name="alerts">
           <DeviceAlerts :device-id="deviceId" />
         </el-tab-pane>
 
@@ -250,9 +262,6 @@
         <el-form-item label="IPv6地址" prop="ipv6">
           <el-input v-model="editForm.ipv6" />
         </el-form-item>
-        <el-form-item label="位置" prop="location">
-          <el-input v-model="editForm.location" />
-        </el-form-item>
         <el-form-item label="启用" prop="is_active">
           <el-switch v-model="editForm.is_active" />
         </el-form-item>
@@ -272,7 +281,15 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import axios from '@/axios/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { homeDataStore } from '@/components/home/home/data'
-import { getDeviceStatusTagType, getDeviceStatusText } from './deviceStatus'
+import {
+  getDeviceStatusTagType,
+  getDeviceStatusText,
+  normalizeConnectivity,
+  getDataHealthText,
+  getDataHealthHint,
+  getLastUpdatedText,
+  getLastUpdatedHint,
+} from './deviceStatus'
 
 import DeviceAlerts from './DeviceAlerts.vue'
 import DeviceRoutes from './DeviceRoutes.vue'
@@ -315,6 +332,8 @@ const detail = reactive({
   fsmReason: '',
   rawStatus: '',
   stale: false,
+  ageSeconds: 0,
+  lastUpdated: '',
   cpuUsage: 0,
   memoryUsage: 0,
   diskUsage: 0,
@@ -376,7 +395,6 @@ const editFormRef = ref(null)
 const editForm = reactive({
   device_name: '',
   type: '',
-  location: '',
   ssh_port: 22,
   ipv4: '',
   ipv6: '',
@@ -432,6 +450,15 @@ const parsePercent = (val) => {
   return clampPercent(n)
 }
 
+const metricAvailable = computed(() => normalizeConnectivity(detail, nowTick.value) === 'online')
+const progressValue = (val) => (metricAvailable.value ? clampPercent(val) : 0)
+const formatMetricValue = (val) => (metricAvailable.value ? formatPercent(val) : '--')
+
+const dataHealthText = computed(() => getDataHealthText(detail, nowTick.value))
+const dataHealthHint = computed(() => getDataHealthHint(detail, nowTick.value))
+const lastUpdatedText = computed(() => getLastUpdatedText(detail))
+const lastUpdatedHint = computed(() => getLastUpdatedHint(detail, nowTick.value))
+
 const applyStatusPayload = (payload) => {
   if (!payload || typeof payload !== 'object') return
   if (payload.status !== undefined) detail.status = payload.status
@@ -445,6 +472,10 @@ const applyStatusPayload = (payload) => {
     detail.connectivity = detail.online_status ? 'online' : 'offline'
   }
   if (payload.stale !== undefined) detail.stale = Boolean(payload.stale)
+  if (payload.age_seconds !== undefined) detail.ageSeconds = Number(payload.age_seconds || 0)
+  if (payload.ageSeconds !== undefined) detail.ageSeconds = Number(payload.ageSeconds || 0)
+  if (payload.last_updated !== undefined) detail.lastUpdated = payload.last_updated || ''
+  if (payload.lastUpdated !== undefined) detail.lastUpdated = payload.lastUpdated || ''
   if (payload.displayStatus !== undefined) detail.displayStatus = payload.displayStatus
   if (payload.display_status !== undefined) detail.displayStatus = payload.display_status
   if (payload.fsmState !== undefined) detail.fsmState = payload.fsmState
@@ -636,7 +667,6 @@ const fetchDetail = async () => {
 const openEdit = () => {
   editForm.device_name = detail.device_name || ''
   editForm.type = detail.type || ''
-  editForm.location = detail.location || ''
   editForm.ssh_port = Number(detail.ssh_port || 22)
   editForm.ipv4 = detail.ipv4 || ''
   editForm.ipv6 = detail.ipv6 || ''
@@ -658,7 +688,6 @@ const saveEdit = async () => {
       device_id: deviceId.value,
       device_name: editForm.device_name,
       type: editForm.type,
-      location: editForm.location,
       ssh_port: editForm.ssh_port,
       ipv4: editForm.ipv4,
       ipv6: editForm.ipv6,

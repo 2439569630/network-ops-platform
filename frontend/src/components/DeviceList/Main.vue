@@ -53,29 +53,41 @@
                                 <el-icon :class="$style.icon"><Odometer /></el-icon>
                                 <span :class="$style.infoText" :title="item.mac">{{ formatMac(item.mac) }}</span>
                             </div>
+                            <div :class="$style.infoRow">
+                                <el-icon :class="$style.icon"><Refresh /></el-icon>
+                                <el-tooltip :content="getDataHealthHint(item, nowTick)" placement="top" :show-after="400">
+                                    <span :class="$style.infoText">监控数据：{{ getDataHealthText(item, nowTick) }}</span>
+                                </el-tooltip>
+                            </div>
+                            <div :class="$style.infoRow">
+                                <el-icon :class="$style.icon"><View /></el-icon>
+                                <el-tooltip :content="getLastUpdatedHint(item, nowTick)" placement="top" :show-after="400">
+                                    <span :class="$style.infoText">最近更新：{{ getLastUpdatedText(item) }}</span>
+                                </el-tooltip>
+                            </div>
                         </div>
 
                         <div :class="$style.resourceSection">
                             <div :class="$style.resItem">
                                 <div :class="$style.resHeader">
                                     <span :class="$style.resLabel">CPU</span>
-                                    <span :class="$style.resValue">{{ item.cpu_usage || '0%' }}</span>
+                                    <span :class="$style.resValue">{{ formatMetricDisplay(item, 'cpu_usage') }}</span>
                                 </div>
-                                <el-progress :percentage="parseFloat(item.cpu_usage || 0)" :color="getProgressColor" :stroke-width="4" :show-text="false" />
+                                <el-progress :percentage="metricProgress(item, 'cpu_usage')" :color="getProgressColor" :stroke-width="4" :show-text="false" />
                             </div>
                             <div :class="$style.resItem">
                                 <div :class="$style.resHeader">
                                     <span :class="$style.resLabel">MEM</span>
-                                    <span :class="$style.resValue">{{ item.memory_usage || '0%' }}</span>
+                                    <span :class="$style.resValue">{{ formatMetricDisplay(item, 'memory_usage') }}</span>
                                 </div>
-                                <el-progress :percentage="parseFloat(item.memory_usage || 0)" :color="getProgressColor" :stroke-width="4" :show-text="false" />
+                                <el-progress :percentage="metricProgress(item, 'memory_usage')" :color="getProgressColor" :stroke-width="4" :show-text="false" />
                             </div>
                             <div :class="$style.resItem">
                                 <div :class="$style.resHeader">
                                     <span :class="$style.resLabel">DISK</span>
-                                    <span :class="$style.resValue">{{ item.disk_usage || '0%' }}</span>
+                                    <span :class="$style.resValue">{{ formatMetricDisplay(item, 'disk_usage') }}</span>
                                 </div>
-                                <el-progress :percentage="parseFloat(item.disk_usage || 0)" :color="getProgressColor" :stroke-width="4" :show-text="false" />
+                                <el-progress :percentage="metricProgress(item, 'disk_usage')" :color="getProgressColor" :stroke-width="4" :show-text="false" />
                             </div>
                         </div>
 
@@ -128,27 +140,35 @@
                     </el-table-column>
                     <el-table-column prop="type" label="类型" width="120" sortable />
                     <el-table-column prop="location" label="位置" width="120" />
+                    <el-table-column label="新鲜度" width="180">
+                        <template #default="{ row }">
+                            <div :class="$style.freshnessCell">
+                                <span>监控数据：{{ getDataHealthText(row, nowTick) }}</span>
+                                <span :class="$style.freshnessTime">最近更新：{{ getLastUpdatedText(row) }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="cpu_usage" label="CPU" width="160" sortable>
                         <template #default="{ row }">
                             <div :class="$style.resourceCell">
-                                <el-progress :percentage="parseFloat(row.cpu_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
-                                <span :class="$style.resValueText">{{ row.cpu_usage || '0%' }}</span>
+                                <el-progress :percentage="metricProgress(row, 'cpu_usage')" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
+                                <span :class="$style.resValueText">{{ formatMetricDisplay(row, 'cpu_usage') }}</span>
                             </div>
                         </template>
                     </el-table-column>
                     <el-table-column prop="memory_usage" label="内存" width="160" sortable>
                         <template #default="{ row }">
                             <div :class="$style.resourceCell">
-                                <el-progress :percentage="parseFloat(row.memory_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
-                                <span :class="$style.resValueText">{{ row.memory_usage || '0%' }}</span>
+                                <el-progress :percentage="metricProgress(row, 'memory_usage')" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
+                                <span :class="$style.resValueText">{{ formatMetricDisplay(row, 'memory_usage') }}</span>
                             </div>
                         </template>
                     </el-table-column>
                     <el-table-column prop="disk_usage" label="磁盘" width="160" sortable>
                         <template #default="{ row }">
                             <div :class="$style.resourceCell">
-                                <el-progress :percentage="parseFloat(row.disk_usage || 0)" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
-                                <span :class="$style.resValueText">{{ row.disk_usage || '0%' }}</span>
+                                <el-progress :percentage="metricProgress(row, 'disk_usage')" :color="getProgressColor" :stroke-width="6" :show-text="false" style="width: 80px" />
+                                <span :class="$style.resValueText">{{ formatMetricDisplay(row, 'disk_usage') }}</span>
                             </div>
                         </template>
                     </el-table-column>
@@ -183,7 +203,16 @@ import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Odometer
 import { useDeviceStore } from './store';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
-import { getDeviceStatusTagType, getDeviceStatusText, isSshEnabled } from './deviceStatus'
+import {
+    getDeviceStatusTagType,
+    getDeviceStatusText,
+    isSshEnabled,
+    normalizeConnectivity,
+    getDataHealthText,
+    getDataHealthHint,
+    getLastUpdatedText,
+    getLastUpdatedHint,
+} from './deviceStatus'
 
 const store = useDeviceStore();
 const router = useRouter();
@@ -249,6 +278,28 @@ const getProgressColor = (percentage) => {
     if (percentage < 80) return '#e6a23c';
     return '#f56c6c';
 };
+
+const isMetricAvailable = (item) => normalizeConnectivity(item, nowTick.value) === 'online'
+
+const parseMetricPercent = (val) => {
+    if (val === null || val === undefined) return 0
+    const n = Number.parseFloat(String(val).replace('%', ''))
+    if (!Number.isFinite(n)) return 0
+    if (n < 0) return 0
+    if (n > 100) return 100
+    return n
+}
+
+const metricProgress = (item, key) => {
+    if (!isMetricAvailable(item)) return 0
+    return parseMetricPercent(item?.[key])
+}
+
+const formatMetricDisplay = (item, key) => {
+    if (!isMetricAvailable(item)) return '--'
+    const n = parseMetricPercent(item?.[key])
+    return `${n.toFixed(0)}%`
+}
 
 
 
@@ -583,5 +634,16 @@ onBeforeUnmount(() => {
     display: flex;
     justify-content: center;
     gap: 4px;
+}
+
+.freshnessCell {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.35;
+}
+
+.freshnessTime {
+    color: #909399;
+    font-size: 12px;
 }
 </style>
