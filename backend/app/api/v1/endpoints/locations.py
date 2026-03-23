@@ -88,7 +88,7 @@ async def delete_location_node(
     注意：通常需要先清空该节点下的子节点和关联设备/用户才能删除。
     """
     try:
-        ok = await LocationService.delete_node(int(node_id))
+        ok = await LocationService.delete_node(int(node_id), changed_by=str(user.get("id", "")))
         if not ok:
             return {"code": 404, "message": "位置不存在"}
         return {"code": 200, "message": "删除成功"}
@@ -234,6 +234,10 @@ async def add_devices_to_location(
         if not device_ids:
              return {"code": 200, "message": "未选择设备"}
 
+        # 获取设备旧的位置映射，用于审计日志
+        old_mappings = await LocationNodeDevice.filter(device_id__in=device_ids).all()
+        old_node_map = {m.device_id: m.node_id for m in old_mappings}
+
         # 3. 清除这些设备已有的绑定关系
         # 系统设计为：一个设备只能属于一个位置 (1:1 或 N:1，但 device 侧只能指向一个 location)
         # 如果设备之前绑定了其他位置，这里会自动解绑，实现"抢占式"绑定。
@@ -243,6 +247,20 @@ async def add_devices_to_location(
         # 批量插入设备与当前节点的关联记录
         for did in device_ids:
             await LocationNodeDevice.create(node_id=node.id, device_id=did)
+            
+        # 5. 记录审计日志
+        # 判断是首次绑定还是迁移 (旧映射是否存在且与新节点不同)
+        # 我们可以在 log_device_location_changes 内部通过 action='bind'/'move' 处理，或者简化为一个 action
+        # 简化为传递 'move' 如果原来有绑定，'bind' 如果原来没有
+        # 这里统一传入，log_device_location_changes 会判断路径是否有实际变更
+        action_type = "bind" # log_device_location_changes 会统一处理描述，或者根据是否有旧值自动区分
+        await LocationService.log_device_location_changes(
+            device_ids=device_ids,
+            old_node_map=old_node_map,
+            new_node_id=node.id,
+            changed_by=str(user.get("id", "")),
+            action="bind"
+        )
         
         return {"code": 200, "message": "设备添加成功"}
     except Exception as e:
@@ -269,8 +287,22 @@ async def remove_devices_from_location(
         if not device_ids:
              return {"code": 200, "message": "未选择设备"}
 
+        # 获取设备旧的位置映射
+        old_mappings = await LocationNodeDevice.filter(node_id=node.id, device_id__in=device_ids).all()
+        old_node_map = {m.device_id: m.node_id for m in old_mappings}
+
         # 仅移除当前节点的绑定关系
         await LocationNodeDevice.filter(node_id=node.id, device_id__in=device_ids).delete()
+        
+        # 记录审计日志
+        if old_node_map:
+            await LocationService.log_device_location_changes(
+                device_ids=list(old_node_map.keys()),
+                old_node_map=old_node_map,
+                new_node_id=None,
+                changed_by=str(user.get("id", "")),
+                action="unbind"
+            )
         
         return {"code": 200, "message": "设备移除成功"}
     except Exception as e:

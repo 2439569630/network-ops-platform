@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from app.core.database import db
 from app.core.redis import redis_manager
-from app.core.security import get_disabled_permission_codes_cached
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
@@ -17,7 +16,7 @@ from app.models.orm.device import NetworkDevice
 from app.models.orm.location import LocationNodeDevice, LocationNodeRole, LocationNodeUser
 from app.models.orm.rbac import UserRole
 from app.models.orm.user import User
-from app.models.orm.alert import AlertSubscription
+from app.models.orm.alert import AlertSubscription, DeviceAlertRule
 from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
@@ -35,20 +34,123 @@ class NotificationService:
     SITE_MESSAGE_EMAIL_CONCURRENCY = 10
 
     @staticmethod
-    async def _is_email_globally_enabled() -> Tuple[bool, Optional[str]]:
-        try:
-            disabled = await get_disabled_permission_codes_cached()
-        except Exception:
-            disabled = []
-        disabled_set = {str(x).strip() for x in (disabled or []) if str(x).strip()}
-        if "sys:notify:email" in disabled_set:
-            return False, "permission_disabled"
-
+    async def _is_alert_email_globally_enabled() -> Tuple[bool, Optional[str]]:
         raw = SystemConfig.get("email_enabled")
         s = str(raw or "").strip().lower()
         if s in {"0", "false", "no", "off"}:
             return False, "config_disabled"
         return True, None
+
+    @staticmethod
+    async def _is_login_email_globally_enabled() -> Tuple[bool, Optional[str]]:
+        raw = SystemConfig.get("email_enabled")
+        s = str(raw or "").strip().lower()
+        if s in {"0", "false", "no", "off"}:
+            return False, "config_disabled"
+        return True, None
+
+    @staticmethod
+    async def get_alert_notification_capabilities(user_id: Optional[int] = None, device_id: Optional[int] = None) -> Dict[str, Any]:
+        global_enabled, global_reason = await NotificationService._is_alert_email_globally_enabled()
+
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+        if not all([host, port, username, password]):
+            await SystemConfig.load()
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+
+        missing: List[str] = []
+        if not host:
+            missing.append("email_host")
+        if not port:
+            missing.append("email_port")
+        if not username:
+            missing.append("email_username")
+        if not password:
+            missing.append("email_password")
+
+        user_ready: Optional[bool] = None
+        has_email: Optional[bool] = None
+        email_notify_enabled: Optional[bool] = None
+        if user_id is not None:
+            user = await User.get_or_none(id=int(user_id))
+            if user:
+                has_email = bool(str(getattr(user, "email", "") or "").strip())
+                email_notify_enabled = bool(getattr(user, "is_email_notify", False))
+                user_ready = bool(has_email and email_notify_enabled)
+            else:
+                has_email = False
+                email_notify_enabled = False
+                user_ready = False
+
+        has_email_subscription_channel: Optional[bool] = None
+        if user_id is not None and device_id is not None:
+            did = int(device_id)
+            uid = int(user_id)
+            location_node_id = await NotificationService._get_device_location_node_id(device_id=did)
+            scope_queries: List[Q] = [Q(scope_type="device", scope_id=did)]
+            if location_node_id is not None:
+                scope_queries.append(Q(scope_type="location", scope_id=int(location_node_id)))
+            rule_ids = await DeviceAlertRule.filter(device_id=did).values_list("id", flat=True)
+            if rule_ids:
+                scope_queries.append(Q(scope_type="rule", scope_id__in=[int(x) for x in rule_ids]))
+
+            scope_filter = scope_queries[0]
+            for sq in scope_queries[1:]:
+                scope_filter = scope_filter | sq
+            sub_list = await AlertSubscription.filter(Q(subscriber_user_id=uid) & Q(is_enabled=True) & scope_filter).all()
+            has_email_subscription_channel = False
+            for sub in sub_list:
+                channels = {str(x).strip().lower() for x in (getattr(sub, "channels", None) or []) if str(x).strip()}
+                if "email" in channels:
+                    has_email_subscription_channel = True
+                    break
+
+        system_ready = len(missing) == 0
+        subscription_ready = has_email_subscription_channel if has_email_subscription_channel is not None else True
+        email_available = bool(global_enabled and system_ready and (user_ready if user_ready is not None else True) and subscription_ready)
+
+        unavailable_reasons: List[str] = []
+        if not global_enabled:
+            unavailable_reasons.append(str(global_reason or "global_disabled"))
+        if not system_ready:
+            unavailable_reasons.extend([f"missing_{x}" for x in missing])
+        if user_ready is False:
+            if has_email is False:
+                unavailable_reasons.append("user_no_email")
+            if email_notify_enabled is False:
+                unavailable_reasons.append("user_email_notify_disabled")
+        if has_email_subscription_channel is False:
+            unavailable_reasons.append("subscription_missing_email_channel")
+
+        return {
+            "site": {
+                "available": True,
+                "default_channel": True,
+                "note": "站内通知已实现并默认可用",
+            },
+            "email": {
+                "available": email_available,
+                "global_enabled": bool(global_enabled),
+                "global_block_reason": global_reason,
+                "requires_system_config": True,
+                "system_config_ready": system_ready,
+                "missing_dependencies": missing,
+                "requires_user_email_opt_in": True,
+                "user_ready": user_ready,
+                "has_user_email": has_email,
+                "user_email_notify_enabled": email_notify_enabled,
+                "requires_email_subscription_channel": True,
+                "has_email_subscription_channel": has_email_subscription_channel,
+                "unavailable_reasons": unavailable_reasons,
+                "note": "需在系统配置中启用并完成邮件服务配置后生效",
+            },
+        }
 
     @staticmethod
     def _parse_user_id(value: Optional[str]) -> Optional[int]:
@@ -197,7 +299,7 @@ class NotificationService:
         if not user_ids:
             return {"sent": 0, "skipped": 0, "errors": 0}
 
-        enabled, reason = await NotificationService._is_email_globally_enabled()
+        enabled, reason = await NotificationService._is_alert_email_globally_enabled()
         if not enabled:
             logger.warning(f"跳过告警邮件发送: reason={reason}; recipients={len(user_ids)}")
             return {"sent": 0, "skipped": len(user_ids), "errors": 0, "reason": reason or "global_disabled"}
@@ -836,7 +938,7 @@ class NotificationService:
             cache_realtime=True,
         )
         try:
-            enabled, global_reason = await NotificationService._is_email_globally_enabled()
+            enabled, global_reason = await NotificationService._is_alert_email_globally_enabled()
             location_node_id = await NotificationService._get_device_location_node_id(device_id=device_id)
             subs = await NotificationService._get_subscription_channel_recipients(
                 device_id=device_id,
@@ -1039,9 +1141,9 @@ class NotificationService:
             device_id=device_id,
             device_name=device_name,
             ipv4=ipv4,
-            save_history=True,
-            publish_realtime=True,
-            cache_realtime=True,
+            save_history=False,
+            publish_realtime=False,
+            cache_realtime=False,
             extra=extra,
         )
 

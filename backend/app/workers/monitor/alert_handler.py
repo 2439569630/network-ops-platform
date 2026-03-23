@@ -646,7 +646,7 @@ class AlertHandler:
                     rule_id=int(getattr(rule, "id", 0) or 0) or None,
                     severity=sev,
                 )
-                enabled, reason = await NotificationService._is_email_globally_enabled()
+                enabled, reason = await NotificationService._is_alert_email_globally_enabled()
                 logger.warning(
                     "告警通知摘要: "
                     f"device_id={device_id}; rule_id={getattr(rule, 'id', None)}; severity={sev}; metric={getattr(rule, 'metric', None)}; "

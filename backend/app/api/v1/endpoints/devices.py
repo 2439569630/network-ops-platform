@@ -423,6 +423,42 @@ async def get_device_detail(
 
 # --- 设备配置管理 ---
 
+@router.get("/config/meta")
+async def get_device_config_meta(
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    data = await device_service.get_device_config_meta()
+    return {"code": 200, "data": data}
+
+
+@router.get("/config/capabilities")
+async def get_device_config_capabilities(
+    device_id: Optional[int] = Query(None),
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    uid = user.get("id")
+    try:
+        uid = int(uid) if uid is not None else None
+    except Exception:
+        uid = None
+    data = await device_service.get_device_config_capabilities(user_id=uid, device_id=device_id)
+    return {"code": 200, "data": data}
+
+
+@router.get("/config/grouped/{device_id}")
+async def get_device_config_grouped(
+    device_id: int,
+    user: dict = Depends(PermissionChecker(["sys:device:list", "sys:dashboard:view"])),
+):
+    uid = user.get("id")
+    try:
+        uid = int(uid) if uid is not None else None
+    except Exception:
+        uid = None
+    data = await device_service.get_device_config_grouped(int(device_id), user_id=uid)
+    return {"code": 200, "data": data}
+
+
 @router.get("/config/{device_id}")
 async def get_device_config(
     device_id: int,

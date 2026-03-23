@@ -40,6 +40,7 @@ class UserAdminAuditService:
 
         # System Config
         "system.config.update": "更新系统配置",
+        "system.restart": "重启系统服务",
     }
 
     TARGET_LABELS = {
@@ -52,6 +53,7 @@ class UserAdminAuditService:
         "repair_image_api_base_url": "图片服务URL",
         "repair_image_api_email": "图片服务邮箱",
         "repair_image_api_password": "图片服务密码",
+        "auth_register_approval_enabled": "用户注册审核开关",
     }
 
     @staticmethod

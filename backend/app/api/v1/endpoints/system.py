@@ -10,6 +10,7 @@ import logging
 import os
 import signal
 from datetime import datetime
+from app.constants.user import DELETED_USER_DISPLAY_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,6 +26,7 @@ _DEFAULT_CONFIG_META = {
     "email_username": {"group_name": "notification", "description": "邮箱账号"},
     "email_password": {"group_name": "notification", "description": "邮箱密码"},
     "email_nickname": {"group_name": "notification", "description": "邮件发件人昵称"},
+    "auth_register_approval_enabled": {"group_name": "security", "description": "用户注册是否需要管理员审核"},
     "repair_image_api_base_url": {"group_name": "repair", "description": "外部图片服务 base_url，例如 http://host/api/v1"},
     "repair_image_api_email": {"group_name": "repair", "description": "外部图片服务账号邮箱(/tokens)"},
     "repair_image_api_password": {"group_name": "repair", "description": "外部图片服务账号密码(/tokens)"},
@@ -99,6 +101,7 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
             "email_username",
             "email_password",
             "email_nickname",
+            "auth_register_approval_enabled",
             "repair_image_api_base_url",
             "repair_image_api_email",
             "repair_image_api_password",
@@ -223,6 +226,7 @@ async def update_config(
 
 @router.post("/restart", response_model=dict)
 async def restart_system(
+    request: Request,
     user: dict = Depends(PermissionChecker(["sys:server:restart"])),
 ):
     """
@@ -232,6 +236,18 @@ async def restart_system(
     只有超级管理员或拥有 sys:server:restart 权限的用户可以执行。
     """
     try:
+        # 记录审计日志
+        try:
+            await UserAdminAuditService.log(
+                action="system.restart",
+                actor=user,
+                target_type="system",
+                request_ip=_get_request_ip(request),
+                detail={"message": "手动触发系统重启"},
+            )
+        except Exception:
+            logger.exception("audit log for system.restart failed")
+
         # 获取父进程 ID (supervisor)
         ppid = os.getppid()
         # 发送 SIGHUP 信号
@@ -318,3 +334,258 @@ async def list_user_admin_audit_logs(
             str(end_at) if end_at is not None else "",
         )
         return {"code": 500, "message": "获取审计日志失败"}
+
+
+@router.get("/audit/login-logs", response_model=dict)
+async def list_login_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    username: Optional[str] = Query(None, max_length=100),
+    ip: Optional[str] = Query(None, max_length=64),
+    device: Optional[str] = Query(None, max_length=120),
+    start_at: Optional[datetime] = Query(None),
+    end_at: Optional[datetime] = Query(None),
+    user: dict = Depends(PermissionChecker(["sys:audit:view"])),
+):
+    try:
+        where = []
+        params: list = []
+        idx = 1
+
+        if username:
+            where.append(f"u.username ILIKE ${idx}")
+            params.append(f"%{str(username).strip()}%")
+            idx += 1
+        if ip:
+            where.append(f"l.ip ILIKE ${idx}")
+            params.append(f"%{str(ip).strip()}%")
+            idx += 1
+        if device:
+            where.append(f"l.device ILIKE ${idx}")
+            params.append(f"%{str(device).strip()}%")
+            idx += 1
+        if start_at is not None:
+            where.append(f"l.created_at >= ${idx}")
+            params.append(start_at)
+            idx += 1
+        if end_at is not None:
+            where.append(f"l.created_at <= ${idx}")
+            params.append(end_at)
+            idx += 1
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        count_sql = f"""
+            SELECT COUNT(1)
+            FROM login_logs l
+            LEFT JOIN users u ON u.id = l.user_id
+            {where_sql}
+        """
+        total = await db.fetch_val(count_sql, *params)
+
+        limit = int(page_size)
+        offset = (int(page) - 1) * int(page_size)
+        params_data = list(params)
+        params_data.append(limit)
+        params_data.append(offset)
+
+        data_sql = f"""
+            SELECT
+                l.id,
+                l.user_id,
+                COALESCE(NULLIF(TRIM(u.username), ''), '{DELETED_USER_DISPLAY_NAME}') AS username,
+                l.ip,
+                l.user_agent,
+                l.device,
+                l.created_at
+            FROM login_logs l
+            LEFT JOIN users u ON u.id = l.user_id
+            {where_sql}
+            ORDER BY l.created_at DESC, l.id DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        rows = await db.fetch_all(data_sql, *params_data)
+        items = [dict(r) for r in (rows or [])]
+        return {
+            "code": 200,
+            "data": items,
+            "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)},
+        }
+    except Exception:
+        logger.exception("list_login_logs failed")
+        return {"code": 500, "message": "获取登录日志失败"}
+
+
+@router.get("/audit/device-changes", response_model=dict)
+async def list_device_change_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    device_id: Optional[int] = Query(None),
+    device_name: Optional[str] = Query(None, max_length=255),
+    change_type: Optional[str] = Query(None, max_length=50),
+    changed_by: Optional[str] = Query(None, max_length=100),
+    start_at: Optional[datetime] = Query(None),
+    end_at: Optional[datetime] = Query(None),
+    user: dict = Depends(PermissionChecker(["sys:audit:view"])),
+):
+    try:
+        where = []
+        params: list = []
+        idx = 1
+
+        if device_id is not None:
+            where.append(f"d.device_id = ${idx}")
+            params.append(int(device_id))
+            idx += 1
+        if device_name:
+            where.append(f"nd.device_name ILIKE ${idx}")
+            params.append(f"%{str(device_name).strip()}%")
+            idx += 1
+        if change_type:
+            where.append(f"d.change_type ILIKE ${idx}")
+            params.append(f"%{str(change_type).strip()}%")
+            idx += 1
+        if changed_by:
+            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR d.changed_by ILIKE ${idx})")
+            params.append(f"%{str(changed_by).strip()}%")
+            idx += 1
+        if start_at is not None:
+            where.append(f"d.changed_at >= ${idx}")
+            params.append(start_at)
+            idx += 1
+        if end_at is not None:
+            where.append(f"d.changed_at <= ${idx}")
+            params.append(end_at)
+            idx += 1
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        count_sql = f"""
+            SELECT COUNT(1)
+            FROM device_change_log d
+            LEFT JOIN network_devices nd ON nd.id = d.device_id
+            LEFT JOIN users u ON u.id = CASE WHEN d.changed_by ~ '^[0-9]+$' THEN d.changed_by::int ELSE NULL END
+            {where_sql}
+        """
+        total = await db.fetch_val(count_sql, *params)
+
+        limit = int(page_size)
+        offset = (int(page) - 1) * int(page_size)
+        params_data = list(params)
+        params_data.append(limit)
+        params_data.append(offset)
+
+        data_sql = f"""
+            SELECT
+                d.id,
+                d.device_id,
+                COALESCE(nd.device_name, '') AS device_name,
+                d.change_type,
+                d.change_description,
+                d.changed_by,
+                COALESCE(NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(d.changed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS changed_by_name,
+                d.changed_at,
+                d.old_values,
+                d.new_values
+            FROM device_change_log d
+            LEFT JOIN network_devices nd ON nd.id = d.device_id
+            LEFT JOIN users u ON u.id = CASE WHEN d.changed_by ~ '^[0-9]+$' THEN d.changed_by::int ELSE NULL END
+            {where_sql}
+            ORDER BY d.changed_at DESC, d.id DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        rows = await db.fetch_all(data_sql, *params_data)
+        items = [dict(r) for r in (rows or [])]
+        return {
+            "code": 200,
+            "data": items,
+            "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)},
+        }
+    except Exception:
+        logger.exception("list_device_change_logs failed")
+        return {"code": 500, "message": "获取设备审计日志失败"}
+
+
+@router.get("/audit/ssh-commands", response_model=dict)
+async def list_ssh_command_audit_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    device_id: Optional[int] = Query(None),
+    device_name: Optional[str] = Query(None, max_length=255),
+    executed_by: Optional[str] = Query(None, max_length=100),
+    command: Optional[str] = Query(None, max_length=255),
+    start_at: Optional[datetime] = Query(None),
+    end_at: Optional[datetime] = Query(None),
+    user: dict = Depends(PermissionChecker(["sys:audit:view"])),
+):
+    try:
+        where = []
+        params: list = []
+        idx = 1
+
+        if device_id is not None:
+            where.append(f"s.device_id = ${idx}")
+            params.append(int(device_id))
+            idx += 1
+        if device_name:
+            where.append(f"nd.device_name ILIKE ${idx}")
+            params.append(f"%{str(device_name).strip()}%")
+            idx += 1
+        if executed_by:
+            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR s.executed_by ILIKE ${idx})")
+            params.append(f"%{str(executed_by).strip()}%")
+            idx += 1
+        if command:
+            where.append(f"s.command ILIKE ${idx}")
+            params.append(f"%{str(command).strip()}%")
+            idx += 1
+        if start_at is not None:
+            where.append(f"s.executed_at >= ${idx}")
+            params.append(start_at)
+            idx += 1
+        if end_at is not None:
+            where.append(f"s.executed_at <= ${idx}")
+            params.append(end_at)
+            idx += 1
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        count_sql = f"""
+            SELECT COUNT(1)
+            FROM ssh_command_audit_log s
+            LEFT JOIN network_devices nd ON nd.id = s.device_id
+            LEFT JOIN users u ON u.id = CASE WHEN s.executed_by ~ '^[0-9]+$' THEN s.executed_by::int ELSE NULL END
+            {where_sql}
+        """
+        total = await db.fetch_val(count_sql, *params)
+
+        limit = int(page_size)
+        offset = (int(page) - 1) * int(page_size)
+        params_data = list(params)
+        params_data.append(limit)
+        params_data.append(offset)
+
+        data_sql = f"""
+            SELECT
+                s.id,
+                s.device_id,
+                COALESCE(nd.device_name, '') AS device_name,
+                s.device_ip,
+                s.command,
+                s.executed_by,
+                COALESCE(NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(s.executed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS executed_by_name,
+                s.executed_at
+            FROM ssh_command_audit_log s
+            LEFT JOIN network_devices nd ON nd.id = s.device_id
+            LEFT JOIN users u ON u.id = CASE WHEN s.executed_by ~ '^[0-9]+$' THEN s.executed_by::int ELSE NULL END
+            {where_sql}
+            ORDER BY s.executed_at DESC, s.id DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        rows = await db.fetch_all(data_sql, *params_data)
+        items = [dict(r) for r in (rows or [])]
+        return {
+            "code": 200,
+            "data": items,
+            "meta": {"total": int(total or 0), "page": int(page), "page_size": int(page_size)},
+        }
+    except Exception:
+        logger.exception("list_ssh_command_audit_logs failed")
+        return {"code": 500, "message": "获取WebSSH审计日志失败"}

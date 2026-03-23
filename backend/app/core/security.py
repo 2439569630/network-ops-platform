@@ -399,7 +399,7 @@ async def verify_token_ws(
     token: Optional[str] = Query(None)
 ):
     """
-    WebSocket 鉴权依赖
+    WebSocket 鉴权依赖  
     """
     logger.info(f"WS Auth: Verifying token (len={len(token) if token else 0})")
     if token is None:

@@ -1258,9 +1258,9 @@ class MonitorManager:
         if not device:
             return {
                 "status": "无运行态",
-                "cpu_usage": "0%",
-                "memory_usage": "0%",
-                "disk_usage": "0%",
+                "cpu_usage": "--",
+                "memory_usage": "--",
+                "disk_usage": "--",
                 "fsm_state": "",
                 "fsm_reason": "",
                 "fsm_updated": "",
@@ -1279,15 +1279,16 @@ class MonitorManager:
         last_updated = max(float(device.last_metrics_updated or 0), float(device.last_heartbeat or 0))
         
         # 构建基础快照
+        online_status = bool(getattr(device, "online_status", False))
         snapshot = {
             "status": status,
-            "cpu_usage": f"{cpu}%",
-            "memory_usage": f"{mem}%",
-            "disk_usage": f"{disk}%",
+            "cpu_usage": f"{cpu}%" if online_status else "--",
+            "memory_usage": f"{mem}%" if online_status else "--",
+            "disk_usage": f"{disk}%" if online_status else "--",
             "fsm_state": str(device.fsm_state or ""),
             "fsm_reason": str(device.fsm_reason or ""),
             "fsm_updated": str(getattr(device, "fsm_updated", "") or ""),
-            "uptime": str(device.last_metrics.get("uptime") or ""),
+            "uptime": str(device.last_metrics.get("uptime") or "") if online_status else "",
             "last_updated": str(last_updated or ""),
             "snapshot_source": "memory",
             "snapshot_generated_at": str(time.time()),
@@ -1343,6 +1344,7 @@ class MonitorManager:
             "cpu_usage": snap["cpu_usage"],
             "memory_usage": snap["memory_usage"],
             "disk_usage": snap["disk_usage"],
+            "last_updated": str(snap.get("last_updated") or ""),
             "fsm_state": str(base.get("fsm_state") or snap.get("fsm_state") or ""),
             "fsm_reason": str(base.get("fsm_reason") or snap.get("fsm_reason") or ""),
             "fsm_updated": str(base.get("fsm_updated") or snap.get("fsm_updated") or ""),

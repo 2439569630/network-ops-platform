@@ -21,6 +21,7 @@ class RbacService:
     PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
     DISABLED_PERMISSIONS_CONFIG_KEY = "rbac:disabled_permissions"
     DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
+    NON_DISABLEABLE_PERMISSION_CODES = {"sys:notify:email"}
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
         "sys:location:add": ["sys:location:view"],
@@ -62,7 +63,7 @@ class RbacService:
         {"name": "查看通知配置", "code": "sys:notify:config:view", "description": "允许查看通知渠道配置"},
         {"name": "编辑通知配置", "code": "sys:notify:config:edit", "description": "允许修改通知渠道配置"},
         {"name": "测试通知推送", "code": "sys:notify:test", "description": "允许发送测试通知"},
-        {"name": "邮件通知", "code": "sys:notify:email", "description": "允许系统发送邮件通知"},
+        {"name": "邮件通知管理", "code": "sys:notify:email", "description": "仅用于通知能力管理授权，不参与运行时发送资格判断"},
         {"name": "查看位置", "code": "sys:location:view", "description": "允许查看位置信息列表 (用于业务选择)"},
         {"name": "管理位置", "code": "sys:location:manage", "description": "允许访问位置管理页面并进行管理"},
         {"name": "新增位置", "code": "sys:location:add", "description": "允许创建新的位置信息"},
@@ -86,6 +87,7 @@ class RbacService:
         {"name": "批量导入用户", "code": "sys:user:import", "description": "允许批量导入用户信息"},
         {"name": "查看配置", "code": "sys:config:view", "description": "允许查看系统全局配置"},
         {"name": "编辑配置", "code": "sys:config:edit", "description": "允许修改系统全局配置"},
+        {"name": "系统重启", "code": "sys:server:restart", "description": "允许重启系统后端服务"},
         {"name": "配置下发", "code": "sys:config:push", "description": "允许批量对设备下发配置/命令"},
         {"name": "全局通知", "code": "sys:notify:global", "description": "允许发送全站通知"},
         {"name": "提交工单", "code": "sys:repair:create", "description": "允许用户提交报修工单"},
@@ -145,12 +147,17 @@ class RbacService:
             system_codes.add(code)
             existing = by_code.get(code)
             if existing:
+                name = existing.name
+                description = existing.description
+                if code == "sys:notify:email":
+                    name = sp.get("name") or name
+                    description = sp.get("description") or description
                 directory.append(
                     {
                         "id": existing.id,
-                        "name": existing.name,
+                        "name": name,
                         "code": existing.code,
-                        "description": existing.description,
+                        "description": description,
                         "created_at": existing.created_at,
                         "exists": True,
                         "in_directory": True,
@@ -697,6 +704,7 @@ class RbacService:
 
     @staticmethod
     async def get_disabled_permission_codes_cached() -> List[str]:
+        non_disableable = set(RbacService.NON_DISABLEABLE_PERMISSION_CODES)
         redis_client = redis_manager.get_client()
         cached = None
         try:
@@ -707,6 +715,7 @@ class RbacService:
             try:
                 parsed = json.loads(cached)
                 codes = RbacService._normalize_permission_codes(parsed)
+                codes = [c for c in codes if str(c) not in non_disableable]
                 return sorted(list(set(codes)))
             except Exception:
                 pass
@@ -716,6 +725,7 @@ class RbacService:
             RbacService.DISABLED_PERMISSIONS_CONFIG_KEY,
         )
         codes = RbacService._normalize_permission_codes(row.get("value") if row else None)
+        codes = [c for c in codes if str(c) not in non_disableable]
         codes = sorted(list(set(codes)))
         try:
             await redis_client.set(RbacService.DISABLED_PERMISSIONS_REDIS_KEY, json.dumps(codes), ex=60)

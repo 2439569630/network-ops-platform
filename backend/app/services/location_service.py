@@ -215,6 +215,80 @@ class LocationService:
         raise ValueError("生成位置编码失败：可用编码耗尽或冲突过多")
 
     @staticmethod
+    async def get_node_paths() -> Dict[int, str]:
+        """获取所有节点的完整路径"""
+        nodes = await LocationNode.all().values("id", "parent_id", "name")
+        node_map = {n["id"]: n for n in nodes}
+        paths = {}
+        for nid, node in node_map.items():
+            path_parts = []
+            curr = node
+            while curr:
+                path_parts.append(curr["name"])
+                curr = node_map.get(curr["parent_id"]) if curr.get("parent_id") else None
+            paths[nid] = " / ".join(reversed(path_parts))
+        return paths
+
+    @staticmethod
+    async def log_device_location_changes(
+        device_ids: List[int],
+        old_node_map: Dict[int, int],
+        new_node_id: Optional[int],
+        changed_by: str,
+        action: str
+    ):
+        """
+        记录设备位置变更审计日志
+        :param action: "bind", "unbind", "move", "delete_node"
+        """
+        if not device_ids:
+            return
+
+        from app.models.orm.audit import DeviceChangeLog
+        from app.services.device_event_service import DeviceEventService
+        
+        paths = await LocationService.get_node_paths()
+        new_path = paths.get(new_node_id, "未分配位置") if new_node_id else "未分配位置"
+        
+        logs_to_create = []
+        changed_devices = []
+        for did in device_ids:
+            old_nid = old_node_map.get(did)
+            old_path = paths.get(old_nid, "未分配位置") if old_nid else "未分配位置"
+            
+            # 跳过无意义的重复操作
+            if old_path == new_path:
+                continue
+
+            desc = "修改设备位置"
+            if action == "delete_node":
+                desc = "因位置节点删除而解绑"
+            else:
+                if old_path == "未分配位置" and new_path != "未分配位置":
+                    desc = "绑定设备位置"
+                elif old_path != "未分配位置" and new_path != "未分配位置":
+                    desc = "迁移设备位置"
+                elif old_path != "未分配位置" and new_path == "未分配位置":
+                    desc = "解绑设备位置"
+
+            logs_to_create.append(
+                DeviceChangeLog(
+                    device_id=did,
+                    change_type="update_location",
+                    change_description=desc,
+                    changed_by=changed_by,
+                    old_values={"location": old_path},
+                    new_values={"location": new_path},
+                )
+            )
+            changed_devices.append(did)
+            
+        if logs_to_create:
+            await DeviceChangeLog.bulk_create(logs_to_create)
+            for did in changed_devices:
+                await DeviceEventService.publish_device_event("update_location", did)
+
+    @staticmethod
     def _model_to_dict(node: LocationNode) -> dict:
         return {
             "id": int(node.id),
@@ -411,13 +485,24 @@ class LocationService:
         return res
 
     @staticmethod
-    async def delete_node(node_id: int) -> bool:
+    async def delete_node(node_id: int, changed_by: str = "") -> bool:
         # Get all descendant IDs to delete the whole subtree
         ids = await LocationService._get_descendant_ids(node_id)
         ids.append(node_id)
         
-        # 1. Delete device mappings
-        await LocationNodeDevice.filter(node_id__in=ids).delete()
+        # 1. Delete device mappings (with logging)
+        mappings = await LocationNodeDevice.filter(node_id__in=ids).all()
+        if mappings:
+            device_ids = [m.device_id for m in mappings]
+            old_node_map = {m.device_id: m.node_id for m in mappings}
+            await LocationNodeDevice.filter(node_id__in=ids).delete()
+            await LocationService.log_device_location_changes(
+                device_ids=device_ids,
+                old_node_map=old_node_map,
+                new_node_id=None,
+                changed_by=changed_by,
+                action="delete_node"
+            )
         
         # 2. Delete role mappings
         await LocationNodeRole.filter(node_id__in=ids).delete()

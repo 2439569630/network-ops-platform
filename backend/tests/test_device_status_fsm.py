@@ -29,7 +29,24 @@ class TestDeviceStatusFsm(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(st.fsm_state, "online")
 
+    def test_online_to_offline_by_failure_threshold(self):
+        st = DeviceStatus(fsm_state="online", offline_fail_threshold=2)
+        changed1 = st.record_failure("timeout")
+        self.assertTrue(changed1)
+        self.assertEqual(st.fsm_state, "degraded")
+        changed2 = st.record_failure("timeout")
+        self.assertTrue(changed2)
+        self.assertEqual(st.fsm_state, "offline")
+
+    def test_offline_to_recovering_then_online(self):
+        st = DeviceStatus(fsm_state="offline", recovery_success_threshold=2)
+        changed1 = st.record_success()
+        self.assertTrue(changed1)
+        self.assertEqual(st.fsm_state, "recovering")
+        changed2 = st.record_success()
+        self.assertTrue(changed2)
+        self.assertEqual(st.fsm_state, "online")
+
 
 if __name__ == "__main__":
     unittest.main()
-

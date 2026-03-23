@@ -569,8 +569,8 @@ async def login(data: LoginForm, response: Response, request: Request):
 
     # 5. 发送通知
     # 5.1 发送邮件提醒 (如果开启了邮件通知)
-    enabled, reason = await NotificationService._is_email_globally_enabled()
-    if enabled and user.get("is_email_notify") and user.get("email"):
+    enabled, reason = await NotificationService._is_login_email_globally_enabled()
+    if enabled and user.get("email"):
         logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
         # 异步发送邮件，不阻塞登录响应
         asyncio.create_task(_send_login_notification_task(
@@ -580,7 +580,7 @@ async def login(data: LoginForm, response: Response, request: Request):
         logger.info(
             "Skip login notification: "
             f"global_email_enabled={enabled} reason={reason}, "
-            f"is_email_notify={user.get('is_email_notify')}, email={user.get('email')}"
+            f"email={user.get('email')}"
         )
 
     # 5.2 发送站内信通知 (始终发送，作为安全审计记录)
@@ -1093,7 +1093,7 @@ async def register(data: RegisterForm):
             content={"code": 400, "status": "error", "message": "用户名与密码不能为空"},
         )
 
-    # 2. 检查用户名是否已存在
+    # 2. 检查用户名是否已存在   
     exists = await db.fetch_val("SELECT id FROM users WHERE username = $1", username)
     if exists:
         return JSONResponse(
@@ -1106,17 +1106,27 @@ async def register(data: RegisterForm):
     hashed_pw = get_password_hash(password)
 
     # 3. 创建用户记录
-    # is_approved 默认为 false，需要管理员审核
+    # is_approved 默认值由系统配置决定 (auth_register_approval_enabled)
+    # 默认为 true (不需要审核)
+    try:
+        require_approval_str = SystemConfig.get("auth_register_approval_enabled", "false")
+        require_approval = str(require_approval_str).lower() in ("true", "1", "yes", "on")
+    except Exception:
+        require_approval = False
+
+    is_approved = not require_approval
+
     user_id = await db.fetch_val(
         """
         INSERT INTO users (username, password, nickname, email, is_approved)
-        VALUES ($1, $2, $3, $4, false)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id
         """,
         username,
         hashed_pw,
         nickname,
         email,
+        is_approved
     )
 
     # 4. 赋予默认角色
@@ -1162,7 +1172,7 @@ async def register(data: RegisterForm):
     except Exception:
         logger.exception("audit log for auth.register failed")
 
-    return {"code": 200, "status": "success", "message": "注册成功，请等待管理员审核", "data": {"id": user_id}}
+    return {"code": 200, "status": "success", "message": "注册成功，请等待管理员审核" if not is_approved else "注册成功", "data": {"id": user_id}}
 
 @router.get("/permissions")
 async def get_my_permissions(token_payload: dict = Depends(verify_token)):

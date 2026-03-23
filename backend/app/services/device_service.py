@@ -14,6 +14,7 @@ from app.workers.monitor.manager import MonitorManager
 from app.utils.device_status import status_fields_from_snapshot
 from netmiko import ConnectHandler
 from app.services.device_event_service import DeviceEventService
+from app.services.notification_service import NotificationService
 
 # ORM Imports
 from app.models.orm.device import NetworkDevice
@@ -34,6 +35,83 @@ class DeviceService:
     设备服务类
     处理设备管理相关的业务逻辑，包括设备的增删改查、配置管理、状态监控等。
     """
+    DEVICE_CONFIG_GROUP_LABELS = {
+        "basic_monitoring": "基础监控配置",
+        "resource_sync": "资源同步配置",
+        "state_recovery_policy": "状态判定与重连策略",
+        "alert_notification": "告警与通知配置",
+    }
+
+    DEVICE_CONFIG_FIELD_META = {
+        "metrics_interval": {"label": "指标监控周期（秒）", "group": "basic_monitoring", "advanced": False},
+        "connect_timeout": {"label": "连接超时（秒）", "group": "basic_monitoring", "advanced": False},
+        "auth_timeout": {"label": "认证超时（秒）", "group": "basic_monitoring", "advanced": True},
+        "banner_timeout": {"label": "Banner 超时（秒）", "group": "basic_monitoring", "advanced": True},
+        "global_delay_factor": {"label": "全局延迟因子", "group": "basic_monitoring", "advanced": True},
+        "resource_sync_interval": {"label": "资源同步总间隔（秒）", "group": "resource_sync", "advanced": True},
+        "interfaces_sync_interval": {"label": "接口同步间隔（秒）", "group": "resource_sync", "advanced": True},
+        "interfaces_slot0_sync_interval": {"label": "插槽0接口详情同步间隔（秒）", "group": "resource_sync", "advanced": True},
+        "routes_sync_interval": {"label": "路由同步间隔（秒）", "group": "resource_sync", "advanced": True},
+        "vlans_sync_interval": {"label": "VLAN 同步间隔（秒）", "group": "resource_sync", "advanced": True},
+        "offline_fail_threshold": {"label": "离线判定阈值（次）", "group": "state_recovery_policy", "advanced": False},
+        "recovery_success_threshold": {"label": "恢复判定阈值（次）", "group": "state_recovery_policy", "advanced": False},
+        "connect_max_retries": {"label": "最大重连次数", "group": "state_recovery_policy", "advanced": True},
+        "connect_retry_delay_seconds": {"label": "重连等待时间（秒）", "group": "state_recovery_policy", "advanced": True},
+        "offline_retry_delay_seconds": {"label": "离线重试间隔（秒）", "group": "state_recovery_policy", "advanced": True},
+        "offline_retry_silent_after_attempts": {"label": "静默重试阈值", "group": "state_recovery_policy", "advanced": True},
+        "offline_retry_silent_min_interval_seconds": {"label": "静默最小间隔（秒）", "group": "state_recovery_policy", "advanced": True},
+    }
+
+    DEVICE_CONFIG_BASIC_FIELDS = (
+        "metrics_interval",
+        "connect_timeout",
+        "offline_fail_threshold",
+        "recovery_success_threshold",
+    )
+
+    def _group_device_config(self, flat_config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        grouped: Dict[str, Dict[str, Any]] = {
+            k: {} for k in self.DEVICE_CONFIG_GROUP_LABELS.keys()
+        }
+        for field, meta in self.DEVICE_CONFIG_FIELD_META.items():
+            group = str(meta.get("group") or "").strip()
+            if not group:
+                continue
+            if group not in grouped:
+                grouped[group] = {}
+            grouped[group][field] = flat_config.get(field)
+        return grouped
+
+    async def get_device_config_meta(self) -> Dict[str, Any]:
+        fields: Dict[str, Any] = {}
+        for key, meta in self.DEVICE_CONFIG_FIELD_META.items():
+            fields[key] = {
+                "label": meta.get("label"),
+                "group": meta.get("group"),
+                "advanced": bool(meta.get("advanced", False)),
+            }
+        return {
+            "group_labels": self.DEVICE_CONFIG_GROUP_LABELS,
+            "basic_fields": list(self.DEVICE_CONFIG_BASIC_FIELDS),
+            "all_fields": list(self.DEVICE_CONFIG_FIELD_META.keys()),
+            "fields": fields,
+        }
+
+    async def get_device_config_grouped(self, device_id: int, user_id: Optional[int] = None) -> Dict[str, Any]:
+        flat = await self.get_device_config(int(device_id))
+        grouped = self._group_device_config(flat)
+        meta = await self.get_device_config_meta()
+        capabilities = await NotificationService.get_alert_notification_capabilities(user_id=user_id, device_id=device_id)
+        return {
+            "device_id": int(device_id),
+            "flat": flat,
+            "grouped": grouped,
+            "meta": meta,
+            "capabilities": capabilities,
+        }
+
+    async def get_device_config_capabilities(self, user_id: Optional[int] = None, device_id: Optional[int] = None) -> Dict[str, Any]:
+        return await NotificationService.get_alert_notification_capabilities(user_id=user_id, device_id=device_id)
 
     # Helper to convert ORM object to dict (simple version)
     def _model_to_dict(self, obj: Any) -> Dict[str, Any]:
@@ -224,10 +302,11 @@ class DeviceService:
                         "type": row["device_type"],
                         "location": row["location"],
                         "ssh_port": row["ssh_port"],
-                        "cpu_usage": str(snap.get("cpu_usage") or "0%"),
-                        "memory_usage": str(snap.get("memory_usage") or "0%"),
-                        "disk_usage": str(snap.get("disk_usage") or "0%"),
+                        "cpu_usage": str(snap.get("cpu_usage") or "--"),
+                        "memory_usage": str(snap.get("memory_usage") or "--"),
+                        "disk_usage": str(snap.get("disk_usage") or "--"),
                         "uptime": str(snap.get("uptime") or "未知"),
+                        "last_updated": str(snap.get("last_updated") or ""),
                         "os_version": str(snap.get("os_version") or snap.get("kernel") or "Unknown"),
                         "created_by": str(row.get("created_by") or ""),
                         "created_by_name": str(row.get("created_by_name") or DELETED_USER_DISPLAY_NAME),
@@ -261,18 +340,10 @@ class DeviceService:
             device_type=device.type,
             user_name=device.user_name,
             password=device.password,
-            # location=location, # Deprecated
             ssh_port=device.ssh_port,
             created_by=str(user_id),
             is_active=True
         )
-
-        # Handle Location Mapping
-        location_name = device.location if device.location and device.location.strip() else None
-        if location_name:
-            node = await LocationNode.filter(name=location_name).first()
-            if node:
-                await LocationNodeDevice.create(node_id=node.id, device_id=new_device.id)
 
         await self._log_device_change(
             device_id=new_device.id,
@@ -287,7 +358,6 @@ class DeviceService:
                 "mac": mac,
                 "device_type": device.type,
                 "user_name": device.user_name,
-                "location": location_name,
                 "ssh_port": device.ssh_port,
             },
         )
@@ -363,25 +433,7 @@ class DeviceService:
                 return float(default_seconds)
             return max(1.0, v)
 
-        allowed = {
-            "metrics_interval",
-            "offline_fail_threshold",
-            "recovery_success_threshold",
-            "connect_timeout",
-            "auth_timeout",
-            "banner_timeout",
-            "global_delay_factor",
-            "connect_max_retries",
-            "connect_retry_delay_seconds",
-            "offline_retry_delay_seconds",
-            "offline_retry_silent_after_attempts",
-            "offline_retry_silent_min_interval_seconds",
-            "resource_sync_interval",
-            "interfaces_sync_interval",
-            "interfaces_slot0_sync_interval",
-            "routes_sync_interval",
-            "vlans_sync_interval",
-        }
+        allowed = set(self.DEVICE_CONFIG_FIELD_META.keys())
         for k in allowed:
             if k in patch:
                 clean[k] = patch.get(k)
@@ -663,32 +715,6 @@ class DeviceService:
 
         if patch.device_name is not None:
             device.device_name = patch.device_name
-        
-        # Location update logic
-        if patch.location is not None:
-            # device.location = patch.location # Deprecated
-            # Update mapping
-            loc_name = patch.location.strip()
-            if not loc_name:
-                # Clear mapping
-                await LocationNodeDevice.filter(device_id=device.id).delete()
-            else:
-                # Update mapping
-                node = await LocationNode.filter(name=loc_name).first()
-                if node:
-                    # Upsert
-                    # Check existing
-                    mapping = await LocationNodeDevice.filter(device_id=device.id).first()
-                    if mapping:
-                        mapping.node_id = node.id
-                        await mapping.save()
-                    else:
-                        await LocationNodeDevice.create(node_id=node.id, device_id=device.id)
-                else:
-                    # If location name provided but not found, maybe ignore or clear?
-                    # For safety, if user types unknown location, we might just clear it or keep old?
-                    # Assuming frontend sends valid location names from selection.
-                    pass
 
         if getattr(patch, "type", None) is not None:
             device.device_type = getattr(patch, "type")
@@ -708,22 +734,6 @@ class DeviceService:
             device.password = str(getattr(patch, "password") or "")
         if getattr(patch, "is_active", None) is not None:
             device.is_active = bool(getattr(patch, "is_active"))
-        if getattr(patch, "location_node_id", None) is not None:
-            try:
-                node_id = int(getattr(patch, "location_node_id") or 0)
-            except Exception:
-                node_id = 0
-            if node_id <= 0:
-                await LocationNodeDevice.filter(device_id=device.id).delete()
-            else:
-                node = await LocationNode.get_or_none(id=node_id)
-                if node:
-                    mapping = await LocationNodeDevice.filter(device_id=device.id).first()
-                    if mapping:
-                        mapping.node_id = node.id
-                        await mapping.save()
-                    else:
-                        await LocationNodeDevice.create(node_id=node.id, device_id=device.id)
 
         device.updated_at = datetime.datetime.now()
         device.updated_by = str(updated_by or "")

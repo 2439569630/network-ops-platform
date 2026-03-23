@@ -38,6 +38,7 @@ def check_super_admin(user: dict):
 
 
 _PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
+_NON_DISABLEABLE_PERMISSION_CODES = set(RbacService.NON_DISABLEABLE_PERMISSION_CODES)
 
 
 def _get_request_ip(request: Request | None) -> str | None:
@@ -412,6 +413,8 @@ async def set_disabled_permissions(
         target = sorted(list(set(raw_codes)))
         existing = set([str(c).strip() for c in (await RbacService.get_all_permission_codes()) if str(c).strip()])
         target = [c for c in target if c in existing]
+        removed_non_disableable = [c for c in target if c in _NON_DISABLEABLE_PERMISSION_CODES]
+        target = [c for c in target if c not in _NON_DISABLEABLE_PERMISSION_CODES]
 
         await SystemConfig.set(DISABLED_PERMISSIONS_CONFIG_KEY, json.dumps(target))
         try:
@@ -424,9 +427,16 @@ async def set_disabled_permissions(
             actor=current_user,
             target_type="permission.disabled_list",
             request_ip=_get_request_ip(request),
-            detail={"before_codes": before_codes or [], "after_codes": target},
+            detail={
+                "before_codes": before_codes or [],
+                "after_codes": target,
+                "removed_non_disableable": removed_non_disableable,
+            },
         )
-        return {"code": 200, "message": "更新成功", "data": {"codes": target}}
+        message = "更新成功"
+        if removed_non_disableable:
+            message = "更新成功，部分权限仅保留管理语义，已自动忽略全局禁用"
+        return {"code": 200, "message": message, "data": {"codes": target, "ignored_codes": removed_non_disableable}}
     except Exception as e:
         return {"code": 500, "message": f"更新失败: {str(e)}"}
 
