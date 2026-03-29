@@ -20,6 +20,7 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     old_password: Optional[str] = None
     new_password: Optional[str] = None
+    email_code: Optional[str] = None
 
 class RoleUpdate(BaseModel):
     """用户角色更新模型"""

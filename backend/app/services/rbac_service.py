@@ -21,9 +21,12 @@ class RbacService:
     PROTECTED_ROLE_CODES = {"superadmin", "super_admin", "super-admin"}
     DISABLED_PERMISSIONS_CONFIG_KEY = "rbac:disabled_permissions"
     DISABLED_PERMISSIONS_REDIS_KEY = "authz:disabled_permissions"
-    NON_DISABLEABLE_PERMISSION_CODES = {"sys:notify:email"}
+    NON_DISABLEABLE_PERMISSION_CODES = {"sys:notify:email", "sys:role:manage"}
     # 权限依赖关系字典，定义了某些权限所需的前置权限
     PERMISSION_DEPENDENCIES: Dict[str, List[str]] = {
+        "sys:message:publish": ["sys:message:access"],
+        "sys:message:delete": ["sys:message:access"],
+        "sys:notify:global": ["sys:message:access", "sys:message:publish"],
         "sys:location:add": ["sys:location:view"],
         "sys:location:edit": ["sys:location:view"],
         "sys:location:del": ["sys:location:view"],
@@ -58,6 +61,8 @@ class RbacService:
         {"name": "系统概览", "code": "sys:dashboard:view", "description": "允许查看仪表盘概览信息"},
         {"name": "查看监控", "code": "sys:monitor:view", "description": "允许查看系统监控数据"},
         {"name": "消息中心", "code": "sys:message:access", "description": "允许访问消息中心"},
+        {"name": "发布站内消息", "code": "sys:message:publish", "description": "允许创建站内消息并查看消息管理页面"},
+        {"name": "删除站内消息", "code": "sys:message:delete", "description": "允许删除已发布的站内消息"},
         {"name": "订阅实时告警", "code": "sys:alert:subscribe", "description": "允许订阅和接收实时告警通知"},
         {"name": "查看通知历史", "code": "sys:notify:history", "description": "允许查看历史通知记录"},
         {"name": "查看通知配置", "code": "sys:notify:config:view", "description": "允许查看通知渠道配置"},
@@ -214,6 +219,13 @@ class RbacService:
 
         if to_create:
             await Permission.bulk_create(to_create)
+
+        # 兼容历史环境：确保 admin 角色能拿到约定的管理权限
+        for code in ["sys:audit:view", "sys:role:manage", "sys:message:publish", "sys:message:delete", "sys:notify:global"]:
+            try:
+                await RbacService.grant_permission_to_role_code("admin", code)
+            except Exception:
+                continue
 
         return {"total": len(RbacService.SYSTEM_PERMISSIONS), "missing_inserted": len(to_create)}
 

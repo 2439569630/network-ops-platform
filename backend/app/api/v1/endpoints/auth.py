@@ -4,10 +4,14 @@
 """
 
 import asyncio
+import base64
 import logging
 from datetime import timedelta, datetime
 import hashlib
 import hmac
+from io import BytesIO
+import math
+import random
 import re
 import secrets
 import time
@@ -18,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from app.core.database import db
 from app.core.redis import redis_manager
@@ -65,7 +70,7 @@ class LoginForm(BaseModel):
     username: str
     password: str
     captcha_id: Optional[str] = None
-    captcha_answer: Optional[str] = None
+    captcha_code: Optional[str] = None
 
 class RegisterForm(BaseModel):
     """注册表单数据"""
@@ -78,7 +83,7 @@ class PasswordResetRequestForm(BaseModel):
     """密码重置请求表单"""
     email: str
     captcha_id: str
-    captcha_answer: str
+    captcha_code: str
 
 class PasswordResetConfirmForm(BaseModel):
     """密码重置确认表单"""
@@ -88,6 +93,7 @@ class PasswordResetConfirmForm(BaseModel):
 class UpdateSecurityForm(BaseModel):
     """更新安全设置表单"""
     is_email_notify: Optional[bool] = None
+    is_login_email_notify: Optional[bool] = None
 
 
 # --- 辅助函数 ---
@@ -106,9 +112,120 @@ def _captcha_key(captcha_id: str) -> str:
     """获取验证码 Redis Key"""
     return f"captcha:{str(captcha_id or '').strip()}"
 
+def _captcha_issue_rate_key(ip: Optional[str]) -> str:
+    ip_s = str(ip or "").strip()
+    return f"auth:captcha:issue:ip:{ip_s or 'unknown'}"
+
 def _hash_text(value: str) -> str:
     """计算文本的 SHA256 哈希"""
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+def _captcha_invalid_response() -> tuple[bool, str, str]:
+    return False, "AUTH_CAPTCHA_INVALID", "验证码错误或已失效"
+
+def _captcha_normalize(value: str) -> str:
+    return str(value or "").strip().upper()
+
+def _captcha_text_length() -> int:
+    return 4
+
+def _captcha_max_failures() -> int:
+    raw = SystemConfig.get_int("auth:captcha:max_failures", 5)
+    try:
+        v = int(raw or 5)
+    except Exception:
+        v = 5
+    return min(10, max(1, v))
+
+def _generate_captcha_text() -> str:
+    charset = "23456789"
+    length = _captcha_text_length()
+    return "".join(secrets.choice(charset) for _ in range(length))
+
+def _build_captcha_base64(captcha_text: str) -> str:
+    width, height = 240, 96
+    image = Image.new("RGB", (width, height), (250, 252, 255))
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 64)
+    except Exception:
+        font = ImageFont.load_default()
+
+    for _ in range(1):
+        x1 = random.randint(0, width - 1)
+        y1 = random.randint(0, height - 1)
+        x2 = random.randint(0, width - 1)
+        y2 = random.randint(0, height - 1)
+        draw.line(
+            [(x1, y1), (x2, y2)],
+            fill=(random.randint(160, 195), random.randint(160, 195), random.randint(160, 195)),
+            width=1,
+        )
+
+    for _ in range(60):
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        draw.point(
+            (x, y),
+            fill=(random.randint(170, 215), random.randint(170, 215), random.randint(170, 215)),
+        )
+
+    char_width = width / max(1, len(captcha_text))
+    for idx, ch in enumerate(captcha_text):
+        bbox = draw.textbbox((0, 0), ch, font=font)
+        char_w = max(1, int(bbox[2] - bbox[0]))
+        char_h = max(1, int(bbox[3] - bbox[1]))
+        tx = int(idx * char_width + (char_width - char_w) / 2 + random.randint(-2, 2))
+        ty = int((height - char_h) / 2 + random.randint(-2, 2))
+        draw.text(
+            (tx, ty),
+            ch,
+            font=font,
+            fill=(random.randint(25, 70), random.randint(25, 70), random.randint(25, 70)),
+        )
+
+    for x in range(width):
+        offset = int(0.8 * math.sin(2 * math.pi * x / 120))
+        for y in range(height):
+            ny = y + offset
+            if 0 <= ny < height:
+                image.putpixel((x, y), image.getpixel((x, ny)))
+
+    image = image.filter(ImageFilter.SMOOTH)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+async def _is_captcha_issue_rate_limited(redis_client, *, ip: Optional[str]) -> bool:
+    window_seconds = SystemConfig.get_int("auth:captcha:issue:window_seconds", 60)
+    max_requests = SystemConfig.get_int("auth:captcha:issue:max_requests", 30)
+    try:
+        window_seconds = int(window_seconds or 60)
+    except Exception:
+        window_seconds = 60
+    try:
+        max_requests = int(max_requests or 30)
+    except Exception:
+        max_requests = 30
+    window_seconds = min(300, max(10, window_seconds))
+    max_requests = min(120, max(1, max_requests))
+
+    key = _captcha_issue_rate_key(ip)
+    current = await redis_client.incr(key)
+    if int(current) == 1:
+        await redis_client.expire(key, window_seconds)
+    return int(current) > max_requests
+
+async def _save_captcha(redis_client, *, captcha_id: str, answer_hash: str, ttl_seconds: int) -> None:
+    key = _captcha_key(captcha_id)
+    await redis_client.hset(
+        key,
+        mapping={
+            "answer_hash": str(answer_hash),
+            "fail_count": "0",
+        },
+    )
+    await redis_client.expire(key, int(ttl_seconds))
 
 def _login_fail_key_ip(ip: Optional[str]) -> Optional[str]:
     ip_s = str(ip or "").strip()
@@ -216,20 +333,29 @@ async def _is_login_rate_limited(redis_client, *, ip: Optional[str], username: s
         return True
     return False
 
-async def _verify_login_captcha(redis_client, *, captcha_id: str, captcha_answer: str) -> tuple[bool, str, str]:
+async def _verify_login_captcha(redis_client, *, captcha_id: str, captcha_code: str) -> tuple[bool, str, str]:
     cid = str(captcha_id or "").strip()
-    ans = str(captcha_answer or "").strip()
+    ans = _captcha_normalize(captcha_code)
     if not cid or not ans:
-        return False, "AUTH_CAPTCHA_REQUIRED", "请完成验证码"
+        return _captcha_invalid_response()
 
-    captcha_raw = await redis_client.get(_captcha_key(cid))
-    if not captcha_raw:
-        return False, "AUTH_CAPTCHA_EXPIRED", "验证码已过期，请刷新"
+    key = _captcha_key(cid)
+    payload = await redis_client.hgetall(key)
+    if not payload:
+        return _captcha_invalid_response()
 
-    if not hmac.compare_digest(str(captcha_raw), _hash_text(ans)):
-        return False, "AUTH_CAPTCHA_INVALID", "验证码不正确"
+    answer_hash = str(payload.get("answer_hash") or "")
+    if not answer_hash:
+        await redis_client.delete(key)
+        return _captcha_invalid_response()
 
-    await redis_client.delete(_captcha_key(cid))
+    if not hmac.compare_digest(answer_hash, _hash_text(ans)):
+        fail_count = await redis_client.hincrby(key, "fail_count", 1)
+        if int(fail_count) >= _captcha_max_failures():
+            await redis_client.delete(key)
+        return _captcha_invalid_response()
+
+    await redis_client.delete(key)
     return True, "", ""
 
 def _infer_device_label(user_agent: Optional[str]) -> str:
@@ -263,6 +389,23 @@ def _infer_device_label(user_agent: Optional[str]) -> str:
 
     return f"{os_name} · {browser}"
 
+def _normalize_login_notice_value(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip()
+    return text or None
+
+def _should_send_login_change_notice(previous_login: Optional[dict], *, ip: Optional[str], device: Optional[str]) -> bool:
+    """
+    仅在相较上一次登录的 IP 或设备发生变化时，才发送登录提醒。
+    """
+    if not previous_login:
+        return False
+
+    previous_ip = _normalize_login_notice_value(previous_login.get("ip"))
+    previous_device = _normalize_login_notice_value(previous_login.get("device"))
+    current_ip = _normalize_login_notice_value(ip)
+    current_device = _normalize_login_notice_value(device)
+    return previous_ip != current_ip or previous_device != current_device
+
 async def _send_login_notification_task(email: str, username: str, ip: str, device: str):
     """
     后台任务：发送登录提醒邮件
@@ -289,14 +432,15 @@ async def _send_login_notification_task(email: str, username: str, ip: str, devi
             logger.error("Missing email configuration, cannot send notification.")
             return
 
-        subject = "登录提醒"
+        subject = "账号登录提醒"
         content = (
-            f"你好，{username}：\n\n"
-            f"你的账号刚刚登录了系统。\n"
+            f"{username}，你好：\n\n"
+            "检测到你的账号发生了一次新的登录，登录信息如下：\n"
+            f"登录时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"登录 IP：{ip}\n"
-            f"设备信息：{device}\n"
-            f"登录时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            "如果这不是你的操作，请立即修改密码。"
+            f"登录设备：{device}\n\n"
+            "如果这是你本人操作，无需处理。\n"
+            "如果不是你本人登录，请尽快修改密码，并检查账号安全设置。"
         )
         logger.info(f"Sending email to {email} via {host}:{port}...")
         ok, msg = await send_email(host, port, username_smtp, password, email, subject, content, nickname=nickname)
@@ -309,26 +453,49 @@ async def _send_login_notification_task(email: str, username: str, ip: str, devi
         logger.error(f"Failed to send login notification task: {e}")
 
 @router.get("/captcha")
-async def get_captcha():
+async def get_captcha(request: Request, prev_captcha_id: Optional[str] = Query(default=None)):
     """
-    获取图形验证码 (简单的数学题)
+    获取图形验证码
     """
     redis_client = redis_manager.get_client()
+    old_captcha_id = str(prev_captcha_id or "").strip()
+    if old_captcha_id:
+        await redis_client.delete(_captcha_key(old_captcha_id))
+    ip = _get_request_ip(request)
+    if await _is_captcha_issue_rate_limited(redis_client, ip=ip):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "code": 429,
+                "message": "请求过于频繁，请稍后再试",
+                "status": "error",
+                "error": "AUTH_CAPTCHA_RATE_LIMITED",
+            },
+        )
     ttl_seconds = SystemConfig.get_int("auth:captcha:ttl_seconds", 300)
-    
-    # 生成两个 1-9 的随机数
-    a = secrets.randbelow(9) + 1
-    b = secrets.randbelow(9) + 1
+    try:
+        ttl_seconds = int(ttl_seconds or 300)
+    except Exception:
+        ttl_seconds = 300
+    ttl_seconds = min(600, max(120, ttl_seconds))
+
+    captcha_text = _generate_captcha_text()
+    captcha_image_base64 = _build_captcha_base64(captcha_text)
     captcha_id = secrets.token_urlsafe(16)
-    
-    # 存储答案的哈希值到 Redis，防止明文存储
-    await redis_client.set(_captcha_key(captcha_id), _hash_text(str(a + b)), ex=int(ttl_seconds))
-    
+
+    await _save_captcha(
+        redis_client,
+        captcha_id=captcha_id,
+        answer_hash=_hash_text(captcha_text),
+        ttl_seconds=int(ttl_seconds),
+    )
+
     return {
         "code": 200,
         "data": {
             "captcha_id": captcha_id,
-            "question": f"{a} + {b} = ?",
+            "image_base64": captcha_image_base64,
+            "image_mime": "image/png",
             "ttl_seconds": int(ttl_seconds),
         },
     }
@@ -448,7 +615,7 @@ async def login(data: LoginForm, response: Response, request: Request):
             ok, err_code, err_msg = await _verify_login_captcha(
                 redis_client,
                 captcha_id=str(data.captcha_id or ""),
-                captcha_answer=str(data.captcha_answer or ""),
+                captcha_code=str(data.captcha_code or ""),
             )
             if not ok:
                 try:
@@ -469,7 +636,7 @@ async def login(data: LoginForm, response: Response, request: Request):
         pass
 
     # 1. 查询用户基础信息
-    sql = "SELECT id, username, password, is_approved, email, is_email_notify FROM users WHERE username = $1"
+    sql = "SELECT id, username, password, is_approved, email, is_email_notify, is_login_email_notify FROM users WHERE username = $1"
     user = await db.fetch_one(sql, username_input)
 
     if not user:
@@ -551,6 +718,23 @@ async def login(data: LoginForm, response: Response, request: Request):
     # 4. 记录日志和会话信息
     ua = request.headers.get("user-agent")
     device = _infer_device_label(ua)
+
+    previous_login = None
+    try:
+        previous_login = await db.fetch_one(
+            """
+            SELECT ip, device
+            FROM login_logs
+            WHERE user_id = $1
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            int(user["id"]),
+        )
+    except Exception as e:
+        logger.error(f"Failed to query previous login log: {e}")
+
+    should_send_login_notice = _should_send_login_change_notice(previous_login, ip=ip, device=device)
     
     # 记录当前会话信息到 Redis (用于展示"当前在线设备")
     try:
@@ -568,36 +752,51 @@ async def login(data: LoginForm, response: Response, request: Request):
         logger.error(f"Failed to record login log: {e}")
 
     # 5. 发送通知
-    # 5.1 发送邮件提醒 (如果开启了邮件通知)
-    enabled, reason = await NotificationService._is_login_email_globally_enabled()
-    if enabled and user.get("email"):
-        logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
-        # 异步发送邮件，不阻塞登录响应
-        asyncio.create_task(_send_login_notification_task(
-            str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
-        ))
+    if should_send_login_notice:
+        # 5.1 发送邮件提醒 (如果开启了邮件通知)
+        enabled, reason = await NotificationService._is_login_email_globally_enabled()
+        email_notify_enabled = bool(user.get("is_email_notify", False))
+        login_email_notify_enabled = bool(user.get("is_login_email_notify", user.get("is_email_notify", False)))
+        if enabled and user.get("email") and email_notify_enabled and login_email_notify_enabled:
+            logger.info(f"Preparing to send login notification to {user['email']} for user {user['username']}")
+            # 异步发送邮件，不阻塞登录响应
+            asyncio.create_task(_send_login_notification_task(
+                str(user["email"]), str(user["username"]), str(ip or "Unknown"), str(device)
+            ))
+        else:
+            logger.info(
+                "Skip login notification: "
+                f"global_email_enabled={enabled} reason={reason}, "
+                f"email={user.get('email')}, "
+                f"email_notify_enabled={email_notify_enabled}, "
+                f"login_email_notify_enabled={login_email_notify_enabled}"
+            )
+
+        # 5.2 发送站内信通知
+        try:
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            site_msg_content = (
+                f"检测到你的账号于 {current_time} 登录。\n"
+                f"登录 IP：{ip or '未知IP'}\n"
+                f"登录设备：{device}\n"
+                "如为本人操作，可忽略；如非本人操作，请尽快修改密码。"
+            )
+            await NotificationService.create_site_message(
+                sender_id=None,  # None 表示系统发送
+                sender_name="安全中心",
+                title="账号登录提醒",
+                content=site_msg_content,
+                source="安全中心",
+                target_user_id=int(user["id"]),
+                is_global=False
+            )
+        except Exception as e:
+            logger.error(f"发送站内信失败: {e}")
     else:
         logger.info(
-            "Skip login notification: "
-            f"global_email_enabled={enabled} reason={reason}, "
-            f"email={user.get('email')}"
+            "Skip login change notice: previous login unchanged or unavailable, "
+            f"user_id={int(user['id'])}, ip={ip}, device={device}"
         )
-
-    # 5.2 发送站内信通知 (始终发送，作为安全审计记录)
-    try:
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        site_msg_content = f"你的账号于 {current_time} 在 {ip or '未知IP'} ({device}) 登录。如非本人操作，请立即修改密码。"
-        await NotificationService.create_site_message(
-            sender_id=None,  # None 表示系统发送
-            sender_name="安全中心",
-            title="登录提醒",
-            content=site_msg_content,
-            source="安全中心",
-            target_user_id=int(user["id"]),
-            is_global=False
-        )
-    except Exception as e:
-        logger.error(f"发送站内信失败: {e}")
 
     # 6. 构建并返回 Token
     token_data = {
@@ -667,23 +866,21 @@ async def password_reset_request(data: PasswordResetRequestForm, request: Reques
         return JSONResponse(status_code=400, content={"code": 400, "message": "邮箱格式不正确"})
 
     captcha_id = str(data.captcha_id or "").strip()
-    captcha_answer = str(data.captcha_answer or "").strip()
-    if not captcha_id or not captcha_answer:
+    captcha_code = str(data.captcha_code or "").strip()
+    if not captcha_id or not captcha_code:
         return JSONResponse(status_code=400, content={"code": 400, "message": "请完成验证码校验"})
 
     email_norm = email.strip().lower()
     redis_client = redis_manager.get_client()
 
     # 1. 校验图形验证码
-    captcha_raw = await redis_client.get(_captcha_key(captcha_id))
-    if not captcha_raw:
-        return JSONResponse(status_code=400, content={"code": 400, "message": "验证码已过期，请刷新"})
-    
-    # 比较哈希值，防止时序攻击
-    if not hmac.compare_digest(str(captcha_raw), _hash_text(captcha_answer)):
-        return JSONResponse(status_code=400, content={"code": 400, "message": "验证码不正确"})
-    # 验证通过后立即删除验证码，防止重放
-    await redis_client.delete(_captcha_key(captcha_id))
+    ok, _, _ = await _verify_login_captcha(
+        redis_client,
+        captcha_id=captcha_id,
+        captcha_code=captcha_code,
+    )
+    if not ok:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "验证码错误或已失效"})
 
     # 2. 频率限制检查 (Rate Limiting)
     cooldown_seconds = SystemConfig.get_int("auth:pwdreset:cooldown_seconds", 60)
@@ -1212,37 +1409,70 @@ async def get_my_security_settings(token_payload: dict = Depends(verify_token)):
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录")
     
-    row = await db.fetch_one("SELECT email, password, is_email_notify FROM users WHERE id = $1", int(user_id))
+    row = await db.fetch_one(
+        "SELECT email, password, is_email_notify, is_login_email_notify FROM users WHERE id = $1",
+        int(user_id),
+    )
     if not row:
          raise HTTPException(status_code=404, detail="用户不存在")
+
+    email_notify_enabled = bool(row.get("is_email_notify") or False)
+    login_email_notify_enabled = bool(row.get("is_login_email_notify") or False)
          
     return {
         "code": 200,
         "data": {
             "email": row.get("email"),
             "has_password": bool(row.get("password")),
-            "is_email_notify": bool(row.get("is_email_notify") or False)
+            "is_email_notify": email_notify_enabled,
+            "is_login_email_notify": login_email_notify_enabled,
         }
     }
 
 @router.put("/users/me/security")
 async def update_my_security_settings(form: UpdateSecurityForm, token_payload: dict = Depends(verify_token)):
     """
-    更新用户安全设置 (当前仅支持登录邮件提醒开关)
+    更新用户安全设置
     """
     user_id = token_payload.get("id")
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录")
 
-    if form.is_email_notify is None:
+    if form.is_email_notify is None and form.is_login_email_notify is None:
         return JSONResponse(
             status_code=400,
-            content={"code": 400, "message": "缺少 is_email_notify 参数", "status": "error"},
+            content={"code": 400, "message": "缺少安全设置参数", "status": "error"},
         )
 
-    enabled = bool(form.is_email_notify)
-    await db.execute("UPDATE users SET is_email_notify = $1 WHERE id = $2", enabled, int(user_id))
-    return {"code": 200, "status": "success", "message": "设置已更新", "data": {"is_email_notify": enabled}}
+    current = await db.fetch_one(
+        "SELECT is_email_notify, is_login_email_notify FROM users WHERE id = $1",
+        int(user_id),
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    next_email_notify_enabled = bool(current.get("is_email_notify") or False)
+    next_login_email_notify_enabled = bool(current.get("is_login_email_notify") or False)
+    if form.is_email_notify is not None:
+        next_email_notify_enabled = bool(form.is_email_notify)
+    if form.is_login_email_notify is not None:
+        next_login_email_notify_enabled = bool(form.is_login_email_notify)
+
+    await db.execute(
+        "UPDATE users SET is_email_notify = $1, is_login_email_notify = $2 WHERE id = $3",
+        next_email_notify_enabled,
+        next_login_email_notify_enabled,
+        int(user_id),
+    )
+    return {
+        "code": 200,
+        "status": "success",
+        "message": "设置已更新",
+        "data": {
+            "is_email_notify": next_email_notify_enabled,
+            "is_login_email_notify": next_login_email_notify_enabled,
+        },
+    }
 
 
 @router.get("/users/me/login-logs")

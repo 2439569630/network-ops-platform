@@ -20,6 +20,20 @@ class TestNotificationEmailBoundaries(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(email.get("global_block_reason"), "config_disabled")
         self.assertNotIn("permission_disabled", reasons)
 
+    async def test_login_email_global_switch_prefers_dedicated_key(self):
+        def _get_value(key):
+            if key == "login_email_enabled":
+                return "0"
+            if key == "email_enabled":
+                return "1"
+            return None
+
+        with patch("app.services.notification_service.SystemConfig.get", side_effect=_get_value):
+            enabled, reason = await NotificationService._is_login_email_globally_enabled()
+
+        self.assertFalse(enabled)
+        self.assertEqual(reason, "config_disabled")
+
 
 if __name__ == "__main__":
     unittest.main()

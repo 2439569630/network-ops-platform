@@ -11,12 +11,13 @@ from app.utils.notification_sender import send_email, send_http
 from app.schemas.notification import NotificationConfig, TestNotification
 
 # ORM Imports
-from app.models.orm.notification import DeviceNotification, SiteMessage, SiteMessageRead
+from app.models.orm.notification import SiteMessage, SiteMessageRead
 from app.models.orm.device import NetworkDevice
 from app.models.orm.location import LocationNodeDevice, LocationNodeRole, LocationNodeUser
 from app.models.orm.rbac import UserRole
 from app.models.orm.user import User
 from app.models.orm.alert import AlertSubscription, DeviceAlertRule
+from app.models.orm.alert import DeviceAlertLog
 from tortoise.expressions import Q
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,9 @@ class NotificationService:
 
     @staticmethod
     async def _is_login_email_globally_enabled() -> Tuple[bool, Optional[str]]:
-        raw = SystemConfig.get("email_enabled")
+        raw = SystemConfig.get("login_email_enabled")
+        if raw is None or str(raw).strip() == "":
+            raw = SystemConfig.get("email_enabled")
         s = str(raw or "").strip().lower()
         if s in {"0", "false", "no", "off"}:
             return False, "config_disabled"
@@ -381,63 +384,42 @@ class NotificationService:
 
     @staticmethod
     async def get_history(can_view_all: bool, user_id: int) -> List[dict]:
-        """获取通知历史"""
+        """获取设备告警历史（与设备详情告警记录口径一致）"""
         if can_view_all:
-            # Join with NetworkDevice to get device_name
-            notifications = await DeviceNotification.all().order_by("-created_at").limit(100)
-            
-            # Fetch device names manually or assume they are in message? 
-            # The original SQL joined network_devices.
-            # Let's map device names.
-            device_ids = {n.device_id for n in notifications if n.device_id}
-            devices = await NetworkDevice.filter(id__in=list(device_ids)).all()
-            device_map = {d.id: d.device_name for d in devices}
-
-            result = []
-            for n in notifications:
-                d_name = device_map.get(n.device_id, "")
-                result.append({
-                    "id": n.id,
-                    "device_id": n.device_id,
-                    "device_name": d_name,
-                    "level": n.level,
-                    "message": n.message,
-                    "created_at": n.created_at,
-                    "title": d_name or "系统通知",
-                    "content": n.message
-                })
-            return result
+            logs = await DeviceAlertLog.all().order_by("-triggered_at").limit(100)
+            devices = await NetworkDevice.filter(id__in=list({int(x.device_id) for x in logs if x.device_id is not None})).all() if logs else []
         else:
-            # 1. 查找用户创建的设备
-            # 注意: created_by 是字符串类型
             user_devices = await NetworkDevice.filter(created_by=str(user_id)).all()
             if not user_devices:
                 return []
-            
             user_device_ids = [d.id for d in user_devices]
-            
-            # 2. 查找这些设备的通知
-            notifications = await DeviceNotification.filter(
-                device_id__in=user_device_ids
-            ).order_by("-created_at").limit(100)
-            
-            # 3. 组装结果
-            device_map = {d.id: d.device_name for d in user_devices}
-            
-            result = []
-            for n in notifications:
-                d_name = device_map.get(n.device_id, "")
-                result.append({
-                    "id": n.id,
-                    "device_id": n.device_id,
-                    "device_name": d_name,
-                    "level": n.level,
-                    "message": n.message,
-                    "created_at": n.created_at,
-                    "title": d_name or "系统通知",
-                    "content": n.message
-                })
-            return result
+            logs = await DeviceAlertLog.filter(device_id__in=user_device_ids).order_by("-triggered_at").limit(100)
+            devices = user_devices
+
+        device_map = {d.id: d.device_name for d in devices}
+        result = []
+        for log in logs:
+            device_id = int(log.device_id) if log.device_id is not None else None
+            device_name = device_map.get(device_id, "")
+            severity = str(getattr(log, "severity", "") or "").strip().lower()
+            level = {"critical": "error", "warning": "warning", "info": "info"}.get(severity, severity or "info")
+            result.append(
+                {
+                    "id": log.id,
+                    "device_id": device_id,
+                    "device_name": device_name,
+                    "level": level,
+                    "severity": severity,
+                    "metric": getattr(log, "metric", None),
+                    "message": log.message,
+                    "created_at": log.triggered_at,
+                    "triggered_at": log.triggered_at,
+                    "resolved_at": log.resolved_at,
+                    "title": device_name or "设备告警",
+                    "content": log.message,
+                }
+            )
+        return result
 
     @staticmethod
     async def _ensure_site_message_tables():
@@ -527,6 +509,81 @@ class NotificationService:
                 "read_at": read_at
             })
             
+        return result
+
+    @staticmethod
+    async def list_manage_site_messages(
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        keyword: Optional[str] = None,
+        scope: Optional[str] = None,
+    ) -> List[dict]:
+        lim = max(1, min(int(limit or 20), 200))
+        off = max(0, int(offset or 0))
+        kw = str(keyword or "").strip()
+        scope_norm = str(scope or "").strip().lower()
+
+        query = SiteMessage.filter(source="管理员")
+        if scope_norm == "global":
+            query = query.filter(is_global=True)
+        elif scope_norm == "targeted":
+            query = query.filter(is_global=False)
+
+        if kw:
+            query = query.filter(
+                Q(title__icontains=kw)
+                | Q(content__icontains=kw)
+                | Q(source__icontains=kw)
+                | Q(sender_name__icontains=kw)
+            )
+
+        messages = await query.order_by("-created_at", "-id").offset(off).limit(lim)
+
+        sender_ids: set[int] = set()
+        target_user_ids: set[int] = set()
+        for m in messages:
+            try:
+                if m.sender_id is not None and int(m.sender_id) > 0:
+                    sender_ids.add(int(m.sender_id))
+            except Exception:
+                pass
+            try:
+                if m.target_user_id is not None and int(m.target_user_id) > 0:
+                    target_user_ids.add(int(m.target_user_id))
+            except Exception:
+                pass
+
+        user_ids = list(sender_ids | target_user_ids)
+        user_map: Dict[int, dict] = {}
+        if user_ids:
+            rows = await User.filter(id__in=user_ids).values("id", "username", "nickname", "avatar_url")
+            for row in rows:
+                try:
+                    uid = int(row.get("id"))
+                except Exception:
+                    continue
+                user_map[uid] = row
+
+        result: List[dict] = []
+        for m in messages:
+            sender_meta = user_map.get(int(m.sender_id)) if m.sender_id is not None and str(m.sender_id).isdigit() else None
+            target_meta = user_map.get(int(m.target_user_id)) if m.target_user_id is not None and str(m.target_user_id).isdigit() else None
+            result.append(
+                {
+                    "id": m.id,
+                    "sender_id": m.sender_id,
+                    "sender_name": m.sender_name,
+                    "sender_avatar_url": (sender_meta or {}).get("avatar_url"),
+                    "source": m.source,
+                    "title": m.title,
+                    "content": m.content,
+                    "is_global": m.is_global,
+                    "target_user_id": m.target_user_id,
+                    "target_user_name": (target_meta or {}).get("nickname") or (target_meta or {}).get("username"),
+                    "created_at": m.created_at,
+                }
+            )
         return result
 
     @staticmethod
@@ -711,6 +768,24 @@ class NotificationService:
         return len(unread_ids)
 
     @staticmethod
+    async def delete_site_message(*, message_id: int) -> bool:
+        msg = await SiteMessage.filter(id=int(message_id)).first()
+        if not msg:
+            return False
+
+        await SiteMessageRead.filter(message_id=int(message_id)).delete()
+        await SiteMessage.filter(id=int(message_id)).delete()
+        try:
+            await NotificationService.publish_site_message_deleted(
+                target_user_id=(int(msg.target_user_id) if msg.target_user_id is not None else None),
+                is_global=bool(msg.is_global),
+                message_id=int(message_id),
+            )
+        except Exception as e:
+            logger.error(f"发布站内消息删除事件失败: {e}")
+        return True
+
+    @staticmethod
     def get_site_messages_user_channel(user_id: int) -> str:
         return f"{NotificationService.SITE_MESSAGES_CHANNEL_USER_PREFIX}{int(user_id)}"
 
@@ -751,6 +826,21 @@ class NotificationService:
         }
         payload_str = json.dumps(payload, ensure_ascii=False, default=NotificationService._json_default)
         await redis_client.publish(NotificationService.get_site_messages_user_channel(int(target_user_id)), payload_str)
+
+    @staticmethod
+    async def publish_site_message_deleted(*, target_user_id: Optional[int], is_global: bool, message_id: int) -> None:
+        redis_client = redis_manager.get_client()
+        payload = {
+            "type": "site_message_deleted",
+            "target_user_id": int(target_user_id) if target_user_id is not None else None,
+            "is_global": bool(is_global),
+            "message_id": int(message_id),
+        }
+        payload_str = json.dumps(payload, ensure_ascii=False, default=NotificationService._json_default)
+        if is_global:
+            await redis_client.publish(NotificationService.SITE_MESSAGES_CHANNEL_GLOBAL, payload_str)
+        elif target_user_id is not None:
+            await redis_client.publish(NotificationService.get_site_messages_user_channel(int(target_user_id)), payload_str)
 
     @staticmethod
     async def get_site_message_unread_count(*, user_id: int) -> int:

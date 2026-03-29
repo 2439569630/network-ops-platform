@@ -21,6 +21,7 @@ class ConfigUpdate(BaseModel):
 
 _DEFAULT_CONFIG_META = {
     "email_enabled": {"group_name": "notification", "description": "是否启用邮件通知"},
+    "login_email_enabled": {"group_name": "notification", "description": "是否启用登录邮箱提醒"},
     "email_host": {"group_name": "notification", "description": "邮箱 SMTP 地址"},
     "email_port": {"group_name": "notification", "description": "邮箱 SMTP 端口"},
     "email_username": {"group_name": "notification", "description": "邮箱账号"},
@@ -96,6 +97,7 @@ async def list_config(user: dict = Depends(PermissionChecker(["sys:config:view"]
     try:
         await _ensure_default_configs_exist([
             "email_enabled",
+            "login_email_enabled",
             "email_host",
             "email_port",
             "email_username",

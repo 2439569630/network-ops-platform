@@ -30,7 +30,18 @@ async def main():
     except Exception as e:
         print(f"Error adding column: {e}")
 
-    # 2. Create login_logs table
+    # 2. Add is_login_email_notify to users
+    print("Checking 'users' table for 'is_login_email_notify' column...")
+    try:
+        await conn.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS is_login_email_notify BOOLEAN DEFAULT FALSE;
+        """)
+        print("Column 'is_login_email_notify' added (or already exists).")
+    except Exception as e:
+        print(f"Error adding login notify column: {e}")
+
+    # 3. Create login_logs table
     print("Creating 'login_logs' table...")
     try:
         await conn.execute("""

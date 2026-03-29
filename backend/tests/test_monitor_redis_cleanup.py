@@ -47,6 +47,9 @@ class MonitorRedisCleanupTests(unittest.TestCase):
                 "device:1:interfaces_slot12_detailed": "x",
                 "device:1:interfaces_slot12_detailed:last": "x",
                 "device:1:unrelated": "keep",
+                "alert:active:1:100": "{\"device_id\":1}",
+                "alert:cooldown:1:100": "x",
+                "alert:dedupe:lock:1:100": "x",
                 "device:2:interfaces": "keep",
                 "device:2:interfaces:last": "keep",
             }
@@ -73,6 +76,9 @@ class MonitorRedisCleanupTests(unittest.TestCase):
         self.assertNotIn("device:1:interfaces_slot12_detailed", fake.store)
         self.assertNotIn("device:1:interfaces_slot12_detailed:last", fake.store)
         self.assertIn("device:1:unrelated", fake.store)
+        self.assertIn("alert:active:1:100", fake.store)
+        self.assertIn("alert:cooldown:1:100", fake.store)
+        self.assertIn("alert:dedupe:lock:1:100", fake.store)
         self.assertIn("device:2:interfaces", fake.store)
         self.assertIn("device:2:interfaces:last", fake.store)
 

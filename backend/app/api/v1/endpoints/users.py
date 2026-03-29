@@ -128,6 +128,33 @@ async def _get_user_role_codes(user_id: int) -> list[str]:
     return [str(c) for c in codes if c]
 
 
+async def _get_role_codes_by_ids(role_ids: list[int]) -> set[str]:
+    ids = sorted(list({int(rid) for rid in (role_ids or []) if rid is not None}))
+    if not ids:
+        return set()
+    rows = await db.fetch_all("SELECT code FROM roles WHERE id = ANY($1::int[])", ids)
+    return {str((r or {}).get("code") or "").strip().lower() for r in (rows or []) if str((r or {}).get("code") or "").strip()}
+
+
+async def _validate_superadmin_frozen_assignment(target_user_id: int | None, role_ids: list[int]) -> str | None:
+    next_ids = sorted(list({int(rid) for rid in (role_ids or []) if rid is not None}))
+    next_codes = await _get_role_codes_by_ids(next_ids)
+    next_has_protected = bool(next_codes & _PROTECTED_ROLE_CODES)
+    if target_user_id is None:
+        if next_has_protected:
+            return "超级管理员角色已冻结，禁止新增成员"
+        return None
+
+    current_ids = await db.fetch_all("SELECT role_id FROM user_roles WHERE user_id = $1", int(target_user_id))
+    current_role_ids = sorted(list({int((r or {}).get("role_id")) for r in (current_ids or []) if (r or {}).get("role_id") is not None}))
+    current_codes = {str(c).strip().lower() for c in (await _get_user_role_codes(int(target_user_id))) if str(c).strip()}
+    current_has_protected = bool(current_codes & _PROTECTED_ROLE_CODES)
+    if current_has_protected or next_has_protected:
+        if current_role_ids != next_ids:
+            return "超级管理员角色已冻结，禁止变更"
+    return None
+
+
 async def _require_actor_superadmin_when_target_protected(target_user_id: int, actor: dict) -> None:
     """
     安全检查：如果目标用户是超级管理员，则要求操作者也必须是超级管理员。
@@ -303,10 +330,18 @@ async def update_profile(
     try:
         # Exclude password from audit log
         log_detail = data.model_dump(exclude_none=True)
-        if "password" in log_detail:
-            del log_detail["password"]
+        for field in ("password", "old_password", "new_password", "email_code"):
+            if field in log_detail:
+                del log_detail[field]
 
-        await UserService.update_profile(current_user.get("id"), data)
+        result = await UserService.update_profile(current_user.get("id"), data)
+
+        if result.get("password_changed"):
+            await UserService.send_password_changed_notification(
+                int(current_user.get("id")),
+                request_ip=_get_request_ip(request),
+                user_agent=request.headers.get("user-agent") if request else None,
+            )
 
         await UserAdminAuditService.log(
             action="user.profile_update",
@@ -398,6 +433,28 @@ async def get_profile_summary(current_user: dict = Depends(deps.get_current_user
 
 class EmailVerifyRequest(BaseModel):
     email: str
+
+
+@router.post("/profile/password/code/request", response_model=dict)
+async def request_password_change_code(
+    request: Request,
+    current_user: dict = Depends(deps.get_current_user),
+):
+    """
+    发送修改密码邮箱验证码
+
+    向当前绑定邮箱发送一次性验证码，用于校验密码修改操作。
+    """
+    try:
+        payload = await UserService.request_password_change_email_code(
+            user_id=int(current_user.get("id")),
+            request_ip=_get_request_ip(request),
+        )
+        return {"code": 200, "message": "验证码已发送", "data": payload}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"发送失败: {str(e)}"}
 
 @router.get("/profile/email/pending", response_model=dict)
 async def get_email_verify_pending(current_user: dict = Depends(deps.get_current_user)):
@@ -940,6 +997,9 @@ async def commit_user_import(
         options = data.options or UserImportCommitOptions()
         default_password = (options.default_password or "").strip() or None
         default_role_code = (options.default_role_code or "").strip().lower() or None
+        if default_role_code in _PROTECTED_ROLE_CODES:
+            await _set_user_import_progress(redis_client, token, 100, "error", "超级管理员角色已冻结，禁止分配")
+            return {"code": 400, "message": "超级管理员角色已冻结，禁止分配"}
         approve_users = bool(options.approve_users)
         on_duplicate = (options.on_duplicate or "skip").strip().lower()
         if on_duplicate not in {"skip"}:
@@ -1042,6 +1102,10 @@ async def commit_user_import(
 
             # 确定角色
             target_role_code = _normalize_cell_value(r.get(role_col)).lower() if role_col else None
+            if target_role_code in _PROTECTED_ROLE_CODES:
+                failed += 1
+                errors.append({"row": idx, "username": username, "reason": "超级管理员角色已冻结，禁止分配"})
+                continue
             role_id = role_id_by_code.get(target_role_code) if target_role_code else None
             if role_id is None:
                 role_id = role_id_fallback
@@ -1612,6 +1676,9 @@ async def admin_create_user(
         if user_in.role_ids is not None:
             if not user_in.role_ids:
                 raise HTTPException(status_code=400, detail="用户至少需要一个角色")
+            frozen_error = await _validate_superadmin_frozen_assignment(None, user_in.role_ids)
+            if frozen_error:
+                return {"code": 400, "message": frozen_error}
             await UserService._require_actor_superadmin_when_assigning_protected_roles(user_in.role_ids, current_user)
 
         user_id = await UserService.create_user(user_in)
@@ -1663,6 +1730,9 @@ async def admin_update_user(
         if data.role_ids is not None:
             if not data.role_ids:
                 raise HTTPException(status_code=400, detail="用户至少需要一个角色")
+            frozen_error = await _validate_superadmin_frozen_assignment(uid, data.role_ids)
+            if frozen_error:
+                return {"code": 400, "message": frozen_error}
             await UserService._require_actor_superadmin_when_assigning_protected_roles(data.role_ids, current_user)
 
         # 4. 执行更新

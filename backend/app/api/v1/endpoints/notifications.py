@@ -15,6 +15,8 @@ router = APIRouter()
 
 @router.get("/site-messages", response_model=dict)
 async def list_site_messages(
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     unread_only: bool = Query(False),
     user: dict = Depends(PermissionChecker("sys:message:access")),
 ):
@@ -27,14 +29,45 @@ async def list_site_messages(
     try:
         rows = await NotificationService.list_site_messages(
             user_id=int(user.get("id")),
-            limit=20,
-            offset=0,
+            limit=int(limit),
+            offset=int(offset),
             unread_only=bool(unread_only),
         )
         return {"code": 200, "data": rows}
     except Exception:
-        logger.exception("list_site_messages failed: user_id=%s unread_only=%s", str(user.get("id")), str(unread_only))
+        logger.exception(
+            "list_site_messages failed: user_id=%s unread_only=%s limit=%s offset=%s",
+            str(user.get("id")),
+            str(unread_only),
+            str(limit),
+            str(offset),
+        )
         return {"code": 500, "message": "获取站内消息失败"}
+
+@router.get("/site-messages/manage", response_model=dict)
+async def list_manage_site_messages(
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    keyword: str = Query(default=""),
+    scope: str = Query(default="all"),
+    user: dict = Depends(PermissionChecker(["sys:message:publish", "sys:message:delete", "sys:notify:global"])),
+):
+    try:
+        rows = await NotificationService.list_manage_site_messages(
+            limit=int(limit),
+            offset=int(offset),
+            keyword=str(keyword or "").strip(),
+            scope=str(scope or "").strip().lower(),
+        )
+        return {"code": 200, "data": rows}
+    except Exception:
+        logger.exception(
+            "list_manage_site_messages failed: user_id=%s keyword=%s scope=%s",
+            str(user.get("id")),
+            str(keyword),
+            str(scope),
+        )
+        return {"code": 500, "message": "获取消息管理列表失败"}
 
 @router.get("/site-messages/unread-count", response_model=dict)
 async def get_site_message_unread_count(
@@ -84,8 +117,8 @@ async def create_site_message(
     target_user_id = None
     is_global = False
     try:
-        # 1. 权限检查：仅超级管理员可发送全站/定向消息
-        if not user_is_super(user):
+        can_publish = user_is_super(user) or (await user_has_permission(user, "sys:message:publish"))
+        if not can_publish:
             return {"code": 403, "message": "权限不足"}
 
         title = str(data.title or "").strip()
@@ -96,6 +129,8 @@ async def create_site_message(
         # 如果未指定 target_user_id，则视为全局消息 (is_global=True)
         # 全局消息对所有用户可见
         is_global = bool(data.is_global) if target_user_id is None else False
+        if is_global and not (user_is_super(user) or (await user_has_permission(user, "sys:notify:global"))):
+            return {"code": 403, "message": "缺少全站通知权限"}
         
         # 3. 创建消息记录
         row = await NotificationService.create_site_message(
@@ -119,6 +154,20 @@ async def create_site_message(
             str(len(title)),
         )
         return {"code": 500, "message": "发布失败"}
+
+@router.delete("/site-messages/{message_id}", response_model=dict)
+async def delete_site_message(
+    message_id: int,
+    user: dict = Depends(PermissionChecker("sys:message:delete")),
+):
+    try:
+        ok = await NotificationService.delete_site_message(message_id=int(message_id))
+        if not ok:
+            return {"code": 404, "message": "消息不存在"}
+        return {"code": 200, "message": "删除成功"}
+    except Exception:
+        logger.exception("delete_site_message failed: user_id=%s message_id=%s", str(user.get("id")), str(message_id))
+        return {"code": 500, "message": "删除失败"}
 
 @router.post("/site-messages/{message_id}/read", response_model=dict)
 async def mark_site_message_read(
@@ -300,6 +349,8 @@ async def sse_site_messages(user: dict = Depends(PermissionChecker("sys:message:
                             yield f"event: message\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                         elif msg_type == "site_message_read_state":
                             yield f"event: read_state\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                        elif msg_type == "site_message_deleted":
+                            yield f"event: deleted\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
                     # 8. 每次收到消息后，推送最新的未读数
                     next_count = await NotificationService.get_site_message_unread_count(user_id=user_id)

@@ -91,6 +91,8 @@ async def init_rbac_db():
             {"name": "系统概览", "code": "sys:dashboard:view", "description": ""},
             {"name": "查看监控", "code": "sys:monitor:view", "description": ""},
             {"name": "消息中心", "code": "sys:message:access", "description": ""},
+            {"name": "发布站内消息", "code": "sys:message:publish", "description": ""},
+            {"name": "删除站内消息", "code": "sys:message:delete", "description": ""},
             {"name": "订阅实时告警", "code": "sys:alert:subscribe", "description": ""},
             {"name": "查看通知历史", "code": "sys:notify:history", "description": ""},
             {"name": "查看通知配置", "code": "sys:notify:config:view", "description": ""},

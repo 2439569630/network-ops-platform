@@ -1,14 +1,16 @@
+import json
 import time
 import logging
 import asyncio
 import uuid
 import heapq
 from collections import defaultdict
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timezone
 
 from app.models.orm.alert import DeviceAlertRule, DeviceAlertLog
 from app.core.redis import redis_manager
+from app.core.redis_keys import RedisKeyFactory
 from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,157 @@ class AlertHandler:
         cd = max(0, int(cooldown_seconds or 0))
         return max(cd, 600)
 
+    async def rebuild_unresolved_markers(self) -> int:
+        cache_count = 0
+        try:
+            rows = await DeviceAlertLog.filter(
+                resolved_at__isnull=True,
+                rule_id__isnull=False,
+            ).values("id", "device_id", "rule_id", "triggered_at")
+        except Exception as e:
+            logger.warning(f"重建未恢复告警状态失败: {e}")
+            return 0
+        latest_rows: dict[Tuple[int, int], dict] = {}
+        for row in rows:
+            try:
+                did = int(row.get("device_id") or 0)
+                rid = int(row.get("rule_id") or 0)
+                if did <= 0 or rid <= 0:
+                    continue
+                key = (did, rid)
+                prev = latest_rows.get(key)
+                if prev is None or int(row.get("id") or 0) > int(prev.get("id") or 0):
+                    latest_rows[key] = row
+            except Exception:
+                continue
+        for row in latest_rows.values():
+            try:
+                await self._set_unresolved_alert_marker(
+                    int(row.get("device_id") or 0),
+                    int(row.get("rule_id") or 0),
+                    log_id=int(row.get("id") or 0),
+                    triggered_at=row.get("triggered_at"),
+                )
+                cache_count += 1
+            except Exception:
+                continue
+        logger.info(f"已重建 {cache_count} 条未恢复告警Redis标记")
+        return cache_count
+
+    async def _get_unresolved_alert_marker(self, device_id: int, rule_id: int) -> str:
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return ""
+        try:
+            key = RedisKeyFactory.alert_active(device_id, rule_id)
+            raw = await redis_client.get(key)
+            return str(raw or "")
+        except Exception:
+            return ""
+
+    async def _set_unresolved_alert_marker(
+        self,
+        device_id: int,
+        rule_id: int,
+        *,
+        log_id: int = 0,
+        triggered_at: Optional[datetime] = None,
+    ) -> None:
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return
+        payload = {
+            "device_id": int(device_id),
+            "rule_id": int(rule_id),
+            "log_id": int(log_id or 0),
+            "triggered_at": str(triggered_at.isoformat() if isinstance(triggered_at, datetime) else ""),
+        }
+        try:
+            key = RedisKeyFactory.alert_active(device_id, rule_id)
+            await redis_client.set(key, json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            return
+
+    async def _delete_unresolved_alert_marker(self, device_id: int, rule_id: int) -> None:
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return
+        try:
+            key = RedisKeyFactory.alert_active(device_id, rule_id)
+            await redis_client.delete(key)
+        except Exception:
+            return
+
+    async def _set_cooldown_state(self, device_id: int, rule_id: int, cooldown_seconds: int) -> None:
+        cd = max(0, int(cooldown_seconds or 0))
+        if cd <= 0:
+            return
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return
+        try:
+            key = RedisKeyFactory.alert_cooldown(device_id, rule_id)
+            await redis_client.set(key, str(int(time.time())), ex=cd)
+        except Exception:
+            return
+
+    async def _is_cooldown_active(self, device_id: int, rule_id: int, cooldown_seconds: int, now: float, last_fired_at: float) -> bool:
+        cd = max(0, int(cooldown_seconds or 0))
+        if cd <= 0:
+            return False
+        if last_fired_at > 0 and (float(now) - float(last_fired_at)) < float(cd):
+            return True
+        try:
+            redis_client = redis_manager.get_client()
+        except Exception:
+            return False
+        try:
+            key = RedisKeyFactory.alert_cooldown(device_id, rule_id)
+            ttl = await redis_client.ttl(key)
+            return int(ttl or -1) > 0
+        except Exception:
+            return False
+
+    async def _get_latest_unresolved_log(self, device_id: int, rule_id: int):
+        try:
+            return await DeviceAlertLog.filter(
+                device_id=int(device_id),
+                rule_id=int(rule_id),
+                resolved_at__isnull=True,
+            ).order_by("-triggered_at").first()
+        except Exception:
+            return None
+
+    async def _prepare_firing_by_db_truth(self, device_id: int, rule_id: int) -> bool:
+        marker = await self._get_unresolved_alert_marker(device_id, rule_id)
+        if marker:
+            return False
+        unresolved = await self._get_latest_unresolved_log(device_id, rule_id)
+        if unresolved:
+            await self._set_unresolved_alert_marker(
+                int(device_id),
+                int(rule_id),
+                log_id=int(getattr(unresolved, "id", 0) or 0),
+                triggered_at=getattr(unresolved, "triggered_at", None),
+            )
+            return False
+        return True
+
+    def _build_firing_message(self, rule: DeviceAlertRule, current_val: float, metrics: dict) -> str:
+        msg = f"触发告警: {rule.metric} {rule.operator} {rule.threshold}"
+        if rule.metric == "online_status" and current_val == 0:
+            reason = metrics.get("offline_reason", "")
+            msg = "设备离线"
+            if reason:
+                msg += f": {reason}"
+        if rule.metric == "online_status" and current_val == 1 and float(getattr(rule, "threshold", 0.0) or 0.0) == 1.0:
+            msg = "设备已恢复在线"
+        return msg
+
     async def _try_acquire_firing_lock(self, device_id: int, rule_id: int, ttl_seconds: int) -> str:
         try:
             redis_client = redis_manager.get_client()
@@ -148,7 +301,7 @@ class AlertHandler:
             return "local"
 
         try:
-            key = f"alert:firing:{device_id}:{rule_id}"
+            key = RedisKeyFactory.alert_firing_lock(device_id, rule_id)
             token = uuid.uuid4().hex
             ok = await redis_client.set(key, token, nx=True, ex=max(int(ttl_seconds), 1))
             return token if ok else ""
@@ -162,7 +315,7 @@ class AlertHandler:
             return
 
         try:
-            key = f"alert:firing:{device_id}:{rule_id}"
+            key = RedisKeyFactory.alert_firing_lock(device_id, rule_id)
             if not token or token == "local":
                 await redis_client.delete(key)
                 return
@@ -183,7 +336,7 @@ class AlertHandler:
         except Exception:
             return
         try:
-            key = f"alert:firing:{device_id}:{rule_id}"
+            key = RedisKeyFactory.alert_firing_lock(device_id, rule_id)
             script = (
                 "if redis.call('GET', KEYS[1]) == ARGV[1] then "
                 "return redis.call('EXPIRE', KEYS[1], ARGV[2]) "
@@ -324,7 +477,14 @@ class AlertHandler:
             return
         cooldown = int(getattr(rule, "cooldown", 0) or 0)
         last_fired_at = float(rule_state.get("last_fired_at", 0) or 0)
-        if cooldown > 0 and last_fired_at > 0 and (now - last_fired_at) < cooldown:
+        cooldown_active = await self._is_cooldown_active(
+            device_id=did,
+            rule_id=int(rule.id),
+            cooldown_seconds=cooldown,
+            now=now,
+            last_fired_at=last_fired_at,
+        )
+        if cooldown_active:
             device_states[int(rule.id)] = rule_state
             return
 
@@ -347,10 +507,14 @@ class AlertHandler:
         rule_state["lock_ttl"] = ttl
         device_states[int(rule.id)] = rule_state
 
-        msg = "设备已恢复在线"
-        if int(duration_seconds or 0) > 0:
-            msg = f"设备已在线超过{int(duration_seconds)}秒"
-        asyncio.create_task(self._log_alert(did, rule, 1.0, msg))
+        should_notify = await self._prepare_firing_by_db_truth(did, int(rule.id))
+        if should_notify:
+            msg = "设备已恢复在线"
+            if int(duration_seconds or 0) > 0:
+                msg = f"设备已在线超过{int(duration_seconds)}秒"
+            asyncio.create_task(self._log_alert(did, rule, 1.0, msg))
+        else:
+            await self._set_unresolved_alert_marker(did, int(rule.id))
 
     async def _interface_rule_loop(self) -> None:
         while True:
@@ -526,12 +690,16 @@ class AlertHandler:
                 if triggered:
                     cooldown = int(getattr(rule, "cooldown", 0) or 0)
                     last_fired_at = float(rule_state.get("last_fired_at", 0) or 0)
-                    if (
-                        cooldown > 0
-                        and not rule_state.get("is_firing")
-                        and last_fired_at > 0
-                        and (now - last_fired_at) < cooldown
-                    ):
+                    cooldown_active = False
+                    if not rule_state.get("is_firing"):
+                        cooldown_active = await self._is_cooldown_active(
+                            device_id=device_id,
+                            rule_id=int(getattr(rule, "id", 0) or 0),
+                            cooldown_seconds=cooldown,
+                            now=now,
+                            last_fired_at=last_fired_at,
+                        )
+                    if cooldown_active:
                         rule_state["triggered_at"] = 0
                         device_states[rule.id] = rule_state
                         continue
@@ -544,17 +712,16 @@ class AlertHandler:
                             candidates.append((rule, rule_state))
                 else:
                     if rule_state.get("is_firing"):
-                        if not rule_state.get("external_firing", False):
-                            asyncio.create_task(
-                                self._resolve_alert(
-                                    device_id,
-                                    rule,
-                                    current_val,
-                                    send_notify=not rule_state.get("muted", False),
-                                    release_lock=True,
-                                    lock_token=str(rule_state.get("lock_token") or ""),
-                                )
+                        asyncio.create_task(
+                            self._resolve_alert(
+                                device_id,
+                                rule,
+                                current_val,
+                                send_notify=not rule_state.get("muted", False),
+                                release_lock=not rule_state.get("external_firing", False),
+                                lock_token=str(rule_state.get("lock_token") or ""),
                             )
+                        )
                     rule_state["triggered_at"] = 0
                     rule_state["is_firing"] = False
                     rule_state["external_firing"] = False
@@ -595,23 +762,18 @@ class AlertHandler:
                     chosen_state["lock_ttl"] = 0
                     device_states[chosen_rule.id] = chosen_state
                 else:
+                    should_notify = await self._prepare_firing_by_db_truth(device_id, chosen_rule.id)
                     chosen_state["is_firing"] = True
                     chosen_state["external_firing"] = False
                     chosen_state["muted"] = False
                     chosen_state["last_fired_at"] = now
                     chosen_state["lock_token"] = token
                     chosen_state["lock_ttl"] = ttl
-
-                    msg = f"触发告警: {chosen_rule.metric} {chosen_rule.operator} {chosen_rule.threshold}"
-                    if chosen_rule.metric == "online_status" and current_val == 0:
-                        reason = metrics.get("offline_reason", "")
-                        msg = "设备离线"
-                        if reason:
-                            msg += f": {reason}"
-                    if chosen_rule.metric == "online_status" and current_val == 1 and float(getattr(chosen_rule, "threshold", 0.0) or 0.0) == 1.0:
-                        msg = "设备已恢复在线"
-
-                    asyncio.create_task(self._log_alert(device_id, chosen_rule, current_val, msg))
+                    if should_notify:
+                        msg = self._build_firing_message(chosen_rule, current_val, metrics)
+                        asyncio.create_task(self._log_alert(device_id, chosen_rule, current_val, msg))
+                    else:
+                        await self._set_unresolved_alert_marker(device_id, chosen_rule.id)
 
                 chosen_rank = severity_rank.get(chosen_rule.severity, 1)
                 for rule, rule_state, triggered in eval_rows:
@@ -629,13 +791,24 @@ class AlertHandler:
         """记录告警并发送通知 (Async Task)"""
         try:
             logger.warning(f"设备 {device_id} {message}, 当前值: {value}")
-            await DeviceAlertLog.create(
+            log = await DeviceAlertLog.create(
                 device_id=device_id,
                 rule_id=rule.id,
                 metric=rule.metric,
                 value=value,
                 message=message,
                 severity=rule.severity
+            )
+            await self._set_unresolved_alert_marker(
+                device_id,
+                int(getattr(rule, "id", 0) or 0),
+                log_id=int(getattr(log, "id", 0) or 0),
+                triggered_at=getattr(log, "triggered_at", None),
+            )
+            await self._set_cooldown_state(
+                device_id=device_id,
+                rule_id=int(getattr(rule, "id", 0) or 0),
+                cooldown_seconds=int(getattr(rule, "cooldown", 0) or 0),
             )
             try:
                 sev = str(getattr(rule, "severity", "") or "").strip().lower()
@@ -671,17 +844,13 @@ class AlertHandler:
         """记录告警恢复 (Async Task)"""
         try:
             logger.info(f"设备 {device_id} 告警恢复: {rule.metric}")
-            
-            # Try to find the latest unresolved log for this rule
-            last_log = await DeviceAlertLog.filter(
-                device_id=device_id, 
-                rule_id=rule.id, 
-                resolved_at__isnull=True
-            ).order_by("-triggered_at").first()
-            
-            if last_log:
-                last_log.resolved_at = datetime.now(timezone.utc)
-                await last_log.save()
+            resolved_at = datetime.now(timezone.utc)
+            resolved_count = await DeviceAlertLog.filter(
+                device_id=device_id,
+                rule_id=rule.id,
+                resolved_at__isnull=True,
+            ).update(resolved_at=resolved_at)
+            await self._delete_unresolved_alert_marker(device_id, int(getattr(rule, "id", 0) or 0))
             
             msg = f"告警恢复: {rule.metric}"
             if rule.metric == "online_status":
@@ -691,7 +860,7 @@ class AlertHandler:
                     thr = 0.0
                 msg = "设备已恢复在线" if thr == 0.0 else "设备已离开在线状态"
 
-            if send_notify:
+            if send_notify and int(resolved_count or 0) > 0:
                 await NotificationService.notify_device_alert(
                     device_id,
                     msg,

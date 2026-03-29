@@ -16,6 +16,7 @@ from app.drivers.ssh_retry import classify_ssh_failure, compact_exception_messag
 from app.core.config import settings
 from app.constants.user import DELETED_USER_DISPLAY_NAME
 from app.core.redis import redis_manager
+from app.core.redis_keys import RedisKeyFactory
 from app.services.notification_service import NotificationService
 from app.services.device_event_service import DEVICE_UPDATE_CHANNEL
 from app.services.network_resource_service import network_resource_service
@@ -52,7 +53,7 @@ class MonitorManager:
     # 单例实例，确保 MonitorManager 全局唯一
     _instance = None
     # Redis 中用于缓存设备实时快照的 key 前缀
-    _REDIS_SNAPSHOT_KEY_PREFIX = "monitor:runtime:snapshot:"
+    _REDIS_SNAPSHOT_KEY_PREFIX = RedisKeyFactory.MONITOR_RUNTIME_SNAPSHOT_PREFIX
     # Redis 发布/订阅频道：设备列表更新广播
     _REDIS_LIST_CHANNEL = "ws:devices:list"
     # Redis 发布/订阅频道前缀：单个设备详情更新广播，需拼接设备 ID
@@ -999,6 +1000,7 @@ class MonitorManager:
             await self.load_devices()
             # 加载告警规则
             await self.alert_handler.load_alert_rules()
+            await self.alert_handler.rebuild_unresolved_markers()
             await self.broadcast_snapshot()
         except (asyncio.TimeoutError, TimeoutError) as e:
             logger.error(f"启动时同步设备列表失败(数据库连接超时): {e}")
@@ -2424,22 +2426,10 @@ class MonitorManager:
             redis_client = redis_manager.get_client()
             did = int(device_id)
             cleared_resources = {"interfaces", "routes", "vlans"}
-            keys = [
-                f"{self._REDIS_SNAPSHOT_KEY_PREFIX}{did}",
-                f"device:{did}:interfaces",
-                f"device:{did}:interfaces:last",
-                f"device:{did}:routes",
-                f"device:{did}:routes:last",
-                f"device:{did}:vlans",
-                f"device:{did}:vlans:last",
-                f"device:{did}:resources:meta",
-            ]
+            keys = RedisKeyFactory.device_resource_cache_keys(did)
             await redis_client.delete(*keys)
 
-            patterns = [
-                f"device:{did}:interfaces_slot*_detailed",
-                f"device:{did}:interfaces_slot*_detailed:last",
-            ]
+            patterns = RedisKeyFactory.device_resource_cache_patterns(did)
             for pattern in patterns:
                 cursor = 0
                 while True:

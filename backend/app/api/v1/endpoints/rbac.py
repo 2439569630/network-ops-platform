@@ -325,6 +325,7 @@ async def list_permissions(current_user: dict = Depends(deps.get_current_user)):
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        await RbacService.sync_system_permissions()
         permissions = await RbacService.list_permissions()
         return {"code": 200, "data": permissions}
     except Exception as e:
@@ -347,6 +348,7 @@ async def list_permission_directory(current_user: dict = Depends(deps.get_curren
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
+        await RbacService.sync_system_permissions()
         data = await RbacService.list_permission_directory(include_custom=True)
         return {"code": 200, "data": data}
     except Exception as e:
@@ -711,8 +713,8 @@ async def add_users_to_role(
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
-        if await _is_protected_role_id(int(role_id)) and not user_is_super(current_user):
-            return {"code": 403, "message": "仅超级管理员可管理该角色成员"}
+        if await _is_protected_role_id(int(role_id)):
+            return {"code": 400, "message": "超级管理员角色已冻结，禁止新增成员"}
         before_count = await db.fetch_val("SELECT COUNT(1) FROM user_roles WHERE role_id = $1", int(role_id))
         ids = [int(uid) for uid in (user_ids or []) if uid is not None]
         ids = sorted(list(set(ids)))
@@ -759,22 +761,8 @@ async def remove_user_from_role(
     if not await _can_manage_rbac(current_user):
         return {"code": 403, "message": "权限不足"}
     try:
-        # 1. 检查是否涉及受保护角色 (超级管理员)
         if await _is_protected_role_id(int(role_id)):
-            # 只有超级管理员才能管理超级管理员角色
-            if not user_is_super(current_user):
-                return {"code": 403, "message": "仅超级管理员可管理该角色成员"}
-            
-            # 禁止移除自己 (防止把自己踢出管理员组后无法恢复)
-            if int(user_id) == int(current_user.get("id") or 0):
-                return {"code": 400, "message": "不允许将自己从超级管理员角色移除"}
-            
-            # 确保系统中至少保留一个超级管理员
-            remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
-            if remaining <= 0:
-                return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
-        
-        # 2. 执行移除操作
+            return {"code": 400, "message": "超级管理员角色已冻结，禁止移除成员"}
         before_count = await db.fetch_val("SELECT COUNT(1) FROM user_roles WHERE role_id = $1", int(role_id))
         existed = await db.fetch_val(
             "SELECT 1 FROM user_roles WHERE role_id = $1 AND user_id = $2 LIMIT 1",
@@ -832,43 +820,26 @@ async def set_user_roles(
     if not has_perm:
         return {"code": 403, "message": "权限不足"}
     try:
-        # 1. 权限边界检查
-        # 如果目标用户已经是超级管理员，则只有超级管理员能修改其角色
-        if await _target_has_protected_role(int(user_id)) and not check_super_admin(current_user):
-            return {"code": 403, "message": "仅超级管理员可操作该用户"}
-            
-        actor_id = int(current_user.get("id") or 0)
         new_role_ids = [int(rid) for rid in (data.role_ids or []) if rid is not None]
         new_role_ids = sorted(list(set(new_role_ids)))
 
-        # 2. 检查是否涉及超级管理员权限的变更
+        # 1. 检查是否涉及超级管理员权限的变更
+        old_role_ids = await _get_user_role_ids(int(user_id))
         old_has_protected = await _target_has_protected_role(int(user_id))
         new_has_protected = False
-        
-        # 检查新角色列表中是否包含受保护角色 (superadmin)
         if new_role_ids:
             rows = await db.fetch_all("SELECT code FROM roles WHERE id = ANY($1::int[])", new_role_ids)
             codes = {str((r or {}).get("code") or "").strip().lower() for r in (rows or [])}
             codes = {c for c in codes if c}
             new_has_protected = bool(codes & _PROTECTED_ROLE_CODES)
 
-        if new_has_protected and not check_super_admin(current_user):
-            return {"code": 403, "message": "仅超级管理员可授予超级管理员角色"}
+        if old_has_protected or new_has_protected:
+            if old_role_ids != new_role_ids:
+                return {"code": 400, "message": "超级管理员角色已冻结，禁止变更"}
+            return {"code": 200, "message": "设置成功"}
 
-        # 3. 防止自我降级和误删最后一个管理员
-        # 如果用户原本是超管，现在要去掉超管角色
-        if old_has_protected and not new_has_protected:
-            # 不允许自己取消自己的超管权限
-            if int(user_id) == actor_id:
-                return {"code": 400, "message": "不允许将自己降级为非超级管理员"}
-                
-            # 确保还有其他超管存在
-            remaining = await _count_protected_role_users(exclude_user_id=int(user_id))
-            if remaining <= 0:
-                return {"code": 400, "message": "必须至少保留一个超级管理员账号"}
-
-        # 4. 执行角色更新
-        before_role_ids = await _get_user_role_ids(int(user_id))
+        # 2. 执行角色更新
+        before_role_ids = old_role_ids
         before_role_codes = await _get_user_role_codes(int(user_id))
         await RbacService.set_user_roles(user_id, data.role_ids)
         after_role_ids = await _get_user_role_ids(int(user_id))
@@ -876,7 +847,7 @@ async def set_user_roles(
         added_role_codes = sorted(list(set(after_role_codes) - set(before_role_codes)))
         removed_role_codes = sorted(list(set(before_role_codes) - set(after_role_codes)))
         
-        # 5. 记录关键操作审计日志
+        # 3. 记录关键操作审计日志
         await UserAdminAuditService.log(
             action="user.set_roles",
             actor=current_user,

@@ -10,6 +10,7 @@ class User(models.Model):
     avatar_url = fields.CharField(max_length=1024, null=True)
     avatar_key = fields.CharField(max_length=1024, null=True)
     is_email_notify = fields.BooleanField(default=False)
+    is_login_email_notify = fields.BooleanField(default=False)
     is_approved = fields.BooleanField(default=True)
     is_deleted = fields.BooleanField(default=False)
     deleted_at = fields.DatetimeField(null=True)

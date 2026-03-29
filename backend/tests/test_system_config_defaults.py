@@ -16,6 +16,7 @@ class TestSystemConfigListDefaults(unittest.IsolatedAsyncioTestCase):
         ensured_keys = set(args[0])
         expected = {
             "email_enabled",
+            "login_email_enabled",
             "email_host",
             "email_port",
             "email_username",

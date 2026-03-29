@@ -1,4 +1,5 @@
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile, File, Query
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from app.core.redis import redis_manager
 from app.core.system_config import SystemConfig
 from app.utils.notification_sender import send_email
 from app.core.security import bump_user_auth_version
+from app.services.notification_service import NotificationService
 
 # ORM Imports
 from app.models.orm.user import User
@@ -22,12 +24,254 @@ from app.models.orm.rbac import Role, UserRole
 from tortoise.functions import Count
 from tortoise.expressions import Q
 
+logger = logging.getLogger(__name__)
+
 class UserService:
     """
     用户服务类
     处理用户账户管理、注册、认证、个人资料更新等业务逻辑。
     """
     _email_verify_table_ready: bool = False
+
+    @staticmethod
+    def _mask_email(email: Optional[str]) -> str:
+        raw = str(email or "").strip()
+        if "@" not in raw:
+            return raw
+        local, domain = raw.split("@", 1)
+        if len(local) <= 2:
+            masked_local = local[:1] + "*"
+        else:
+            masked_local = local[:2] + "*" * max(1, len(local) - 2)
+        return f"{masked_local}@{domain}"
+
+    @staticmethod
+    def _hash_verification_code(code: str) -> str:
+        return hashlib.sha256(str(code or "").strip().encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _infer_device_label(user_agent: Optional[str]) -> str:
+        ua = str(user_agent or "").strip().lower()
+        if not ua:
+            return "未知设备"
+
+        os_name = "未知系统"
+        if "windows" in ua:
+            os_name = "Windows"
+        elif "android" in ua:
+            os_name = "Android"
+        elif "iphone" in ua or "ipad" in ua or "ios" in ua:
+            os_name = "iOS"
+        elif "mac os x" in ua or "macintosh" in ua:
+            os_name = "macOS"
+        elif "linux" in ua:
+            os_name = "Linux"
+
+        browser = "未知浏览器"
+        if "edg/" in ua:
+            browser = "Edge"
+        elif "chrome/" in ua and "chromium" not in ua and "edg/" not in ua:
+            browser = "Chrome"
+        elif "firefox/" in ua:
+            browser = "Firefox"
+        elif "safari/" in ua and "chrome/" not in ua:
+            browser = "Safari"
+
+        return f"{os_name} · {browser}"
+
+    @staticmethod
+    async def request_password_change_email_code(user_id: int, request_ip: Optional[str] = None) -> dict:
+        user = await User.filter(id=int(user_id)).first()
+        if not user:
+            raise ValueError("用户不存在")
+
+        email = str(getattr(user, "email", "") or "").strip()
+        if not UserService._is_valid_email(email):
+            raise ValueError("请先绑定邮箱后再修改密码")
+
+        redis_client = redis_manager.get_client()
+        cooldown_seconds = SystemConfig.get_int("auth:pwdchange:cooldown_seconds", 60)
+        ttl_minutes = SystemConfig.get_int("auth:pwdchange:code_ttl_minutes", 10)
+        user_hour_limit = SystemConfig.get_int("auth:pwdchange:user_hour_limit", 5)
+        ip_hour_limit = SystemConfig.get_int("auth:pwdchange:ip_hour_limit", 20)
+
+        cooldown_key = f"pwdchange:code:cooldown:user:{int(user_id)}"
+        verify_key = f"pwdchange:code:user:{int(user_id)}"
+        user_hour_key = f"pwdchange:code:user:{int(user_id)}:h"
+
+        if await redis_client.exists(cooldown_key):
+            raise ValueError("发送过于频繁，请稍后再试")
+
+        raw_user_hour = await redis_client.get(user_hour_key)
+        try:
+            user_hour_count = int(raw_user_hour or 0)
+        except Exception:
+            user_hour_count = 0
+        if user_hour_count >= int(user_hour_limit):
+            raise ValueError("发送过于频繁，请稍后再试")
+
+        if request_ip:
+            ip_hour_key = f"pwdchange:code:ip:{request_ip}:h"
+            raw_ip_hour = await redis_client.get(ip_hour_key)
+            try:
+                ip_hour_count = int(raw_ip_hour or 0)
+            except Exception:
+                ip_hour_count = 0
+            if ip_hour_count >= int(ip_hour_limit):
+                raise ValueError("发送过于频繁，请稍后再试")
+            next_ip_hour = await redis_client.incr(ip_hour_key)
+            if int(next_ip_hour) == 1:
+                await redis_client.expire(ip_hour_key, 3600)
+
+        next_user_hour = await redis_client.incr(user_hour_key)
+        if int(next_user_hour) == 1:
+            await redis_client.expire(user_hour_key, 3600)
+
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username, password]):
+            await SystemConfig.load()
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username, password]):
+            raise ValueError("系统未配置邮箱服务，无法发送验证码")
+
+        code = f"{secrets.randbelow(1000000):06d}"
+        payload = {
+            "code_hash": UserService._hash_verification_code(code),
+            "email": email,
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+        await redis_client.set(verify_key, json.dumps(payload, ensure_ascii=False), ex=int(ttl_minutes) * 60)
+        await redis_client.set(cooldown_key, "1", ex=int(cooldown_seconds))
+
+        subject = "修改密码验证码"
+        content = (
+            f"{getattr(user, 'nickname', None) or getattr(user, 'username', None) or '用户'}，你好：\n\n"
+            "你正在进行账号密码修改操作。\n"
+            f"本次验证码为：{code}\n"
+            f"验证码 {int(ttl_minutes)} 分钟内有效，仅可使用一次。\n\n"
+            "如非本人操作，请尽快检查账号安全。"
+        )
+
+        ok, msg = await send_email(host, port, username, password, email, subject, content, nickname=nickname)
+        if not ok:
+            await redis_client.delete(verify_key)
+            await redis_client.delete(cooldown_key)
+            raise ValueError(f"验证码发送失败: {msg}")
+
+        return {
+            "cooldown_seconds": int(cooldown_seconds),
+            "expires_in_minutes": int(ttl_minutes),
+            "masked_email": UserService._mask_email(email),
+        }
+
+    @staticmethod
+    async def consume_password_change_email_code(user_id: int, email_code: str) -> None:
+        code = str(email_code or "").strip()
+        if not code:
+            raise ValueError("请输入邮箱验证码")
+
+        redis_client = redis_manager.get_client()
+        verify_key = f"pwdchange:code:user:{int(user_id)}"
+        raw = await redis_client.get(verify_key)
+        if not raw:
+            raise ValueError("邮箱验证码错误或已失效")
+
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            await redis_client.delete(verify_key)
+            raise ValueError("邮箱验证码错误或已失效")
+
+        expected_hash = str(payload.get("code_hash") or "").strip()
+        if not expected_hash or expected_hash != UserService._hash_verification_code(code):
+            raise ValueError("邮箱验证码错误或已失效")
+
+        await redis_client.delete(verify_key)
+
+    @staticmethod
+    async def send_password_changed_notification(
+        user_id: int,
+        *,
+        request_ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        user = await User.filter(id=int(user_id)).first()
+        if not user:
+            return
+
+        username = str(getattr(user, "username", "") or "").strip() or "账号"
+        display_name = str(getattr(user, "nickname", "") or "").strip() or username
+        email = str(getattr(user, "email", "") or "").strip()
+        device = UserService._infer_device_label(user_agent)
+        changed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ip_text = str(request_ip or "").strip() or "未知"
+
+        await NotificationService.create_site_message(
+            sender_id=None,
+            sender_name=None,
+            source="系统安全通知",
+            title="密码修改提醒",
+            content=(
+                f"你的账号密码已于 {changed_at} 完成修改。\n"
+                f"操作 IP：{ip_text}\n"
+                f"操作设备：{device}\n"
+                "如为本人操作，可忽略；如非本人操作，请立即重置密码并联系管理员。"
+            ),
+            target_user_id=int(user_id),
+            is_global=False,
+        )
+
+        if not UserService._is_valid_email(email):
+            return
+
+        host = SystemConfig.get("email_host")
+        port = SystemConfig.get("email_port")
+        username_smtp = SystemConfig.get("email_username")
+        password = SystemConfig.get("email_password")
+        nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username_smtp, password]):
+            await SystemConfig.load()
+            host = SystemConfig.get("email_host")
+            port = SystemConfig.get("email_port")
+            username_smtp = SystemConfig.get("email_username")
+            password = SystemConfig.get("email_password")
+            nickname = SystemConfig.get("email_nickname")
+
+        if not all([host, port, username_smtp, password]):
+            logger.warning("skip password changed email: email config missing")
+            return
+
+        ok, msg = await send_email(
+            host,
+            port,
+            username_smtp,
+            password,
+            email,
+            "账号密码修改提醒",
+            (
+                f"{display_name}，你好：\n\n"
+                "检测到你的账号密码已完成修改，操作信息如下：\n"
+                f"操作时间：{changed_at}\n"
+                f"操作 IP：{ip_text}\n"
+                f"操作设备：{device}\n\n"
+                "如果这是你本人操作，无需处理。\n"
+                "如果不是你本人操作，请立即使用找回密码功能重置密码，并尽快联系管理员。"
+            ),
+            nickname=nickname,
+        )
+        if not ok:
+            logger.error("send password changed email failed: user_id=%s; msg=%s", int(user_id), msg)
 
     @staticmethod
     async def get_user_list() -> List[dict]:
@@ -253,6 +497,7 @@ class UserService:
     async def get_user_by_id(user_id: int) -> Optional[dict]:
         user = await User.filter(id=user_id).first()
         if user:
+            roles = await UserService._get_user_roles(int(user_id))
             return {
                 "id": user.id,
                 "username": user.username,
@@ -260,6 +505,7 @@ class UserService:
                 "email": user.email,
                 "avatar_url": getattr(user, "avatar_url", None),
                 "is_approved": user.is_approved,
+                "roles": roles,
                 "created_at": user.created_at
             }
         return None
@@ -353,10 +599,12 @@ class UserService:
         更新用户的角色
         """
         from app.models.orm.rbac import UserRole
+        from app.services.rbac_service import RbacService
 
         await UserRole.filter(user_id=user_id).delete()
         if role_ids:
             await UserRole.bulk_create([UserRole(user_id=user_id, role_id=role_id) for role_id in role_ids])
+        await RbacService.bump_user_perm_version(int(user_id))
 
 
     @staticmethod
@@ -405,15 +653,25 @@ class UserService:
         if data.new_password:
              if not data.old_password:
                  raise ValueError("修改密码需要提供旧密码")
-             
-             # Verify old password
+             if not data.email_code:
+                 raise ValueError("修改密码需要邮箱验证码")
+             if len(str(data.new_password or "")) < 6:
+                 raise ValueError("密码长度至少 6 位")
+
              user = await User.filter(id=user_id).first()
+             if not user:
+                 raise ValueError("用户不存在")
+             if not UserService._is_valid_email(getattr(user, "email", None)):
+                 raise ValueError("请先绑定邮箱后再修改密码")
+
              stored_pw = user.password if user else None
-             
+
              from app.core.security import verify_password
              if not stored_pw or not verify_password(data.old_password, stored_pw):
                  raise ValueError("旧密码错误")
-             
+
+             await UserService.consume_password_change_email_code(user_id, data.email_code)
+
              new_hash = get_password_hash(data.new_password)
              await User.filter(id=user_id).update(password=new_hash)
              try:
@@ -431,6 +689,8 @@ class UserService:
 
         if updates:
             await User.filter(id=user_id).update(**updates)
+
+        return {"password_changed": bool(data.new_password)}
 
     @staticmethod
     async def get_profile_summary(user_id: int, username: str) -> dict:
