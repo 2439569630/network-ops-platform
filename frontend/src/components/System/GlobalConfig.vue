@@ -161,7 +161,7 @@ import { CopyDocument } from '@element-plus/icons-vue';
 import { homeDataStore } from '@/components/home/home/data';
 
 const store = homeDataStore();
-const isSuper = computed(() => Boolean(store.isSuper));
+const isSuper = computed(() => (typeof store.isSuperAdmin === 'function' ? store.isSuperAdmin() : Boolean(store.isSuper)));
 const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));
 
 const hasPerm = (perm) => {

@@ -14,7 +14,13 @@
 
         <el-form-item label="范围">
           <el-space wrap alignment="center">
-            <el-switch v-model="form.is_global" inline-prompt active-text="全站" inactive-text="指定用户" />
+            <el-switch
+              v-model="form.is_global"
+              inline-prompt
+              active-text="全站"
+              inactive-text="指定用户"
+              :disabled="!canSendGlobal"
+            />
             <el-input
               v-if="!form.is_global"
               v-model="form.target_user_id"
@@ -60,7 +66,9 @@ const form = reactive({
 })
 
 const isSuper = computed(() => Boolean(store.isSuper))
-const canSend = computed(() => isSuper.value)
+const perms = computed(() => (Array.isArray(store.permissions) ? store.permissions.map(String) : []))
+const canSend = computed(() => isSuper.value || perms.value.includes('sys:message:publish'))
+const canSendGlobal = computed(() => isSuper.value || perms.value.includes('sys:notify:global'))
 
 const goBack = () => {
   router.push({ name: 'message', query: { tab: 'site' } })
@@ -101,7 +109,7 @@ const submit = async () => {
     }
     ElMessage.error(res?.data?.message || '发布失败')
   } catch (e) {
-    ElMessage.error('发布失败')
+    ElMessage.error(e?.response?.data?.message || '发布失败')
   } finally {
     submitting.value = false
   }
@@ -110,6 +118,7 @@ const submit = async () => {
 onMounted(async () => {
   store.syncAuthFromToken()
   await store.fetchPermissions()
+  form.is_global = Boolean(canSendGlobal.value)
   if (!canSend.value) {
     ElMessage.error('权限不足')
     goBack()

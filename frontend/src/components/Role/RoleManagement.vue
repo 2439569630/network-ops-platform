@@ -65,9 +65,9 @@
                     <el-icon class="action-icon"><MoreFilled /></el-icon>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item v-if="!role.is_default && role.id !== 'new'" command="default">设为默认</el-dropdown-item>
+                        <el-dropdown-item v-if="!isProtectedRole(role) && !role.is_default && role.id !== 'new'" command="default">设为默认</el-dropdown-item>
                         <el-dropdown-item command="copy">复制角色</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided style="color: #f56c6c">删除角色</el-dropdown-item>
+                        <el-dropdown-item v-if="!isProtectedRole(role)" command="delete" divided style="color: #f56c6c">删除角色</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -85,9 +85,10 @@
               </div>
               <div class="header-actions">
                  <el-tag v-if="currentRole.is_default" type="success" effect="dark" class="mr-2">默认角色</el-tag>
+                 <el-tag v-if="isProtectedCurrentRole" type="danger" effect="dark" class="mr-2">受保护角色</el-tag>
                  <el-tag v-if="hasChanges" type="warning" effect="dark" class="mr-2">未保存</el-tag>
-                 <el-button v-if="!currentRole.is_default && currentRole.id !== 'new'" @click="handleSetDefaultRole(currentRole)">设为默认</el-button>
-                 <el-button type="primary" :loading="roleSaving" @click="saveCurrentRole">保存修改</el-button>
+                 <el-button v-if="!isProtectedCurrentRole && !currentRole.is_default && currentRole.id !== 'new'" @click="handleSetDefaultRole(currentRole)">设为默认</el-button>
+                 <el-button type="primary" :loading="roleSaving" :disabled="isProtectedCurrentRole" @click="saveCurrentRole">保存修改</el-button>
               </div>
             </div>
 
@@ -99,17 +100,17 @@
                   <el-row :gutter="20">
                     <el-col :span="12">
                       <el-form-item label="角色名称">
-                        <el-input v-model="currentRoleForm.name" placeholder="请输入角色名称" />
+                        <el-input v-model="currentRoleForm.name" placeholder="请输入角色名称" :disabled="isProtectedCurrentRole" />
                       </el-form-item>
                     </el-col>
                     <el-col :span="12">
                       <el-form-item label="角色编码">
-                        <el-input v-model="currentRoleForm.code" placeholder="唯一标识，如: admin" :disabled="currentRole.id !== 'new'" />
+                        <el-input v-model="currentRoleForm.code" placeholder="唯一标识，如: admin" :disabled="currentRole.id !== 'new' || isProtectedCurrentRole" />
                       </el-form-item>
                     </el-col>
                     <el-col :span="24">
                       <el-form-item label="描述">
-                        <el-input v-model="currentRoleForm.description" type="textarea" :rows="2" placeholder="角色职能描述..." />
+                        <el-input v-model="currentRoleForm.description" type="textarea" :rows="2" placeholder="角色职能描述..." :disabled="isProtectedCurrentRole" />
                       </el-form-item>
                     </el-col>
                   </el-row>
@@ -120,6 +121,7 @@
                 <div class="section-title">
                   <span>成员管理</span>
                   <el-button
+                    v-if="!isProtectedCurrentRole"
                     type="primary"
                     size="small"
                     style="float: right;"
@@ -137,6 +139,7 @@
                   <el-table-column label="操作" width="120" fixed="right">
                     <template #default="{ row }">
                       <el-button
+                        v-if="!isProtectedCurrentRole"
                         type="danger"
                         link
                         @click="handleRemoveMember(row)"
@@ -163,7 +166,7 @@
               </div>
 
               <!-- B. 权限矩阵 -->
-              <div class="config-section">
+              <div v-if="!isProtectedCurrentRole" class="config-section">
                 <div class="section-title">
                   <span>功能权限</span>
                   <el-input 
@@ -183,6 +186,7 @@
                         <el-checkbox 
                           v-model="group.allChecked" 
                           :indeterminate="group.isIndeterminate"
+                          :disabled="isProtectedCurrentRole"
                           @change="(val) => handleGroupCheckAll(val, group)"
                         >全选</el-checkbox>
                       </div>
@@ -198,7 +202,7 @@
                             <el-switch 
                               :model-value="currentRolePermIds.includes(perm.id)"
                               @change="() => togglePerm(perm.id)"
-                              :disabled="isGloballyDisabled(perm.code)"
+                              :disabled="isGloballyDisabled(perm.code) || isProtectedCurrentRole"
                               size="small"
                             />
                           </div>
@@ -219,6 +223,9 @@
                    </div>
                    <el-empty v-if="Object.keys(filteredPermissionGroups).length === 0" description="未找到相关权限" />
                 </div>
+              </div>
+              <div v-else class="config-section">
+                <el-alert type="warning" show-icon :closable="false" title="受保护角色不支持功能权限编辑" />
               </div>
 
               <!-- C. 数据权限 (模拟) -->
@@ -477,6 +484,7 @@ const isProtectedRole = (role) => {
   const code = String(role?.code || '').trim().toLowerCase();
   return protectedRoleCodes.has(code);
 };
+const isProtectedCurrentRole = computed(() => currentRole.value?.id !== 'new' && isProtectedRole(currentRole.value));
 
 // --- Computed ---
 
@@ -811,7 +819,7 @@ const isGloballyDisabled = (code) => {
   return disabledPermCodes.value.includes(c);
 };
 
-const NON_DISABLEABLE_PERM_CODES = new Set(['sys:notify:email']);
+const NON_DISABLEABLE_PERM_CODES = new Set(['sys:notify:email', 'sys:role:manage']);
 
 const isGlobalDisableLocked = (code) => {
   const c = String(code || '').trim();
@@ -935,6 +943,10 @@ const handleCreateRole = () => {
 };
 
 const saveCurrentRole = async () => {
+  if (isProtectedCurrentRole.value) {
+    ElMessage.warning('受保护角色不允许通过此页面修改权限');
+    return;
+  }
   if (!currentRoleForm.name || !currentRoleForm.code) {
     ElMessage.warning('角色名称和编码不能为空');
     return;
@@ -1105,6 +1117,10 @@ const handleAvailableUsersRemoteSearch = async (query) => {
 
 const openAddMembersDialog = async () => {
   if (!currentRole.value || currentRole.value.id === 'new') return;
+  if (isProtectedCurrentRole.value) {
+    ElMessage.warning('受保护角色不允许添加成员');
+    return;
+  }
   addMembersDialogVisible.value = true;
   selectedUserIds.value = [];
   availableUsersQuery.value = '';
@@ -1113,6 +1129,10 @@ const openAddMembersDialog = async () => {
 
 const handleAddMembers = async () => {
   if (!currentRole.value || currentRole.value.id === 'new') return;
+  if (isProtectedCurrentRole.value) {
+    ElMessage.warning('受保护角色不允许添加成员');
+    return;
+  }
   if (!selectedUserIds.value.length) {
     ElMessage.warning('请选择要添加的用户');
     return;
@@ -1137,6 +1157,10 @@ const handleAddMembers = async () => {
 
 const handleRemoveMember = async (user) => {
   if (!currentRole.value || currentRole.value.id === 'new') return;
+  if (isProtectedCurrentRole.value) {
+    ElMessage.warning('受保护角色不允许移除成员');
+    return;
+  }
   try {
     await ElMessageBox.confirm(`确定将用户「${user.username}」从该角色移除吗？`, '提示', { type: 'warning' });
     const res = await axios.delete(`/api/v1/rbac/roles/${currentRole.value.id}/users/${user.id}`);
@@ -1153,6 +1177,7 @@ const handleRemoveMember = async (user) => {
 };
 
 const togglePerm = (id) => {
+  if (isProtectedCurrentRole.value) return;
   const code = permCodeById.value.get(id);
   if (code && isGloballyDisabled(code)) {
     return;
@@ -1183,6 +1208,7 @@ const togglePerm = (id) => {
 };
 
 const handleGroupCheckAll = (val, group) => {
+  if (isProtectedCurrentRole.value) return;
   const ids = group.items.map(i => i.id);
   if (val) {
     const codes = ids.map(id => permCodeById.value.get(id)).filter(Boolean);

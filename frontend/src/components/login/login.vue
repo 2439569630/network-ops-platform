@@ -10,34 +10,38 @@
         <div class="auth-subtitle">使用账号密码登录系统</div>
       </div>
 
-      <el-alert
-        v-if="kickedInfo"
-        class="kick-alert"
-        title="你的账号已在另一台设备登录"
-        type="warning"
-        :closable="false"
-        show-icon
-      >
-        <template #default>
-          <div class="kick-body">
-            <div class="kick-line">
-              新登录设备：{{ kickedInfo.device || '未知' }}
-            </div>
-            <div class="kick-line">
-              新登录IP：{{ kickedInfo.ip || '未知' }}
-            </div>
-            <div class="kick-line" v-if="kickedInfo.ts">
-              时间：{{ kickedInfo.ts }}
-            </div>
-            <div class="kick-line">
-              如果不是你本人操作，可能密码已泄露，建议立即重置密码。
-            </div>
-            <div class="kick-actions">
-              <el-button type="primary" @click="goForgotPassword">通过邮箱重置密码</el-button>
-            </div>
+      <div v-if="kickedInfo" class="kick-panel">
+        <div class="kick-panel__header">
+          <div class="kick-panel__badge">安全提醒</div>
+          <div class="kick-panel__title">当前登录已失效</div>
+          <div class="kick-panel__desc">你的账号刚刚在另一台设备完成登录，因此当前页面已自动退出。</div>
+        </div>
+
+        <div class="kick-meta">
+          <div class="kick-meta__item">
+            <span class="kick-meta__label">登录设备</span>
+            <span class="kick-meta__value">{{ kickedInfo.device || '未知设备' }}</span>
           </div>
-        </template>
-      </el-alert>
+          <div class="kick-meta__item">
+            <span class="kick-meta__label">登录 IP</span>
+            <span class="kick-meta__value">{{ kickedInfo.ip || '未知 IP' }}</span>
+          </div>
+          <div v-if="formatKickedTime(kickedInfo.ts)" class="kick-meta__item">
+            <span class="kick-meta__label">登录时间</span>
+            <span class="kick-meta__value">{{ formatKickedTime(kickedInfo.ts) }}</span>
+          </div>
+        </div>
+
+        <div class="kick-note">
+          <span v-if="isLikelySelfLogin">如果这是你本人刚刚在其他设备上的登录，可以直接在当前页面重新登录。</span>
+          <span v-else>如果这次登录不是你本人操作，建议尽快重置密码并检查账号安全设置。</span>
+        </div>
+
+        <div class="kick-actions">
+          <el-button type="primary" @click="goForgotPassword">立即重置密码</el-button>
+          <el-button text @click="clearKickedInfo">我知道了</el-button>
+        </div>
+      </div>
 
       <el-form :model="form" label-position="top" @keyup.enter="submitLogin">
         <el-form-item label="账号">
@@ -50,8 +54,11 @@
 
         <el-form-item v-if="captchaRequired" label="验证码">
           <div class="captcha-row">
-            <div class="captcha-question">{{ form.captchaQuestion || '加载中...' }}</div>
-            <el-input v-model="form.captchaAnswer" placeholder="请输入答案" style="flex: 1" />
+            <div class="captcha-image-box">
+              <img v-if="form.captchaImage" :src="form.captchaImage" alt="captcha" class="captcha-image" />
+              <span v-else class="captcha-placeholder">加载中...</span>
+            </div>
+            <el-input v-model="form.captchaCode" placeholder="请输入验证码" style="flex: 1" />
             <el-button :disabled="captchaLoading" :loading="captchaLoading" @click="refreshCaptcha">刷新</el-button>
           </div>
         </el-form-item>
@@ -71,7 +78,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, watch } from 'vue' // 引入 Vue 响应式 API
+import { computed, reactive, ref, onMounted, watch } from 'vue' // 引入 Vue 响应式 API
 import { useRoute, useRouter } from 'vue-router' // 引入 Vue Router 钩子
 import axios from '@/axios/axios' // 引入封装的 Axios
 import { ElNotification } from 'element-plus' // 引入 Element Plus 通知组件
@@ -86,8 +93,8 @@ const form = reactive({
   username: '',
   password: '',
   captchaId: '',
-  captchaQuestion: '',
-  captchaAnswer: '',
+  captchaImage: '',
+  captchaCode: '',
 })
 
 const rememberPassword = ref(false) // 是否记住账号（这里变量名 rememberPassword 实际上是“记住账号”，逻辑上有点歧义，但保留原意）
@@ -95,6 +102,20 @@ const loading = ref(false) // 登录按钮的加载状态
 const kickedInfo = ref(null) // 存储被踢出登录的信息
 const captchaRequired = ref(false)
 const captchaLoading = ref(false)
+
+const formatKickedTime = (value) => {
+  if (!value) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const isLikelySelfLogin = computed(() => {
+  if (!kickedInfo.value) return false
+  return Boolean(kickedInfo.value.device || kickedInfo.value.ip)
+})
 
 // 加载被踢出登录的信息
 const loadKickedInfo = () => {
@@ -112,6 +133,13 @@ const loadKickedInfo = () => {
   } catch {
     kickedInfo.value = null
   }
+}
+
+const clearKickedInfo = () => {
+  kickedInfo.value = null
+  try {
+    sessionStorage.removeItem('auth:kicked_info')
+  } catch {}
 }
 
 // 组件挂载时执行
@@ -153,10 +181,16 @@ const goForgotPassword = () => {
 const refreshCaptcha = async () => {
   captchaLoading.value = true
   try {
-    const res = await axios.get('/api/v1/auth/captcha', { __skipAuthHandling: true })
+    const prevCaptchaId = String(form.captchaId || '').trim()
+    const res = await axios.get('/api/v1/auth/captcha', {
+      params: prevCaptchaId ? { prev_captcha_id: prevCaptchaId } : undefined,
+      __skipAuthHandling: true,
+    })
     form.captchaId = String(res?.data?.data?.captcha_id || '')
-    form.captchaQuestion = String(res?.data?.data?.question || '')
-    form.captchaAnswer = ''
+    const imageBase64 = String(res?.data?.data?.image_base64 || '')
+    const imageMime = String(res?.data?.data?.image_mime || 'image/png')
+    form.captchaImage = imageBase64 ? `data:${imageMime};base64,${imageBase64}` : ''
+    form.captchaCode = ''
   } catch (err) {
     ElNotification({
       title: 'Error',
@@ -199,8 +233,8 @@ const submitLogin = async () => {
   }
   if (captchaRequired.value) {
     const captchaId = String(form.captchaId || '').trim()
-    const captchaAnswer = String(form.captchaAnswer || '').trim()
-    if (!captchaId || !captchaAnswer) {
+    const captchaCode = String(form.captchaCode || '').trim()
+    if (!captchaId || !captchaCode) {
       ElNotification({ title: 'Error', message: '请完成验证码', type: 'error' })
       return
     }
@@ -212,7 +246,7 @@ const submitLogin = async () => {
     const payload = { username, password }
     if (captchaRequired.value) {
       payload.captcha_id = String(form.captchaId || '').trim()
-      payload.captcha_answer = String(form.captchaAnswer || '').trim()
+      payload.captcha_code = String(form.captchaCode || '').trim()
     }
     const res = await axios.post('/api/v1/auth/login', payload, { __skipAuthHandling: true })
     try {
@@ -222,8 +256,8 @@ const submitLogin = async () => {
     } catch {}
     captchaRequired.value = false
     form.captchaId = ''
-    form.captchaQuestion = ''
-    form.captchaAnswer = ''
+    form.captchaImage = ''
+    form.captchaCode = ''
 
     // 处理“记住账号”逻辑
     if (rememberPassword.value) {
@@ -298,23 +332,88 @@ const submitLogin = async () => {
   z-index: 1;
 }
 
-.kick-alert {
-  margin: 10px 0 12px;
+.kick-panel {
+  margin: 10px 0 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98), rgba(255, 251, 235, 0.96));
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-.kick-body {
+.kick-panel__header {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-.kick-line {
-  color: #374151;
+.kick-panel__badge {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kick-panel__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.kick-panel__desc {
   font-size: 13px;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
+.kick-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.kick-meta__item {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kick-meta__label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.kick-meta__value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.kick-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .kick-actions {
-  margin-top: 8px;
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .auth-header {
@@ -349,18 +448,29 @@ const submitLogin = async () => {
   width: 100%;
 }
 
-.captcha-question {
-  min-width: 120px;
-  padding: 0 10px;
-  height: 32px;
-  line-height: 32px;
+.captcha-image-box {
+  width: 240px;
+  height: 96px;
   border-radius: 8px;
+  overflow: hidden;
   background: rgba(17, 24, 39, 0.06);
   border: 1px solid rgba(17, 24, 39, 0.08);
-  color: #111827;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captcha-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.captcha-placeholder {
+  color: #6b7280;
+  font-size: 12px;
   text-align: center;
-  user-select: none;
 }
 
 .auth-actions {
@@ -409,6 +519,11 @@ const submitLogin = async () => {
     width: 100%;
     max-width: 520px;
   }
+
+  .kick-meta {
+    grid-template-columns: 1fr;
+  }
+
   .auth-brand h1 {
     font-size: 1.9rem;
   }

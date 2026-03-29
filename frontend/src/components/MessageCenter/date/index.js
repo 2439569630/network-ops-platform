@@ -82,6 +82,13 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
     siteMessages.value = list;
   };
 
+  const removeSiteMessage = (messageId) => {
+    const id = Number(messageId);
+    if (!Number.isFinite(id)) return;
+    const list = Array.isArray(siteMessages.value) ? siteMessages.value : [];
+    siteMessages.value = list.filter((m) => Number(m?.id) !== id);
+  };
+
   const fetchLatestSiteMessages = async () => {
     try {
       const res = await axios.get('/api/v1/notifications/site-messages', {
@@ -185,6 +192,16 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
         }
       });
 
+      siteMessageEventSource.addEventListener('deleted', (evt) => {
+        try {
+          const data = JSON.parse(String(evt?.data || '{}'));
+          const messageId = Number(data?.message_id);
+          removeSiteMessage(messageId);
+        } catch {
+          return;
+        }
+      });
+
       siteMessageEventSource.onerror = async () => {
         if (!hasSession()) {
           stopSiteMessageRealtime();
@@ -237,6 +254,7 @@ export const messageCenterDataStore = defineStore('messageCenterData', () => {
     getSiteMessageById,
     upsertSiteMessage,
     applySiteMessageReadState,
+    removeSiteMessage,
     startSiteMessageRealtime,
     stopSiteMessageRealtime,
     resetForLogout,

@@ -111,7 +111,9 @@ const getFirstAccessibleUserPath = (ctx) => {
 // 根据 Store 中的用户信息，计算默认跳转路径
 const getDefaultAuthedPath = async (store) => {
     const roleCodes = Array.isArray(store?.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : []
-    const isSuper = Boolean(store?.isSuper)
+    const isSuper = typeof store?.isSuperAdmin === 'function'
+        ? store.isSuperAdmin()
+        : Boolean(store?.isSuper)
     // 根据角色代码映射用户角色 ID (兼容旧逻辑)
     const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2)
     // 获取用户权限列表
@@ -174,7 +176,9 @@ router.beforeEach(async (to, from, next) => {
 
         // 获取用户角色和权限信息
         const roleCodes = Array.isArray(store.roleCodes) ? store.roleCodes.map(r => String(r).toLowerCase()) : []
-        const isSuper = Boolean(store.isSuper)
+        const isSuper = typeof store?.isSuperAdmin === 'function'
+            ? store.isSuperAdmin()
+            : Boolean(store.isSuper)
         const userRole = isSuper ? 0 : (roleCodes.includes('yunwei') ? 1 : 2)
 
         let denied = false

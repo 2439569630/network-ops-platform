@@ -20,8 +20,11 @@
 
           <el-form-item label="验证码">
             <div class="captcha-row">
-              <div class="captcha-question">{{ requestForm.captchaQuestion || '加载中...' }}</div>
-              <el-input v-model="requestForm.captchaAnswer" placeholder="请输入答案" style="flex: 1" />
+              <div class="captcha-image-box">
+                <img v-if="requestForm.captchaImage" :src="requestForm.captchaImage" alt="captcha" class="captcha-image" />
+                <span v-else class="captcha-placeholder">加载中...</span>
+              </div>
+              <el-input v-model="requestForm.captchaCode" placeholder="请输入验证码" style="flex: 1" />
               <el-button :disabled="captchaLoading" :loading="captchaLoading" @click="refreshCaptcha">刷新</el-button>
             </div>
           </el-form-item>
@@ -81,8 +84,8 @@ const hasToken = computed(() => Boolean(token.value))
 const requestForm = reactive({
   email: '',
   captchaId: '',
-  captchaQuestion: '',
-  captchaAnswer: '',
+  captchaImage: '',
+  captchaCode: '',
 })
 
 const resetForm = reactive({
@@ -122,10 +125,15 @@ const goLogin = () => {
 const refreshCaptcha = async () => {
   captchaLoading.value = true
   try {
-    const res = await axios.get('/api/v1/auth/captcha')
+    const prevCaptchaId = String(requestForm.captchaId || '').trim()
+    const res = await axios.get('/api/v1/auth/captcha', {
+      params: prevCaptchaId ? { prev_captcha_id: prevCaptchaId } : undefined,
+    })
     requestForm.captchaId = String(res?.data?.data?.captcha_id || '')
-    requestForm.captchaQuestion = String(res?.data?.data?.question || '')
-    requestForm.captchaAnswer = ''
+    const imageBase64 = String(res?.data?.data?.image_base64 || '')
+    const imageMime = String(res?.data?.data?.image_mime || 'image/png')
+    requestForm.captchaImage = imageBase64 ? `data:${imageMime};base64,${imageBase64}` : ''
+    requestForm.captchaCode = ''
   } catch (err) {
     ElNotification({
       title: 'Error',
@@ -145,8 +153,8 @@ const submitRequest = async () => {
   }
 
   const captchaId = String(requestForm.captchaId || '').trim()
-  const captchaAnswer = String(requestForm.captchaAnswer || '').trim()
-  if (!captchaId || !captchaAnswer) {
+  const captchaCode = String(requestForm.captchaCode || '').trim()
+  if (!captchaId || !captchaCode) {
     ElNotification({ title: 'Error', message: '请完成验证码', type: 'error' })
     return
   }
@@ -156,7 +164,7 @@ const submitRequest = async () => {
     const res = await axios.post('/api/v1/auth/password/reset/request', {
       email,
       captcha_id: captchaId,
-      captcha_answer: captchaAnswer,
+      captcha_code: captchaCode,
     })
     sent.value = true
     ElNotification({ title: 'Success', message: res?.data?.message || '请求已提交', type: 'success' })
@@ -299,17 +307,28 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.captcha-question {
-  min-width: 120px;
-  padding: 0 10px;
-  height: 32px;
+.captcha-image-box {
+  width: 240px;
+  height: 96px;
   display: flex;
   align-items: center;
+  justify-content: center;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   background: #fff;
-  color: #111827;
-  font-weight: 600;
+  overflow: hidden;
+}
+
+.captcha-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.captcha-placeholder {
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .auth-page::before {

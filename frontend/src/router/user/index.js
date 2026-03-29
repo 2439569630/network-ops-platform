@@ -58,7 +58,7 @@ const homeRoutes = [
                 path: 'message/publish',
                 name: 'site-message-publish',
                 component: () => import('@/components/MessageCenter/SiteMessagePublish.vue'),
-                meta: { title: '发布站内消息', perms: ['sys:message:access'] }
+                meta: { title: '发布站内消息', perms: ['sys:message:publish'] }
             },
             {
                 path: 'role',

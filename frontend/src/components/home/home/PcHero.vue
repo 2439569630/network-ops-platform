@@ -13,7 +13,18 @@
               <span class="identity__name">{{ store.displayName }}</span>
             </div>
             <div class="identity__sub">
-              <el-tag :type="store.roleTagType" effect="dark" round size="small">{{ store.roleName }}</el-tag>
+              <div class="role-tags">
+                <el-tag
+                  v-for="item in store.roleBadges"
+                  :key="item.key"
+                  :type="item.type"
+                  effect="dark"
+                  round
+                  size="small"
+                >
+                  {{ item.label }}
+                </el-tag>
+              </div>
               <span class="sep" />
               <span>{{ store.nowText }}</span>
               <span class="sep" />
@@ -147,6 +158,13 @@ const gridStyle = computed(() => {
   margin-top: 8px;
   color: rgba(255, 255, 255, 0.92);
   font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.role-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 

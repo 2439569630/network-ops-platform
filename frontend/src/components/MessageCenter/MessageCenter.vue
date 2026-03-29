@@ -48,6 +48,8 @@
           <div class="tab-main">
             <div
               class="site-list"
+              ref="siteListRef"
+              @scroll.passive="handleSiteListScroll"
             >
               <div v-loading="siteLoading" class="site-list__inner">
                 <div v-if="filteredSiteMessages.length === 0 && !siteLoading" class="site-empty">
@@ -85,6 +87,82 @@
                     </div>
                   </div>
                 </div>
+
+                <div v-if="siteLoadingMore" class="site-list__footer">
+                  正在加载更多消息...
+                </div>
+                <div v-else-if="!msgStore.siteMessagesHasMore && filteredSiteMessages.length > 0" class="site-list__footer">
+                  没有更多消息了
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'manage'" class="tab-body">
+          <div class="toolbar">
+            <div class="toolbar__row">
+              <el-space wrap alignment="center">
+                <el-select v-model="manageScope" size="small" style="width: 140px" @change="fetchManagedSiteMessages">
+                  <el-option label="全部范围" value="all" />
+                  <el-option label="全站消息" value="global" />
+                  <el-option label="定向消息" value="targeted" />
+                </el-select>
+                <el-input
+                  v-model="manageKeyword"
+                  size="small"
+                  clearable
+                  placeholder="搜索标题/内容/发送人"
+                  style="width: 280px"
+                  @keyup.enter="fetchManagedSiteMessages"
+                />
+                <el-button size="small" :loading="manageLoading" @click="fetchManagedSiteMessages">刷新</el-button>
+              </el-space>
+              <div class="toolbar__right">
+                <el-button v-if="canSendSiteMessages" size="small" type="primary" @click="openPublishDialog">新建消息</el-button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-main">
+            <div class="manage-table-wrap" ref="manageListRef" @scroll.passive="handleManageListScroll">
+              <el-table :data="managedSiteMessages" stripe v-loading="manageLoading" class="table" empty-text="暂无可管理的站内消息">
+                <el-table-column prop="created_at" label="时间" width="180">
+                  <template #default="scope">
+                    {{ formatDateTime(scope.row.created_at) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+                <el-table-column label="范围" width="140">
+                  <template #default="scope">
+                    <el-tag size="small" :type="scope.row.is_global ? 'danger' : 'info'" effect="light">
+                      {{ scope.row.is_global ? '全站' : `用户 ${scope.row.target_user_name || scope.row.target_user_id || '-'}` }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="发送人" width="140" show-overflow-tooltip>
+                  <template #default="scope">
+                    {{ scope.row.sender_name || scope.row.source || '系统' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="content" label="内容摘要" min-width="260" show-overflow-tooltip>
+                  <template #default="scope">
+                    {{ buildSiteMessageSnippet(scope.row.content) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" fixed="right">
+                  <template #default="scope">
+                    <el-button v-if="canDeleteSiteMessages" type="danger" link @click="deleteManagedSiteMessage(scope.row)">删除</el-button>
+                    <span v-else style="color: #909399">-</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <div v-if="manageLoadingMore" class="site-list__footer">
+                正在加载更多消息...
+              </div>
+              <div v-else-if="!manageHasMore && managedSiteMessages.length > 0" class="site-list__footer">
+                没有更多消息了
               </div>
             </div>
           </div>
@@ -137,7 +215,27 @@
                   <el-tag :type="getLevelType(scope.row.level)" effect="light">{{ String(scope.row.level || '').toLowerCase() }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="device_name" label="设备" width="180" show-overflow-tooltip />
+              <el-table-column label="状态" width="110">
+                <template #default="scope">
+                  <el-tag :type="scope.row.resolved_at ? 'success' : 'danger'" effect="light">
+                    {{ scope.row.resolved_at ? '已恢复' : '未恢复' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="设备" width="180" show-overflow-tooltip>
+                <template #default="scope">
+                  <el-button
+                    v-if="scope.row.device_id"
+                    type="primary"
+                    link
+                    class="device-link"
+                    @click="goToDeviceAlerts(scope.row)"
+                  >
+                    {{ scope.row.device_name || `设备 #${scope.row.device_id}` }}
+                  </el-button>
+                  <span v-else>{{ scope.row.device_name || '-' }}</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="message" label="内容" min-width="260" show-overflow-tooltip>
                 <template #default="scope">
                   {{ formatCenterMessage(scope.row.message) }}
@@ -232,6 +330,46 @@
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="publishDialogVisible" title="新建站内消息" width="620px" destroy-on-close>
+      <el-form label-position="top">
+        <el-form-item label="标题">
+          <el-input v-model="publishForm.title" maxlength="120" show-word-limit />
+        </el-form-item>
+
+        <el-form-item label="发送范围">
+          <el-space wrap alignment="center">
+            <el-switch
+              v-model="publishForm.is_global"
+              inline-prompt
+              active-text="全站"
+              inactive-text="指定用户"
+              :disabled="!canSendGlobalSiteMessages"
+            />
+            <el-input
+              v-if="!publishForm.is_global"
+              v-model="publishForm.target_user_id"
+              placeholder="请输入用户 ID"
+              style="width: 220px"
+            />
+          </el-space>
+          <div class="manage-form-tip">
+            全站消息需要额外的全站通知权限；指定用户消息只需要站内消息发布权限。
+          </div>
+        </el-form-item>
+
+        <el-form-item label="内容">
+          <el-input v-model="publishForm.content" type="textarea" :rows="8" maxlength="2000" show-word-limit />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-space>
+          <el-button @click="publishDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="manageSubmitting" @click="submitManagedSiteMessage">发布</el-button>
+        </el-space>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -254,7 +392,7 @@ const router = useRouter();
 const route = useRoute();
 const siteMessages = computed(() => (Array.isArray(msgStore.siteMessages) ? msgStore.siteMessages : []));
 const siteLoading = computed(() => Boolean(msgStore.siteMessagesLoading));
-const isSuper = computed(() => Boolean(store.isSuper));
+const isSuper = computed(() => (typeof store.isSuperAdmin === 'function' ? store.isSuperAdmin() : Boolean(store.isSuper)));
 const perms = computed(() => (Array.isArray(store.permissions) ? store.permissions.map(String) : []));
 const hasPerm = (p) => (isSuper.value ? true : perms.value.includes(String(p)));
 const hasAnyPerm = (arr) => (isSuper.value ? true : (arr || []).some((p) => perms.value.includes(String(p))));
@@ -263,7 +401,10 @@ const canViewHistory = computed(() => hasPerm('sys:notify:history'));
 const canViewConfig = computed(() => false); // Always false
 const canEditConfig = computed(() => false); // Always false
 const canTest = computed(() => false); // Always false
-const canSendSiteMessages = computed(() => isSuper.value);
+const canSendSiteMessages = computed(() => hasPerm('sys:message:publish'));
+const canDeleteSiteMessages = computed(() => hasPerm('sys:message:delete'));
+const canSendGlobalSiteMessages = computed(() => hasPerm('sys:notify:global'));
+const canManageSiteMessages = computed(() => canSendSiteMessages.value || canDeleteSiteMessages.value || hasPerm('sys:notify:global'));
 const canSubscribeAlerts = computed(() => {
     return hasPerm('sys:alert:subscribe');
 });
@@ -280,12 +421,28 @@ const notificationsLevel = ref('all');
 const notificationsKeyword = ref('');
 
 const siteMessagesKeyword = ref('');
+const manageLoading = ref(false);
+const manageLoadingMore = ref(false);
+const manageSubmitting = ref(false);
+const manageKeyword = ref('');
+const manageScope = ref('all');
+const managedSiteMessages = ref([]);
+const manageOffset = ref(0);
+const manageHasMore = ref(true);
+const publishDialogVisible = ref(false);
+const publishForm = reactive({
+    title: '',
+    content: '',
+    is_global: true,
+    target_user_id: '',
+});
 const siteMessagesUnreadOnly = computed({
     get: () => Boolean(msgStore.siteMessagesUnreadOnly),
     set: (v) => {
         msgStore.siteMessagesUnreadOnly = Boolean(v);
     },
 });
+const siteLoadingMore = computed(() => Boolean(msgStore.siteMessagesLoadingMore));
 
 const normalizeText = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -309,6 +466,13 @@ const buildSiteMessageSnippet = (content) => {
     const raw = String(formatCenterMessage(content) ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return '';
     return raw.length > 60 ? `${raw.slice(0, 60)}...` : raw;
+};
+
+const resetPublishForm = () => {
+    publishForm.title = '';
+    publishForm.content = '';
+    publishForm.is_global = Boolean(canSendGlobalSiteMessages.value);
+    publishForm.target_user_id = '';
 };
 
 const humanizeMetricKey = (key) => {
@@ -560,9 +724,24 @@ const buildTestNotifications = () => {
             id: `demo-notify-${idx}`,
             created_at: createdAt,
             level,
+            device_id: (idx % 5) + 1,
             device_name: deviceName,
             message: `${messageMap[level]}（测试消息 #${idx + 1}）`,
+            resolved_at: level === 'error' ? null : createdAt,
         };
+    });
+};
+
+const goToDeviceAlerts = (row) => {
+    const deviceId = Number(row?.device_id);
+    if (!deviceId) {
+        ElMessage.warning('未找到对应设备');
+        return;
+    }
+    router.push({
+        name: 'device-detail',
+        params: { id: String(deviceId) },
+        query: { tab: 'alerts' },
     });
 };
 
@@ -624,8 +803,153 @@ const fetchNotifications = async () => {
 };
 
 const loadSiteMessages = async () => {
-    await msgStore.fetchLatestSiteMessages();
+    await msgStore.resetAndLoadSiteMessages({ unreadOnly: siteMessagesUnreadOnly.value });
     await msgStore.fetchSiteMessageUnreadCount();
+};
+
+const fetchManagedSiteMessages = async () => {
+    manageOffset.value = 0;
+    manageHasMore.value = true;
+    managedSiteMessages.value = [];
+    await loadMoreManagedSiteMessages();
+};
+
+const loadMoreManagedSiteMessages = async () => {
+    if (!canManageSiteMessages.value) return;
+    if (!manageHasMore.value) return;
+    if (manageLoading.value || manageLoadingMore.value) return;
+    const isFirst = Number(manageOffset.value || 0) === 0;
+    if (isFirst) manageLoading.value = true;
+    else manageLoadingMore.value = true;
+    try {
+        const limit = 20;
+        const offset = Number(manageOffset.value || 0);
+        const res = await axios.get('/api/v1/notifications/site-messages/manage', {
+            params: {
+                limit,
+                offset,
+                keyword: String(manageKeyword.value || '').trim(),
+                scope: String(manageScope.value || 'all'),
+            },
+        });
+        if (res?.data?.code === 200) {
+            const items = Array.isArray(res?.data?.data) ? res.data.data : [];
+            managedSiteMessages.value = managedSiteMessages.value.concat(items);
+            manageOffset.value = offset + items.length;
+            manageHasMore.value = items.length === limit;
+            return;
+        }
+        ElMessage.error(res?.data?.message || '获取消息管理列表失败');
+    } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '获取消息管理列表失败');
+    } finally {
+        manageLoading.value = false;
+        manageLoadingMore.value = false;
+    }
+};
+
+const siteListRef = ref(null);
+const manageListRef = ref(null);
+
+const nearBottom = (el) => {
+    if (!el) return false;
+    return el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
+};
+
+const handleSiteListScroll = async (event) => {
+    const el = event?.target;
+    if (!nearBottom(el)) return;
+    await msgStore.loadMoreSiteMessages();
+};
+
+const handleManageListScroll = async (event) => {
+    const el = event?.target;
+    if (!nearBottom(el)) return;
+    await loadMoreManagedSiteMessages();
+};
+
+const openPublishDialog = () => {
+    if (!canSendSiteMessages.value) return;
+    resetPublishForm();
+    publishDialogVisible.value = true;
+};
+
+const submitManagedSiteMessage = async () => {
+    if (!canSendSiteMessages.value || manageSubmitting.value) return;
+
+    const title = String(publishForm.title || '').trim();
+    const content = String(publishForm.content || '').trim();
+    const targetUserIdRaw = String(publishForm.target_user_id || '').trim();
+    const isGlobal = Boolean(publishForm.is_global);
+    const targetUserId = isGlobal ? null : Number(targetUserIdRaw || 0);
+
+    if (!title) {
+        ElMessage.warning('标题不能为空');
+        return;
+    }
+    if (!content) {
+        ElMessage.warning('内容不能为空');
+        return;
+    }
+    if (!isGlobal && (!Number.isFinite(targetUserId) || targetUserId <= 0)) {
+        ElMessage.warning('请输入有效的目标用户 ID');
+        return;
+    }
+
+    manageSubmitting.value = true;
+    try {
+        const res = await axios.post('/api/v1/notifications/site-messages', {
+            title,
+            content,
+            is_global: isGlobal,
+            target_user_id: isGlobal ? null : targetUserId,
+        });
+        if (res?.data?.code === 200) {
+            ElMessage.success(res?.data?.message || '发布成功');
+            publishDialogVisible.value = false;
+            resetPublishForm();
+            await Promise.all([
+                fetchManagedSiteMessages(),
+                loadSiteMessages(),
+            ]);
+            return;
+        }
+        ElMessage.error(res?.data?.message || '发布失败');
+    } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '发布失败');
+    } finally {
+        manageSubmitting.value = false;
+    }
+};
+
+const deleteManagedSiteMessage = async (row) => {
+    const id = row?.id;
+    if (!id || !canDeleteSiteMessages.value) return;
+    try {
+        await ElMessageBox.confirm(
+            `确定删除站内消息“${String(row?.title || '').trim() || '未命名消息'}”吗？删除后接收人将无法继续查看。`,
+            '删除站内消息',
+            {
+                confirmButtonText: '删除',
+                cancelButtonText: '取消',
+                type: 'warning',
+            }
+        );
+
+        const res = await axios.delete(`/api/v1/notifications/site-messages/${encodeURIComponent(id)}`);
+        if (res?.data?.code === 200) {
+            ElMessage.success(res?.data?.message || '删除成功');
+            managedSiteMessages.value = (managedSiteMessages.value || []).filter((item) => Number(item?.id) !== Number(id));
+            msgStore.removeSiteMessage(id);
+            await msgStore.fetchSiteMessageUnreadCount();
+            return;
+        }
+        ElMessage.error(res?.data?.message || '删除失败');
+    } catch (e) {
+        if (e !== 'cancel' && e !== 'close') {
+            ElMessage.error(e?.response?.data?.message || '删除失败');
+        }
+    }
 };
 
 const markSiteMessageRead = async (row) => {
@@ -690,7 +1014,8 @@ const markAllRead = async () => {
 };
 
 const goPublishPage = () => {
-    router.push({ name: 'site-message-publish' });
+    activeTab.value = 'manage';
+    openPublishDialog();
 };
 
 const openSiteMessageDetail = (row) => {
@@ -708,19 +1033,32 @@ onMounted(async () => {
     store.syncAuthFromToken();
     await store.fetchPermissions();
     const tab = String(route.query?.tab || '').trim();
-    if (['site', 'notifications'].includes(tab)) {
+    if (['site', 'manage', 'notifications'].includes(tab)) {
         activeTab.value = tab;
     }
     if (canViewHistory.value) fetchNotifications();
     if (!Array.isArray(msgStore.siteMessages) || msgStore.siteMessages.length === 0) loadSiteMessages();
+    if (canManageSiteMessages.value) fetchManagedSiteMessages();
 });
 
 watch(
     () => route.query?.tab,
     (tab) => {
         const t = String(tab || '').trim();
-        if (['site', 'notifications'].includes(t)) {
+        if (['site', 'manage', 'notifications'].includes(t)) {
             activeTab.value = t;
+        }
+    }
+);
+
+watch(
+    () => activeTab.value,
+    async (tab) => {
+        if (tab === 'site' && (!Array.isArray(msgStore.siteMessages) || msgStore.siteMessages.length === 0)) {
+            await loadSiteMessages();
+        }
+        if (tab === 'manage' && canManageSiteMessages.value && (!Array.isArray(managedSiteMessages.value) || managedSiteMessages.value.length === 0)) {
+            await fetchManagedSiteMessages();
         }
     }
 );
@@ -748,6 +1086,7 @@ let tabResizeObserver;
 
 const visibleTabs = computed(() => {
     const tabs = [{ name: 'site', label: '站内消息', icon: Bell }];
+    if (canManageSiteMessages.value) tabs.push({ name: 'manage', label: '消息管理', icon: BellFilled });
     if (canViewHistory.value) tabs.push({ name: 'notifications', label: '设备通知', icon: Message });
     if (canViewConfig.value) tabs.push({ name: 'settings', label: '推送设置', icon: Setting });
     return tabs;
@@ -1019,12 +1358,32 @@ onUnmounted(() => {
     flex-shrink: 0;
 }
 
+.manage-form-tip {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #909399;
+    line-height: 18px;
+}
+
 .site-list {
     height: 100%;
     overflow: auto;
     border: 1px solid #ebeef5;
     border-radius: 10px;
     background: #ffffff;
+}
+
+.manage-table-wrap {
+    height: 100%;
+    overflow: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.manage-table-wrap .table {
+    border: none;
+    border-radius: 0;
 }
 .site-list__inner {
     padding: 12px;

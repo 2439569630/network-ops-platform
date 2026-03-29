@@ -131,7 +131,7 @@ const route = useRoute();
 const store = homeDataStore();
 const msgStore = messageCenterDataStore();
 const emit = defineEmits(['navigated'])
-const isSuper = computed(() => Boolean(store.isSuper));
+const isSuper = computed(() => (typeof store.isSuperAdmin === 'function' ? store.isSuperAdmin() : Boolean(store.isSuper)));
 const roleCodes = computed(() => store.roleCodes || []);
 const isAdmin = computed(() => isSuper.value || roleCodes.value.includes('admin') || roleCodes.value.includes('superadmin'));
 const permissions = computed(() => (Array.isArray(store.permissions) ? store.permissions : []));

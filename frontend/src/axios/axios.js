@@ -179,8 +179,12 @@ axios.interceptors.response.use(
       } catch {}
       if (!isForceLoginRecentlyTriggered()) {
         notifyOnce("force-login:kicked", {
-          title: "登录已失效",
-          message: data.message || (device || ip ? `已在其他设备登录（${String(device || "未知设备")} / ${String(ip || "未知IP")}）` : "会话已失效，请重新登录"),
+          title: "当前登录已退出",
+          message:
+            data.message ||
+            (device || ip
+              ? `账号已在新设备完成登录，当前页面已退出。设备：${String(device || "未知设备")}，IP：${String(ip || "未知IP")}`
+              : "账号已在其他设备登录，当前页面已退出，请重新登录"),
           type: "warning",
         });
       }
@@ -233,12 +237,12 @@ axios.interceptors.response.use(
             } catch {}
             if (!isForceLoginRecentlyTriggered()) {
               notifyOnce("force-login:kicked", {
-                title: "登录已失效",
+                title: "当前登录已退出",
                 message:
                   refreshData.message ||
                   (refreshDevice || refreshIp
-                    ? `已在其他设备登录（${String(refreshDevice || "未知设备")} / ${String(refreshIp || "未知IP")}）`
-                    : "会话已失效，请重新登录"),
+                    ? `账号已在新设备完成登录，当前页面已退出。设备：${String(refreshDevice || "未知设备")}，IP：${String(refreshIp || "未知IP")}`
+                    : "账号已在其他设备登录，当前页面已退出，请重新登录"),
                 type: "warning",
               });
             }

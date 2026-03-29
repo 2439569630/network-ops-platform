@@ -12,12 +12,17 @@ export const homeDataStore = defineStore('homeData', () => {
   const profileSaving = ref(false);
   const emailSaving = ref(false);
   const pwdLoading = ref(false);
+  const pwdCodeLoading = ref(false);
   const securityLoading = ref(false);
   const isEmailNotify = ref(false);
+  const isLoginEmailNotify = ref(false);
+  const securityEmail = ref('');
+  const pwdCodeCooldown = ref(0);
 
   const now = ref(new Date());
   let clockTimer = null;
   let emailCooldownTimer = null;
+  let pwdCodeCooldownTimer = null;
   let pollingTimer = null;
   let alertsWs = null;
   let alertsWsReconnectTimer = null;
@@ -28,6 +33,7 @@ export const homeDataStore = defineStore('homeData', () => {
     nickname: '',
     email: '',
     avatar_url: '',
+    roles: [],
     created_at: ''
   });
 
@@ -80,6 +86,32 @@ export const homeDataStore = defineStore('homeData', () => {
 
   const roleCodes = ref([]);
   const isSuper = ref(false);
+  const SUPER_ROLE_CODES = new Set(['superadmin', 'super_admin', 'super-admin']);
+  const normalizeRoleCodes = (roles) => (
+    Array.isArray(roles)
+      ? roles.map(r => String(r || '').trim().toLowerCase()).filter(Boolean)
+      : []
+  );
+  const resolveSuperFromPayload = (payload = {}) => {
+    const roles = normalizeRoleCodes(payload?.roles);
+    const roleCode = String(payload?.roleCode || payload?.role_code || '').trim().toLowerCase();
+    const roleKey = String(payload?.roleKey || payload?.role_key || '').trim().toLowerCase();
+    const userType = String(payload?.user_type || payload?.userType || '').trim().toLowerCase();
+    return Boolean(
+      payload?.is_super === true ||
+      payload?.is_super_admin === true ||
+      payload?.isSuper === true ||
+      payload?.isSuperAdmin === true ||
+      roles.some(code => SUPER_ROLE_CODES.has(code)) ||
+      SUPER_ROLE_CODES.has(roleCode) ||
+      SUPER_ROLE_CODES.has(roleKey) ||
+      userType === 'super'
+    );
+  };
+  const isSuperAdmin = (payload) => {
+    if (payload && typeof payload === 'object') return resolveSuperFromPayload(payload);
+    return resolveSuperFromPayload({ is_super: isSuper.value, roles: roleCodes.value });
+  };
   const sessionUserId = ref(null);
   const sessionUsername = ref('');
   const sessionPermVer = ref(null);
@@ -105,8 +137,17 @@ export const homeDataStore = defineStore('homeData', () => {
       return {
         id: parsed.id ?? null,
         username: String(parsed.username || ''),
-        roles: Array.isArray(parsed.roles) ? parsed.roles.map(r => String(r).toLowerCase()) : [],
-        isSuper: Boolean(parsed.is_super || false),
+        roles: normalizeRoleCodes(parsed.roles),
+        isSuper: resolveSuperFromPayload({
+          is_super: parsed.is_super,
+          is_super_admin: parsed.is_super_admin,
+          isSuper: parsed.isSuper,
+          isSuperAdmin: parsed.isSuperAdmin,
+          roleCode: parsed.roleCode || parsed.role_code,
+          roleKey: parsed.roleKey || parsed.role_key,
+          user_type: parsed.user_type,
+          roles: parsed.roles,
+        }),
         permVer: parsed.perm_ver ?? null,
         authVer: parsed.auth_ver ?? null,
         loadedAt,
@@ -140,9 +181,9 @@ export const homeDataStore = defineStore('homeData', () => {
   };
 
   const applySession = (data) => {
-    const roles = Array.isArray(data?.roles) ? data.roles.map(r => String(r).toLowerCase()) : [];
+    const roles = normalizeRoleCodes(data?.roles);
     roleCodes.value = roles;
-    isSuper.value = Boolean(data?.is_super || false) || roles.includes('superadmin') || roles.includes('super_admin') || roles.includes('super-admin');
+    isSuper.value = isSuperAdmin(data);
     sessionUserId.value = data?.id ?? null;
     sessionUsername.value = String(data?.username || '');
     sessionPermVer.value = data?.perm_ver ?? null;
@@ -207,7 +248,7 @@ export const homeDataStore = defineStore('homeData', () => {
       return;
     }
     roleCodes.value = cached.roles;
-    isSuper.value = Boolean(cached.isSuper || false);
+    isSuper.value = isSuperAdmin(cached);
     sessionUserId.value = cached.id ?? null;
     sessionUsername.value = cached.username || '';
     sessionPermVer.value = cached.permVer ?? null;
@@ -351,16 +392,38 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
-  const roleName = computed(() => {
-    if (isSuper.value) return '超级管理员';
-    if (roleCodes.value.includes('yunwei')) return '网络运维';
-    return '普通教师/访客';
+  const resolveRoleTagType = (code) => {
+    const normalized = String(code || '').trim().toLowerCase();
+    if (SUPER_ROLE_CODES.has(normalized)) return 'danger';
+    if (normalized.includes('yunwei')) return 'warning';
+    return 'info';
+  };
+
+  const roleBadges = computed(() => {
+    const roles = Array.isArray(form.roles) ? form.roles : [];
+    if (roles.length > 0) {
+      return roles
+        .filter(item => item && (item.name || item.code))
+        .map(item => ({
+          key: String(item.id ?? item.code ?? item.name),
+          label: String(item.name || item.code || '未命名角色'),
+          type: resolveRoleTagType(item.code),
+        }));
+    }
+    if (isSuper.value) {
+      return [{ key: 'superadmin', label: '超级管理员', type: 'danger' }];
+    }
+    if (roleCodes.value.includes('yunwei')) {
+      return [{ key: 'yunwei', label: '网络运维', type: 'warning' }];
+    }
+    return [{ key: 'default', label: '普通教师/访客', type: 'info' }];
   });
 
+  const roleName = computed(() => roleBadges.value.map(item => item.label).join(' / '));
+
   const roleTagType = computed(() => {
-    if (isSuper.value) return 'danger';
-    if (roleCodes.value.includes('yunwei')) return 'warning';
-    return 'info';
+    const first = roleBadges.value[0];
+    return first?.type || 'info';
   });
 
   const nowText = computed(() => {
@@ -693,21 +756,60 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
-  const changePassword = async (oldPassword, newPassword) => {
+  const stopPwdCodeCooldown = () => {
+    if (pwdCodeCooldownTimer) {
+      clearInterval(pwdCodeCooldownTimer);
+      pwdCodeCooldownTimer = null;
+    }
+  };
+
+  const startPwdCodeCooldown = (seconds) => {
+    stopPwdCodeCooldown();
+    pwdCodeCooldown.value = Math.max(0, Number(seconds || 0));
+    if (pwdCodeCooldown.value <= 0) return;
+    pwdCodeCooldownTimer = setInterval(() => {
+      pwdCodeCooldown.value = Math.max(0, pwdCodeCooldown.value - 1);
+      if (pwdCodeCooldown.value <= 0) stopPwdCodeCooldown();
+    }, 1000);
+  };
+
+  const requestPasswordChangeCode = async () => {
+    pwdCodeLoading.value = true;
+    try {
+      const res = await axios.post('/api/v1/users/profile/password/code/request');
+      if (res.data.code === 200) {
+        startPwdCodeCooldown(res.data.data?.cooldown_seconds || 60);
+        ElMessage.success(res.data.message || '验证码已发送');
+        return true;
+      }
+      ElMessage.error(res.data.message || '发送失败');
+      return false;
+    } catch (e) {
+      ElMessage.error(e.response?.data?.message || '发送失败');
+      return false;
+    } finally {
+      pwdCodeLoading.value = false;
+    }
+  };
+
+  const changePassword = async (oldPassword, newPassword, emailCode) => {
     pwdLoading.value = true;
     try {
       const res = await axios.post('/api/v1/users/profile/update', {
         old_password: oldPassword,
-        new_password: newPassword
+        new_password: newPassword,
+        email_code: emailCode
       });
       if (res.data.code === 200) {
         ElMessage.success('密码修改成功，请重新登录');
+        stopPwdCodeCooldown();
+        pwdCodeCooldown.value = 0;
         return true;
       }
       ElMessage.error(res.data.message || '修改失败');
       return false;
     } catch (e) {
-      ElMessage.error('修改失败');
+      ElMessage.error(e.response?.data?.message || '修改失败');
       return false;
     } finally {
       pwdLoading.value = false;
@@ -719,7 +821,9 @@ export const homeDataStore = defineStore('homeData', () => {
     try {
       const res = await axios.get('/api/v1/auth/users/me/security');
       if (res.data.code === 200) {
+        securityEmail.value = String(res.data.data.email || '');
         isEmailNotify.value = !!res.data.data.is_email_notify;
+        isLoginEmailNotify.value = !!res.data.data.is_login_email_notify;
       }
     } catch (e) {
       console.error('Failed to fetch security settings:', e);
@@ -728,12 +832,17 @@ export const homeDataStore = defineStore('homeData', () => {
     }
   };
 
-  const updateSecuritySettings = async (enabled) => {
+  const updateSecuritySettings = async (payload) => {
     securityLoading.value = true;
     try {
-      const res = await axios.put('/api/v1/auth/users/me/security', { is_email_notify: enabled });
+      const res = await axios.put('/api/v1/auth/users/me/security', payload);
       if (res.data.code === 200) {
-        isEmailNotify.value = enabled;
+        if (Object.prototype.hasOwnProperty.call(res.data.data || {}, 'is_email_notify')) {
+          isEmailNotify.value = !!res.data.data.is_email_notify;
+        }
+        if (Object.prototype.hasOwnProperty.call(res.data.data || {}, 'is_login_email_notify')) {
+          isLoginEmailNotify.value = !!res.data.data.is_login_email_notify;
+        }
         ElMessage.success('设置已更新');
         return true;
       }
@@ -765,6 +874,7 @@ export const homeDataStore = defineStore('homeData', () => {
     pwdLoading.value = false;
     securityLoading.value = false;
     isEmailNotify.value = false;
+    isLoginEmailNotify.value = false;
 
     now.value = new Date();
     Object.assign(form, {
@@ -773,6 +883,7 @@ export const homeDataStore = defineStore('homeData', () => {
       nickname: '',
       email: '',
       avatar_url: '',
+          roles: [],
       created_at: ''
     });
     Object.assign(summary, {
@@ -788,6 +899,9 @@ export const homeDataStore = defineStore('homeData', () => {
     profileForm.nickname = '';
     emailForm.email = '';
     resetEmailVerify();
+    securityEmail.value = '';
+    stopPwdCodeCooldown();
+    pwdCodeCooldown.value = 0;
 
     roleCodes.value = [];
     isSuper.value = false;
@@ -808,8 +922,12 @@ export const homeDataStore = defineStore('homeData', () => {
     profileSaving,
     emailSaving,
     pwdLoading,
+    pwdCodeLoading,
     securityLoading,
     isEmailNotify,
+    isLoginEmailNotify,
+    securityEmail,
+    pwdCodeCooldown,
     now,
     form,
     summary,
@@ -826,9 +944,11 @@ export const homeDataStore = defineStore('homeData', () => {
     initials,
     roleCodes,
     isSuper,
+    isSuperAdmin,
     permissions,
     permVer,
     permissionsLoading,
+    roleBadges,
     roleName,
     roleTagType,
     nowText,
@@ -856,6 +976,7 @@ export const homeDataStore = defineStore('homeData', () => {
     saveProfile,
     unlockEmailVerify,
     requestEmailVerify,
+    requestPasswordChangeCode,
     changePassword,
     fetchSecuritySettings,
     updateSecuritySettings,
