@@ -296,11 +296,6 @@ class LocationService:
             "label": node.name,
             "type": node.type,
             "code": node.code,
-            "managerDept": node.manager_dept,
-            "manager": node.manager,
-            "phone": node.phone,
-            "capacity": node.capacity,
-            "area": node.area,
             "address": node.address,
             "description": node.description,
             "status": bool(node.status),
@@ -379,11 +374,6 @@ class LocationService:
                     name=str(data.get("label") or "").strip(),
                     type=str(data.get("type") or "").strip(),
                     code=code,
-                    manager_dept=LocationService._normalize_optional_str(data.get("managerDept")),
-                    manager=LocationService._normalize_optional_str(data.get("manager")),
-                    phone=LocationService._normalize_optional_str(data.get("phone")),
-                    capacity=int(data.get("capacity")) if data.get("capacity") is not None else None,
-                    area=float(data.get("area")) if data.get("area") is not None else None,
                     address=LocationService._normalize_optional_str(data.get("address")),
                     description=LocationService._normalize_optional_str(data.get("description")),
                     status=bool(data.get("status")) if data.get("status") is not None else True,
@@ -419,11 +409,6 @@ class LocationService:
         mapping = {
             "label": "name",
             "type": "type",
-            "managerDept": "manager_dept",
-            "manager": "manager",
-            "phone": "phone",
-            "capacity": "capacity",
-            "area": "area",
             "address": "address",
             "description": "description",
             "status": "status",
@@ -436,12 +421,8 @@ class LocationService:
             val = patch.get(k)
             if k in {"label", "type"}:
                 val = str(val).strip()
-            elif k in {"managerDept", "manager", "phone", "address", "description"}:
+            elif k in {"address", "description"}:
                 val = (str(val).strip() if val is not None else None) or None
-            elif k == "capacity":
-                val = int(val) if val is not None else None
-            elif k == "area":
-                val = float(val) if val is not None else None
             elif k == "status":
                 val = bool(val)
             

@@ -6,8 +6,6 @@ class NetworkDevice(models.Model):
     id = fields.IntField(pk=True)
     device_name = fields.CharField(max_length=255)
     ipv4 = fields.CharField(max_length=50, null=True)
-    ipv6 = fields.CharField(max_length=50, null=True)
-    mac = fields.CharField(max_length=17, null=True)
     device_type = fields.CharField(max_length=50)
     
     # SSH Credentials

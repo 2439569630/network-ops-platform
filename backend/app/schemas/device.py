@@ -8,8 +8,6 @@ class DeviceBase(BaseModel):
     user_name: str
     type: str
     ipv4: str
-    ipv6: Optional[str] = None
-    mac: Optional[str] = None
     location: Optional[str] = None
     ssh_port: int = 22
 
@@ -25,8 +23,6 @@ class DeviceUpdate(BaseModel):
     location_node_id: Optional[int] = None
     ssh_port: Optional[int] = None
     ipv4: Optional[str] = None
-    ipv6: Optional[str] = None
-    mac: Optional[str] = None
     user_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None

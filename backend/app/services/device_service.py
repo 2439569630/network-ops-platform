@@ -242,8 +242,6 @@ class DeviceService:
                     "device_name": d.device_name,
                     "user_name": d.user_name,
                     "ipv4": str(d.ipv4) if d.ipv4 else "",
-                    "ipv6": str(d.ipv6) if d.ipv6 else "",
-                    "mac": str(d.mac) if d.mac else "",
                     "device_type": d.device_type,
                     "location": loc_name,
                     "ssh_port": d.ssh_port,
@@ -284,8 +282,6 @@ class DeviceService:
                         "device_name": row["device_name"],
                         "user_name": str(row.get("user_name") or ""),
                         "ipv4": row["ipv4"],
-                        "ipv6": row["ipv6"],
-                        "mac": row["mac"],
                         "status": str(snap.get("status") or "无运行态"),
                         "display_status": str(base.get("display_status") or snap.get("status") or "无运行态"),
                         "connectivity": str(base.get("connectivity") or "offline"),
@@ -328,15 +324,9 @@ class DeviceService:
         if await NetworkDevice.filter(ipv4=device.ipv4, ssh_port=device.ssh_port).exists():
             raise ValueError("该IP+端口已存在")
 
-        ipv6 = device.ipv6 if device.ipv6 and device.ipv6.strip() else None
-        mac = device.mac if device.mac and device.mac.strip() else None
-        # location = device.location if device.location and device.location.strip() else None
-
         new_device = await NetworkDevice.create(
             device_name=device.device_name,
             ipv4=device.ipv4,
-            ipv6=ipv6,
-            mac=mac,
             device_type=device.type,
             user_name=device.user_name,
             password=device.password,
@@ -354,8 +344,6 @@ class DeviceService:
             new_values={
                 "device_name": device.device_name,
                 "ipv4": device.ipv4,
-                "ipv6": ipv6,
-                "mac": mac,
                 "device_type": device.type,
                 "user_name": device.user_name,
                 "ssh_port": device.ssh_port,
@@ -722,12 +710,6 @@ class DeviceService:
             device.ipv4 = next_ipv4
         if getattr(patch, "ssh_port", None) is not None:
             device.ssh_port = next_ssh_port
-        if getattr(patch, "ipv6", None) is not None:
-            v = str(getattr(patch, "ipv6") or "").strip()
-            device.ipv6 = v or None
-        if getattr(patch, "mac", None) is not None:
-            v = str(getattr(patch, "mac") or "").strip()
-            device.mac = v or None
         if getattr(patch, "user_name", None) is not None:
             device.user_name = str(getattr(patch, "user_name") or "").strip()
         if getattr(patch, "password", None) is not None:

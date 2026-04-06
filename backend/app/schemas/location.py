@@ -9,11 +9,6 @@ class LocationNodeBase(BaseModel):
     label: str
     type: str
     code: Optional[str] = None
-    managerDept: Optional[str] = None
-    manager: Optional[str] = None
-    phone: Optional[str] = None
-    capacity: Optional[int] = None
-    area: Optional[float] = None
     address: Optional[str] = None
     description: Optional[str] = None
     status: bool = True
@@ -32,11 +27,6 @@ class LocationNodeUpdate(BaseModel):
     label: Optional[str] = None
     type: Optional[str] = None
     code: Optional[str] = None
-    managerDept: Optional[str] = None
-    manager: Optional[str] = None
-    phone: Optional[str] = None
-    capacity: Optional[int] = None
-    area: Optional[float] = None
     address: Optional[str] = None
     description: Optional[str] = None
     status: Optional[bool] = None

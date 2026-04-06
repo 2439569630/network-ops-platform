@@ -12,8 +12,6 @@ class NetworkDevice:
     user_name: str
     password: str
     created_by: str
-    ipv6: Optional[str] = None
-    mac: Optional[str] = None
     vendor: Optional[str] = None
     model: Optional[str] = None
     serial_number: Optional[str] = None

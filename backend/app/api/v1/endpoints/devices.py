@@ -109,8 +109,6 @@ class DeviceUpdateRequest(BaseModel):
     location_node_id: Optional[int] = None
     ssh_port: Optional[int] = None
     ipv4: Optional[str] = None
-    ipv6: Optional[str] = None
-    mac: Optional[str] = None
     user_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
@@ -262,8 +260,6 @@ async def update_device(
         location_node_id=data.location_node_id,
         ssh_port=data.ssh_port,
         ipv4=ipv4,
-        ipv6=data.ipv6,
-        mac=data.mac,
         user_name=data.user_name,
         password=password,
         is_active=data.is_active,
@@ -364,8 +360,6 @@ async def get_device_detail(
             nd.id,
             nd.device_name,
             nd.ipv4,
-            nd.ipv6,
-            nd.mac,
             nd.device_type,
             nd.user_name,
             COALESCE(lp.full_path, ln.name, '') AS location,  -- 优先使用全路径
@@ -396,8 +390,6 @@ async def get_device_detail(
     data["created_by_name"] = str(data.get("created_by_name") or DELETED_USER_DISPLAY_NAME)
     data["ops_admin_name"] = str(data.get("created_by_name") or DELETED_USER_DISPLAY_NAME)
     data["ipv4"] = str(data.get("ipv4") or "")
-    data["ipv6"] = str(data.get("ipv6") or "")
-    data["mac"] = str(data.get("mac") or "")
     data["user_name"] = str(data.get("user_name") or "")
     data["ssh_port"] = int(data.get("ssh_port") or 22)
     data["location"] = str(data.get("location") or "")
