@@ -162,23 +162,6 @@
                     </el-form-item>
                 </div>
 
-                <!-- 其他信息 -->
-                <div class="form-section-title">其他信息</div>
-                <div class="form-row">
-                    <el-form-item label="MAC地址" prop="mac" class="form-item">
-                        <el-input 
-                            v-model="deviceForm.mac" 
-                            placeholder="例如: 00:1B:44:11:3A:B7" 
-                        />
-                    </el-form-item>
-                </div>
-                
-                <el-form-item label="IPv6地址" prop="ipv6" class="full-width">
-                    <el-input 
-                        v-model="deviceForm.ipv6" 
-                        placeholder="例如: 2001:0db8:85a3:0000:0000:8a2e:0370:7334" 
-                    />
-                </el-form-item>
             </el-form>
             
             <template #footer>
@@ -276,8 +259,6 @@ const deviceForm = reactive({
     password: '',
     type: '',
     ipv4: '',
-    ipv6: '',
-    mac: '',
     ssh_port: 22,
     status: '在线'
 })
@@ -301,14 +282,6 @@ const rules = reactive({
     ssh_port: [
         { required: true, message: '请输入端口', trigger: 'blur' },
         { type: 'number', message: '必须为数字', trigger: 'blur' }
-    ],
-    mac: [
-        // { required: false, message: 'MAC地址', trigger: 'blur' },
-        {
-            pattern: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/,
-            message: 'MAC地址格式不正确',
-            trigger: 'blur'
-        }
     ],
     user_name: [
         { required: true, message: '请输入账号', trigger: 'blur' }

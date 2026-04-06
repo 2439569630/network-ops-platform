@@ -50,10 +50,6 @@
                                 <span :class="$style.infoText">{{ item.location }}</span>
                             </div>
                             <div :class="$style.infoRow">
-                                <el-icon :class="$style.icon"><Odometer /></el-icon>
-                                <span :class="$style.infoText" :title="item.mac">{{ formatMac(item.mac) }}</span>
-                            </div>
-                            <div :class="$style.infoRow">
                                 <el-icon :class="$style.icon"><Refresh /></el-icon>
                                 <el-tooltip :content="getDataHealthHint(item, nowTick)" placement="top" :show-after="400">
                                     <span :class="$style.infoText">监控数据：{{ getDataHealthText(item, nowTick) }}</span>
@@ -126,11 +122,6 @@
                             <span style="font-family: monospace;">{{ row.ipv4 }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="mac" label="MAC地址" min-width="160">
-                        <template #default="{ row }">
-                            <span style="font-family: monospace; color: #909399;">{{ formatMac(row.mac) }}</span>
-                        </template>
-                    </el-table-column>
                     <el-table-column prop="status" label="状态" min-width="180" sortable>
                         <template #default="{ row }">
                             <el-tag :type="getDeviceStatusTagType(row)" size="small" effect="light" round>
@@ -199,7 +190,7 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Odometer, Refresh } from '@element-plus/icons-vue';
+import { Grid, List, View, Connection, Delete, Location, Monitor, Link, Refresh } from '@element-plus/icons-vue';
 import { useDeviceStore } from './store';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
@@ -266,11 +257,6 @@ const showDeviceDetail = (item) => {
     } else {
         ElMessage.warning('设备 ID 无效')
     }
-};
-
-const formatMac = (mac) => {
-    if (!mac) return '';
-    return mac.replace(/(.{4})/g, '$1 ').trim();
 };
 
 const getProgressColor = (percentage) => {

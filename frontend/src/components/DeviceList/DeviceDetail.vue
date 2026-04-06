@@ -80,8 +80,6 @@
               <el-descriptions-item label="设备名称">{{ detail.device_name || '-' }}</el-descriptions-item>
               <el-descriptions-item label="设备类型">{{ detail.type || '-' }}</el-descriptions-item>
               <el-descriptions-item label="IPv4">{{ detail.ipv4 || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="IPv6">{{ detail.ipv6 || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="MAC">{{ detail.mac || '-' }}</el-descriptions-item>
               <el-descriptions-item label="SSH端口">{{ detail.ssh_port || '-' }}</el-descriptions-item>
               <el-descriptions-item label="位置" :span="2">{{ detail.location || '-' }}</el-descriptions-item>
             </el-descriptions>
@@ -256,12 +254,6 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="editForm.password" type="password" show-password placeholder="留空则不修改" />
         </el-form-item>
-        <el-form-item label="MAC地址" prop="mac">
-          <el-input v-model="editForm.mac" />
-        </el-form-item>
-        <el-form-item label="IPv6地址" prop="ipv6">
-          <el-input v-model="editForm.ipv6" />
-        </el-form-item>
         <el-form-item label="启用" prop="is_active">
           <el-switch v-model="editForm.is_active" />
         </el-form-item>
@@ -315,8 +307,6 @@ const detail = reactive({
   device_name: '',
   type: '',
   ipv4: '',
-  ipv6: '',
-  mac: '',
   location: '',
   location_node_id: null,
   ssh_port: 22,
@@ -397,8 +387,6 @@ const editForm = reactive({
   type: '',
   ssh_port: 22,
   ipv4: '',
-  ipv6: '',
-  mac: '',
   user_name: '',
   password: '',
   is_active: true,
@@ -647,8 +635,6 @@ const fetchDetail = async () => {
     detail.device_name = data.device_name || ''
     detail.type = data.type || data.device_type || ''
     detail.ipv4 = data.ipv4 || ''
-    detail.ipv6 = data.ipv6 || ''
-    detail.mac = data.mac || ''
     detail.location = data.location || ''
     detail.location_node_id = data.location_node_id ?? null
     detail.ssh_port = data.ssh_port || 22
@@ -669,8 +655,6 @@ const openEdit = () => {
   editForm.type = detail.type || ''
   editForm.ssh_port = Number(detail.ssh_port || 22)
   editForm.ipv4 = detail.ipv4 || ''
-  editForm.ipv6 = detail.ipv6 || ''
-  editForm.mac = detail.mac || ''
   editForm.user_name = detail.user_name || ''
   editForm.password = ''
   editForm.is_active = detail.is_active !== undefined ? Boolean(detail.is_active) : true
@@ -690,8 +674,6 @@ const saveEdit = async () => {
       type: editForm.type,
       ssh_port: editForm.ssh_port,
       ipv4: editForm.ipv4,
-      ipv6: editForm.ipv6,
-      mac: editForm.mac,
       user_name: editForm.user_name,
       password: editForm.password,
       is_active: editForm.is_active,
