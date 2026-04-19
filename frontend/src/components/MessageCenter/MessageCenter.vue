@@ -81,7 +81,7 @@
                         {{ buildSiteMessageSnippet(m.content) }}
                       </div>
                       <div class="site-card-row-3">
-                        <span class="sender-name">{{ m.sender_name || m.source || '系统消息' }}</span>
+                        <span class="sender-name">{{ formatSenderName(m) }}</span>
                         <el-tag v-if="!m.is_read" type="danger" size="small" effect="light" class="status-tag">NEW</el-tag>
                       </div>
                     </div>
@@ -136,13 +136,13 @@
                 <el-table-column label="范围" width="140">
                   <template #default="scope">
                     <el-tag size="small" :type="scope.row.is_global ? 'danger' : 'info'" effect="light">
-                      {{ scope.row.is_global ? '全站' : `用户 ${scope.row.target_user_name || scope.row.target_user_id || '-'}` }}
+                      {{ formatTargetUserName(scope.row) }}
                     </el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column label="发送人" width="140" show-overflow-tooltip>
                   <template #default="scope">
-                    {{ scope.row.sender_name || scope.row.source || '系统' }}
+                    {{ formatSenderName(scope.row) }}
                   </template>
                 </el-table-column>
                 <el-table-column prop="content" label="内容摘要" min-width="260" show-overflow-tooltip>
@@ -381,6 +381,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { homeDataStore } from '@/components/home/home/data';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
 import { Bell, InfoFilled, WarningFilled, Message, Setting, UserFilled, Monitor, BellFilled } from '@element-plus/icons-vue';
+import { formatUserDisplay } from '@/utils/userDisplay';
 
 const activeTab = ref('site');
 const notifications = ref([]);
@@ -445,6 +446,32 @@ const siteMessagesUnreadOnly = computed({
 const siteLoadingMore = computed(() => Boolean(msgStore.siteMessagesLoadingMore));
 
 const normalizeText = (v) => String(v ?? '').trim().toLowerCase();
+
+const formatSenderName = (row) => {
+    const sender = formatUserDisplay(
+        {
+            display_name: row?.sender_name,
+            username: row?.sender_username,
+            nickname: row?.sender_nickname,
+            id: row?.sender_id,
+        },
+        { fallback: '', showUsernameWhenDifferent: true }
+    );
+    return sender || String(row?.source || '').trim() || '系统消息';
+};
+
+const formatTargetUserName = (row) => {
+    if (row?.is_global) return '全站';
+    return formatUserDisplay(
+        {
+            display_name: row?.target_user_name,
+            username: row?.target_user_username,
+            nickname: row?.target_user_nickname,
+            id: row?.target_user_id,
+        },
+        { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+    );
+};
 
 const formatDateTime = (value) => {
     if (!value) return '';

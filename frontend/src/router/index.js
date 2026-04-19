@@ -188,7 +188,8 @@ router.beforeEach(async (to, from, next) => {
         // 检查权限
         if (hasPermMeta) {
             if (!isSuper) {
-                const perms = await store.fetchPermissions()
+                const shouldForcePerms = to.name === 'user-edit'
+                const perms = await store.fetchPermissions({ force: shouldForcePerms })
                 userPerms = Array.isArray(perms) ? perms.map(String) : []
                 const hasAnyPerm = to.meta.perms.some(p => userPerms.includes(String(p)))
                 denied = !hasAnyPerm

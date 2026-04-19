@@ -104,6 +104,7 @@ const running = ref(false)
 const deviceState = reactive({})
 
 let ws = null
+let syncTimer = null
 
 const selectedDevices = computed(() => {
   const ids = new Set(selectedDeviceIds.value.map(x => Number(x)))
@@ -167,6 +168,59 @@ const appendOutput = (deviceId, line) => {
   st.text = `${st.text || ''}${String(line || '')}\n`
 }
 
+const isTerminalStatus = (status) => {
+  const s = String(status || '').trim()
+  return ['success', 'failed', 'partial', 'canceled', 'finished'].includes(s)
+}
+
+const stopSyncTimer = () => {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+    syncTimer = null
+  }
+}
+
+const scheduleJobSync = (delay = 1500) => {
+  stopSyncTimer()
+  if (!jobId.value) return
+  if (isTerminalStatus(jobStatus.value)) return
+  syncTimer = window.setTimeout(() => {
+    syncJobState()
+  }, delay)
+}
+
+const syncJobState = async () => {
+  if (!jobId.value) return
+  try {
+    const res = await axios.get(`/api/v1/config-push/jobs/${jobId.value}`)
+    const payload = res?.data?.data || {}
+    const job = payload?.job || {}
+    const items = Array.isArray(payload?.items) ? payload.items : []
+
+    if (job?.status) {
+      jobStatus.value = String(job.status)
+      running.value = !isTerminalStatus(job.status)
+    }
+
+    for (const item of items) {
+      const did = String(item?.device_id ?? '')
+      if (!did) continue
+      const st = ensureDeviceState(did)
+      st.status = String(item?.status || st.status || 'pending')
+      if (item?.error_message && !String(st.text || '').includes(String(item.error_message))) {
+        appendOutput(did, `失败: ${String(item.error_message)}`)
+      }
+    }
+
+    if (isTerminalStatus(job?.status)) {
+      closeWs()
+      stopSyncTimer()
+      return
+    }
+  } catch (e) {}
+  scheduleJobSync()
+}
+
 const handleEvent = (evt) => {
   if (!evt || typeof evt !== 'object') return
   if (evt.id) lastId.value = String(evt.id)
@@ -176,16 +230,19 @@ const handleEvent = (evt) => {
   if (type === 'job_started') {
     jobStatus.value = 'running'
     running.value = true
+    scheduleJobSync()
     return
   }
   if (type === 'job_finished') {
     jobStatus.value = String(evt.status || 'finished')
     running.value = false
+    stopSyncTimer()
     closeWs()
     return
   }
   if (type === 'job_cancel_requested') {
     jobStatus.value = 'canceling'
+    scheduleJobSync()
     return
   }
   if (deviceId) {
@@ -243,13 +300,16 @@ const openWs = () => {
   ws.onopen = () => {}
   ws.onclose = async (e) => {
     const closeCode = Number(e?.code || 0)
+    if (!isTerminalStatus(jobStatus.value)) scheduleJobSync(300)
     if (closeCode !== 4001) return
     try {
       await axios.post('/api/v1/auth/refresh')
       openWs()
     } catch {}
   }
-  ws.onerror = () => {}
+  ws.onerror = () => {
+    if (!isTerminalStatus(jobStatus.value)) scheduleJobSync(300)
+  }
 }
 
 const closeWs = () => {
@@ -285,6 +345,7 @@ const startJob = async () => {
     }
     activeTab.value = selectedDevices.value.length > 0 ? String(selectedDevices.value[0].id) : ''
     openWs()
+    scheduleJobSync(500)
   } catch (e) {
     let msg = '创建任务失败'
     try {
@@ -300,11 +361,13 @@ const cancelJob = async () => {
   try {
     await axios.post(`/api/v1/config-push/jobs/${jobId.value}/cancel`)
     jobStatus.value = 'canceling'
+    scheduleJobSync(300)
   } catch (e) {}
 }
 
 const resetAll = () => {
   closeWs()
+  stopSyncTimer()
   title.value = ''
   commandsText.value = ''
   jobId.value = null
@@ -336,6 +399,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', checkMobile)
+  stopSyncTimer()
   closeWs()
 })
 </script>

@@ -354,7 +354,7 @@
                                 <el-option
                                     v-for="u in userOptions"
                                     :key="u.id"
-                                    :label="`${u.nickname || u.username} (${u.username})`"
+                                    :label="formatUserDisplay(u, { fallback: `用户#${u.id}`, showUsernameWhenDifferent: true, includeIdWhenMissingName: true })"
                                     :value="u.id"
                                 />
                             </el-select>
@@ -415,6 +415,7 @@ import axios from '@/axios/axios'
 import { homeDataStore } from '@/components/home/home/data'
 import { useDeviceStore } from '@/components/DeviceList/store'
 import { getDeviceStatusTagType, getDeviceStatusText } from '@/components/DeviceList/deviceStatus'
+import { formatUserDisplay } from '@/utils/userDisplay'
 
 // --- State ---
 const filterText = ref('')
@@ -529,7 +530,7 @@ const userLabelById = computed(() => {
     const m = new Map()
     for (const u of userOptions.value || []) {
         const id = Number(u?.id)
-        if (!Number.isNaN(id)) m.set(id, `${u?.nickname || u?.username || id}`)
+        if (!Number.isNaN(id)) m.set(id, formatUserDisplay(u, { fallback: `用户#${id}`, showUsernameWhenDifferent: true, includeIdWhenMissingName: true }))
     }
     return m
 })
@@ -540,6 +541,14 @@ const currentNodeRoleLabels = computed(() => {
 })
 
 const currentNodeUserLabels = computed(() => {
+    const users = Array.isArray(currentNode.value?.users) ? currentNode.value.users : []
+    if (users.length) {
+        return users.map(u => formatUserDisplay(u, {
+            fallback: `用户#${u?.id ?? '-'}`,
+            showUsernameWhenDifferent: true,
+            includeIdWhenMissingName: true
+        }))
+    }
     const ids = Array.isArray(currentNode.value?.userIds) ? currentNode.value.userIds : []
     return ids.map(id => userLabelById.value.get(Number(id)) || `#${id}`)
 })
@@ -892,7 +901,6 @@ const mergeUserOptions = (items) => {
 }
 
 const ensureUsersByIds = async (ids) => {
-    if (!canAdd.value && !canEdit.value) return
     const list = Array.isArray(ids) ? ids.map(v => Number(v)).filter(v => !Number.isNaN(v)) : []
     if (!list.length) return
     const need = []

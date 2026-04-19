@@ -71,7 +71,11 @@
                 {{ formatTime(row.created_at) }}
               </template>
             </el-table-column>
-            <el-table-column prop="actor_username" label="操作者" width="140" />
+            <el-table-column label="操作者" width="180">
+              <template #default="{ row }">
+                {{ formatAuditActor(row) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="action" label="动作" min-width="220">
               <template #default="{ row }">
                 <div class="action-cell">
@@ -84,7 +88,7 @@
               <template #default="{ row }">
                 <div class="target-cell">
                   <div class="target-main">{{ formatTarget(row) }}</div>
-                  <div class="target-sub" v-if="row.target_user_id">target_user_id={{ row.target_user_id }}</div>
+                  <div class="target-sub" v-if="row.target_user_id">目标用户：{{ formatTargetUser(row) }}</div>
                 </div>
               </template>
             </el-table-column>
@@ -162,7 +166,11 @@
                 {{ formatTime(row.created_at) }}
               </template>
             </el-table-column>
-            <el-table-column prop="username" label="用户" width="160" />
+            <el-table-column label="用户" width="180">
+              <template #default="{ row }">
+                {{ formatLoginUser(row) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="ip" label="IP地址" width="150" />
             <el-table-column prop="device" label="设备信息" min-width="220" />
             <el-table-column prop="user_agent" label="浏览器信息" min-width="260" show-overflow-tooltip />
@@ -366,7 +374,7 @@
         </div>
         <div class="detail-row">
           <span class="detail-label">操作者</span>
-          <span class="detail-value">{{ detailRow.actor_username || '-' }}</span>
+          <span class="detail-value">{{ formatAuditActor(detailRow) }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">动作</span>
@@ -403,6 +411,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
+import { formatUserDisplay } from '@/utils/userDisplay';
 
 const activeTab = ref('user-admin');
 const detailDialogVisible = ref(false);
@@ -505,10 +514,41 @@ const formatTarget = (row) => {
     return parts.join(' ');
   }
   if (row.target_user_id !== null && row.target_user_id !== undefined && row.target_user_id !== '') {
-    return `user id=${row.target_user_id}`;
+    return formatTargetUser(row);
   }
   return '-';
 };
+
+const formatAuditActor = (row) =>
+  formatUserDisplay(
+    {
+      display_name: row?.actor_display_name,
+      username: row?.actor_username,
+      id: row?.actor_user_id,
+    },
+    { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+  );
+
+const formatTargetUser = (row) =>
+  formatUserDisplay(
+    {
+      display_name: row?.target_user_display_name,
+      username: row?.target_user_username,
+      id: row?.target_user_id,
+    },
+    { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+  );
+
+const formatLoginUser = (row) =>
+  formatUserDisplay(
+    {
+      display_name: row?.display_name,
+      nickname: row?.nickname,
+      username: row?.username,
+      id: row?.user_id,
+    },
+    { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+  );
 
 const summarizeChange = (row) => {
   const d = normalizeDetail(row?.detail);

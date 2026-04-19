@@ -73,6 +73,12 @@ const homeRoutes = [
                 meta: { title: '用户管理', perms: ['sys:user:view'] }
             },
             {
+                path: 'user-manage/:id/edit',
+                name: 'user-edit',
+                component: () => import('@/components/System/UserEdit.vue'),
+                meta: { title: '编辑用户', perms: ['sys:user:view', 'sys:user:manage'] }
+            },
+            {
                 path: 'audit',
                 name: 'audit',
                 component: () => import('@/components/System/AuditCenter.vue'),

@@ -73,7 +73,7 @@
             <div class="card-header">
               <div class="header-left">
                   <span>实时告警列表</span>
-                 
+                  <span class="alert-window-text">近 1 小时事件</span>
               </div>
               <div class="header-right">
                    <el-radio-group v-model="alertFilter" size="small">
@@ -113,11 +113,21 @@
                 <template #default="scope">
                     <div class="resource-bar">
                         <span class="label">CPU</span>
-                        <el-progress :percentage="parseFloat(scope.row.cpu_usage || 0)" :color="getProgressColor" :stroke-width="6" />
+                        <el-progress
+                          :percentage="getUsagePercentage(scope.row.cpu_usage)"
+                          :format="() => formatUsageLabel(scope.row.cpu_usage)"
+                          :color="getProgressColor"
+                          :stroke-width="6"
+                        />
                     </div>
                     <div class="resource-bar mt-5">
                         <span class="label">MEM</span>
-                        <el-progress :percentage="parseFloat(scope.row.memory_usage || 0)" :color="getProgressColor" :stroke-width="6" />
+                        <el-progress
+                          :percentage="getUsagePercentage(scope.row.memory_usage)"
+                          :format="() => formatUsageLabel(scope.row.memory_usage)"
+                          :color="getProgressColor"
+                          :stroke-width="6"
+                        />
                     </div>
                 </template>
             </el-table-column>
@@ -149,10 +159,10 @@ import axios from '@/axios/axios'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { PieChart, BarChart } from 'echarts/charts'
+import { PieChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 
-use([CanvasRenderer, PieChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
+use([CanvasRenderer, PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const router = useRouter()
 
@@ -162,8 +172,11 @@ const checkMobile = () => { isMobile.value = window.innerWidth < 768 }
 // State
 const loading = ref(false)
 const refreshTimer = ref(null)
+const alertClockTimer = ref(null)
 const alertFilter = ref('all')
 const alertPeriod = ref('week')
+const alertNowTs = ref(Date.now())
+const ALERT_WINDOW_MS = 60 * 60 * 1000
 const alertPeriodLabel = computed(() => {
     const map = { today: '今天', week: '本周', month: '本月' }
     return map[alertPeriod.value] || '本周'
@@ -206,6 +219,33 @@ const mapAlertRow = (payload) => {
         time: time || '-',
         raw: payload || null,
     }
+}
+
+const parseAlertTime = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw || raw === '-') return null
+    const ts = Date.parse(raw)
+    return Number.isFinite(ts) ? ts : null
+}
+
+const formatAlertTime = (value) => {
+    const ts = parseAlertTime(value)
+    if (ts === null) return String(value || '-')
+    return new Date(ts).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    })
+}
+
+const isOfflineAlert = (row) => String(row?.message || '').startsWith('设备离线')
+const isRecoveredAlert = (row) => {
+    const msg = String(row?.message || '')
+    return msg.startsWith('设备已恢复在线') || msg.startsWith('设备已在线超过')
 }
 
 const closeWs = () => {
@@ -352,6 +392,7 @@ onMounted(async () => {
     loading.value = true
     openWs()
     startAutoRefresh()
+    startAlertClock()
 })
 
 onUnmounted(() => {
@@ -375,6 +416,20 @@ const stopAutoRefresh = () => {
         clearInterval(refreshTimer.value)
         refreshTimer.value = null
     }
+    if (alertClockTimer.value) {
+        clearInterval(alertClockTimer.value)
+        alertClockTimer.value = null
+    }
+}
+
+const startAlertClock = () => {
+    alertNowTs.value = Date.now()
+    if (alertClockTimer.value) {
+        clearInterval(alertClockTimer.value)
+    }
+    alertClockTimer.value = setInterval(() => {
+        alertNowTs.value = Date.now()
+    }, 30000)
 }
 
 // Computed Stats
@@ -383,17 +438,46 @@ const totalCount = computed(() => Number(devicesData.value?.total || 0))
 const onlineCount = computed(() => Number(devicesData.value?.online || 0))
 const offlineCount = computed(() => Number(devicesData.value?.offline || 0))
 
+const visibleAlerts = computed(() => {
+    const rows = [...alerts.value]
+        .map((row) => ({
+            ...row,
+            timestamp: parseAlertTime(row.time),
+            time: formatAlertTime(row.time),
+        }))
+        .filter((row) => row.timestamp === null || alertNowTs.value - row.timestamp <= ALERT_WINDOW_MS)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+
+    const recoveredDevices = new Set()
+    const result = []
+
+    for (const row of rows) {
+        const deviceKey = String(row.device_name || '').trim()
+        if (isRecoveredAlert(row)) {
+            if (deviceKey) recoveredDevices.add(deviceKey)
+            result.push(row)
+            continue
+        }
+        if (isOfflineAlert(row) && deviceKey && recoveredDevices.has(deviceKey)) {
+            continue
+        }
+        result.push(row)
+    }
+
+    return result.slice(0, 50)
+})
+
 const filteredAlerts = computed(() => {
-    if (alertFilter.value === 'all') return alerts.value
+    if (alertFilter.value === 'all') return visibleAlerts.value
     const levelMap = { critical: '严重', warning: '警告' }
-    return alerts.value.filter(a => a.level === levelMap[alertFilter.value])
+    return visibleAlerts.value.filter(a => a.level === levelMap[alertFilter.value])
 })
 
 const statsCards = computed(() => [
     { label: '总设备数', value: totalCount.value, icon: Monitor, color: '#409EFF', bgColor: '#409EFF', link: '/user/device' },
     { label: '在线设备', value: onlineCount.value, icon: CircleCheckFilled, color: '#67C23A', bgColor: '#67C23A', link: '/user/device' },
     { label: '离线设备', value: offlineCount.value, icon: CircleCloseFilled, color: '#F56C6C', bgColor: '#F56C6C', link: '/user/device' },
-    { label: '系统告警', value: alerts.value.length, icon: WarningFilled, color: '#E6A23C', bgColor: '#E6A23C', link: '/user/message' }
+    { label: '系统告警', value: visibleAlerts.value.length, icon: WarningFilled, color: '#E6A23C', bgColor: '#E6A23C', link: '/user/message' }
 ])
 
 // Charts Options
@@ -438,15 +522,80 @@ const statusChartOption = computed(() => {
     }
 })
 
-const alertChartOption = computed(() => ({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 16, right: 12, top: 22, bottom: 18, containLabel: true },
-    xAxis: { type: 'category', data: alertStatsData.xAxis.length ? alertStatsData.xAxis : ['严重', '警告', '提醒'] },
-    yAxis: { type: 'value', minInterval: 1 },
-    series: alertStatsData.series.length ? alertStatsData.series : [
-        { name: '告警数量', type: 'bar', data: [0, 0, 0], itemStyle: { color: '#E6A23C' } }
-    ]
-}))
+const alertChartOption = computed(() => {
+    const period = String(alertPeriod.value || 'week')
+    const xAxisData = alertStatsData.xAxis.length
+        ? alertStatsData.xAxis
+        : (period === 'today'
+            ? ['00:00', '06:00', '12:00', '18:00']
+            : ['04-01', '04-02', '04-03', '04-04', '04-05', '04-06', '04-07'])
+    const palette = {
+        严重: '#F56C6C',
+        警告: '#E6A23C',
+        提醒: '#409EFF',
+    }
+    const fallbackSeries = ['严重', '警告', '提醒'].map((name) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 7,
+        showSymbol: xAxisData.length <= 12,
+        lineStyle: { width: 3, color: palette[name] },
+        itemStyle: { color: palette[name] },
+        areaStyle: { opacity: 0.08, color: palette[name] },
+        emphasis: { focus: 'series' },
+        data: xAxisData.map(() => 0),
+    }))
+    const series = alertStatsData.series.length
+        ? alertStatsData.series.map((item) => {
+            const name = String(item?.name || '')
+            const color = palette[name] || '#409EFF'
+            return {
+                name,
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 7,
+                showSymbol: xAxisData.length <= 12,
+                lineStyle: { width: 3, color },
+                itemStyle: { color },
+                areaStyle: { opacity: 0.08, color },
+                emphasis: { focus: 'series' },
+                data: Array.isArray(item?.data) ? item.data : [],
+            }
+        })
+        : fallbackSeries
+
+    return {
+        color: Object.values(palette),
+        tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
+        legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#606266' } },
+        grid: { left: 16, right: 18, top: 36, bottom: 42, containLabel: true },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: xAxisData,
+            axisLabel: {
+                color: '#606266',
+                interval: period === 'month' ? 'auto' : 0,
+                rotate: period === 'month' ? 45 : 0,
+                hideOverlap: true,
+                formatter: (value) => {
+                    const text = String(value || '')
+                    return text.length > 8 ? `${text.slice(0, 8)}...` : text
+                },
+            },
+        },
+        yAxis: {
+            type: 'value',
+            minInterval: 1,
+            splitLine: { lineStyle: { color: '#ebeef5' } },
+            axisLabel: { color: '#606266' },
+        },
+        series,
+    }
+})
 
 const topUsageDevices = computed(() => {
     const list = Array.isArray(overviewData.value?.top_usage) ? overviewData.value.top_usage : []
@@ -454,6 +603,22 @@ const topUsageDevices = computed(() => {
 })
 
 // Helpers
+const getUsagePercentage = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!raw || raw === '--') return 0
+    const numeric = Number.parseFloat(raw.replace(/%$/, ''))
+    if (!Number.isFinite(numeric)) return 0
+    return Math.max(0, Math.min(100, numeric))
+}
+
+const formatUsageLabel = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!raw || raw === '--') return '--'
+    const numeric = Number.parseFloat(raw.replace(/%$/, ''))
+    if (!Number.isFinite(numeric)) return '--'
+    return `${numeric}%`
+}
+
 const getProgressColor = (percentage) => {
     if (percentage < 60) return '#67c23a';
     if (percentage < 85) return '#e6a23c';
@@ -611,6 +776,11 @@ const handleAlertAction = (row, type) => {
 
 /* Alert List & Resources */
 .header-left { display: flex; align-items: center; }
+.alert-window-text {
+    margin-left: 10px;
+    font-size: 12px;
+    color: #909399;
+}
 .ml-10 { margin-left: 10px; }
 .mt-5 { margin-top: 5px; }
 .mt-12 { margin-top: 12px; }

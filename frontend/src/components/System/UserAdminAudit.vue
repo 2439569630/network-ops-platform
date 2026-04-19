@@ -81,15 +81,15 @@
           <div class="card-body">
             <div class="info-row">
               <span class="label">操作者:</span>
-              <span class="value">{{ item.actor_username }}</span>
+              <span class="value">{{ formatAuditActor(item) }}</span>
             </div>
             <div class="info-row">
               <span class="label">动作代码:</span>
               <span class="value code">{{ item.action }}</span>
             </div>
             <div class="info-row">
-              <span class="label">目标用户ID:</span>
-              <span class="value">{{ item.target_user_id }}</span>
+              <span class="label">目标用户:</span>
+              <span class="value">{{ formatTargetUser(item) }}</span>
             </div>
             <div class="info-row">
               <span class="label">目标对象:</span>
@@ -116,7 +116,11 @@
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="actor_username" label="操作者" width="140" />
+        <el-table-column label="操作者" width="180">
+          <template #default="{ row }">
+            {{ formatAuditActor(row) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="action" label="动作" min-width="220">
           <template #default="{ row }">
             <div class="action-cell">
@@ -129,7 +133,7 @@
           <template #default="{ row }">
             <div class="target-cell">
               <div class="target-main">{{ formatTarget(row) }}</div>
-              <div class="target-sub" v-if="row.target_user_id">target_user_id={{ row.target_user_id }}</div>
+              <div class="target-sub" v-if="row.target_user_id">目标用户：{{ formatTargetUser(row) }}</div>
             </div>
           </template>
         </el-table-column>
@@ -169,7 +173,7 @@
         </div>
         <div class="detail-row">
           <span class="detail-label">操作者</span>
-          <span class="detail-value">{{ detailRow.actor_username || '-' }}</span>
+          <span class="detail-value">{{ formatAuditActor(detailRow) }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">动作</span>
@@ -206,6 +210,7 @@
 import { onMounted, onBeforeUnmount, reactive, ref } from 'vue';
 import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
+import { formatUserDisplay } from '@/utils/userDisplay';
 
 const loading = ref(false);
 const tableData = ref([]);
@@ -262,10 +267,30 @@ const formatTarget = (row) => {
     return parts.join(' ');
   }
   if (row.target_user_id !== null && row.target_user_id !== undefined && row.target_user_id !== '') {
-    return `user id=${row.target_user_id}`;
+    return formatTargetUser(row);
   }
   return '-';
 };
+
+const formatAuditActor = (row) =>
+  formatUserDisplay(
+    {
+      display_name: row?.actor_display_name,
+      username: row?.actor_username,
+      id: row?.actor_user_id,
+    },
+    { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+  );
+
+const formatTargetUser = (row) =>
+  formatUserDisplay(
+    {
+      display_name: row?.target_user_display_name,
+      username: row?.target_user_username,
+      id: row?.target_user_id,
+    },
+    { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true }
+  );
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;

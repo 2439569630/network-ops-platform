@@ -275,9 +275,15 @@
                     
                     <div class="action-buttons">
                         <!-- 管理员: 派单 -->
-                        <div v-if="canManageRepair && order?.status === 'pending'" class="action-group">
+                        <div v-if="canManageRepair && order?.status === 'pending' && order?.assignee_id == null" class="action-group">
                              <el-button type="primary" class="block-btn" :disabled="assignSubmitting" @click="dialogAssignVisible = true">指派维修人员</el-button>
-                             <el-button v-if="order?.assignee_id == null" class="block-btn" :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动智能派单</el-button>
+                             <el-tooltip
+                                 :content="autoAssignTip"
+                                 placement="top"
+                                 effect="dark"
+                             >
+                                 <el-button class="block-btn" :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动智能派单</el-button>
+                             </el-tooltip>
                         </div>
 
                         <!-- 维修人员: 接单 -->
@@ -337,9 +343,15 @@
     <!-- Mobile Fixed Footer Actions -->
     <div v-if="isMobile && ['pending', 'processing'].includes(order?.status)" class="mobile-footer-actions">
         <!-- 管理员: 派单 -->
-        <div v-if="canManageRepair && order?.status === 'pending'" class="action-group">
+        <div v-if="canManageRepair && order?.status === 'pending' && order?.assignee_id == null" class="action-group">
             <el-button type="primary" :disabled="assignSubmitting" @click="dialogAssignVisible = true">指派</el-button>
-            <el-button v-if="order?.assignee_id == null" :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动派单</el-button>
+            <el-tooltip
+                :content="autoAssignTip"
+                placement="top"
+                effect="dark"
+            >
+                <el-button :loading="assignSubmitting" :disabled="assignSubmitting" @click="handleAutoAssign">自动派单</el-button>
+            </el-tooltip>
         </div>
 
         <!-- 维修人员: 接单 -->
@@ -370,7 +382,7 @@
                     <el-option 
                         v-for="user in maintenanceUsers" 
                         :key="user.id" 
-                        :label="user.username" 
+                        :label="user.display_name || user.nickname || user.username" 
                         :value="user.id" 
                     />
                 </el-select>
@@ -823,6 +835,8 @@ const handleSSH = (device) => {
         });
     }
 };
+
+const autoAssignTip = '当前按运维人员正在处理中的工单数量自动分配，优先分给负载最小的人员；不是按报修位置或负责区域匹配。';
 
 // API Actions
 const fetchDetail = async () => {

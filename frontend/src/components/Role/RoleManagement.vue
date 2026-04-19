@@ -383,7 +383,7 @@
                 <el-option
                   v-for="u in availableUsers"
                   :key="u.id"
-                  :label="`${u.nickname || u.username} (${u.username})`"
+                  :label="formatUserLabel(u)"
                   :value="u.id"
                 />
               </el-select>
@@ -404,6 +404,7 @@ import { useRoute, useRouter } from 'vue-router';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { homeDataStore } from '@/components/home/home/data'
+import { formatUserDisplay } from '@/utils/userDisplay';
 import { 
   Key, InfoFilled, Avatar, Lock, UserFilled, MoreFilled, 
   Search, Connection, Delete, User, Back
@@ -491,6 +492,7 @@ const isProtectedCurrentRole = computed(() => currentRole.value?.id !== 'new' &&
 const permissionDepsByCode = ref({});
 
 const normalizePermCode = (code) => String(code || '').trim();
+const formatUserLabel = (user) => formatUserDisplay(user, { fallback: '-', showUsernameWhenDifferent: true, includeIdWhenMissingName: true });
 
 const getPermModuleKey = (code) => {
   const parts = normalizePermCode(code).split(':').filter(Boolean);
@@ -1162,7 +1164,7 @@ const handleRemoveMember = async (user) => {
     return;
   }
   try {
-    await ElMessageBox.confirm(`确定将用户「${user.username}」从该角色移除吗？`, '提示', { type: 'warning' });
+    await ElMessageBox.confirm(`确定将用户「${formatUserLabel(user)}」从该角色移除吗？`, '提示', { type: 'warning' });
     const res = await axios.delete(`/api/v1/rbac/roles/${currentRole.value.id}/users/${user.id}`);
     if (res.data.code === 200) {
       ElMessage.success(res.data.message || '移除成功');

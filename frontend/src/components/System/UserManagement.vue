@@ -8,10 +8,10 @@
                     <span class="subtitle" v-if="!isMobile">系统用户账号与权限管理</span>
                 </div>
                 <div class="header-actions">
-                    <el-button type="danger" :icon="Delete" @click="handleBatchDelete" :disabled="selectedUserIds.length === 0" :circle="isMobile">
+                    <el-button v-if="canManageUsers" type="danger" :icon="Delete" @click="handleBatchDelete" :disabled="selectedUserIds.length === 0" :circle="isMobile">
                         <span v-if="!isMobile">批量删除</span>
                     </el-button>
-                    <el-button type="primary" :icon="Plus" @click="openCreate" :circle="isMobile">
+                    <el-button v-if="canManageUsers" type="primary" :icon="Plus" @click="openCreate" :circle="isMobile">
                         <span v-if="!isMobile">新建用户</span>
                     </el-button>
                 </div>
@@ -45,18 +45,20 @@
                     <div v-else class="user-card" v-for="user in tableData" :key="user.id" @click="openDetail(user)">
                         <div class="card-header">
                             <div class="user-info">
-                                <el-avatar :size="40" :src="user.avatar || ''" class="user-avatar">
+                                <el-avatar :size="40" :src="user.avatar_url || ''" class="user-avatar">
                                     {{ (user.nickname || user.username || '?').charAt(0).toUpperCase() }}
                                 </el-avatar>
                                 <div class="user-meta">
                                     <div class="name-row">
-                                        <span class="username">{{ user.username }}</span>
+                                        <span class="username">{{ user.nickname || user.username || '-' }}</span>
+                                        <span class="user-id-chip">ID {{ user.id }}</span>
                                         <el-tag size="small" :type="user.is_approved ? 'success' : 'danger'"
                                             effect="dark" class="status-tag">
                                             {{ user.is_approved ? '启用' : '封禁' }}
                                         </el-tag>
                                     </div>
-                                    <div class="sub-row">{{ user.nickname || '无昵称' }}</div>
+                                    <div class="sub-row"><span class="sub-label">账号</span>{{ user.username || '-' }}</div>
+                                    <div class="sub-row role-row"><span class="sub-label">角色</span>{{ formatRoleNames(user.roles) }}</div>
                                 </div>
                             </div>
                             <div class="card-more">
@@ -66,11 +68,11 @@
                                     </el-icon>
                                     <template #dropdown>
                                         <el-dropdown-menu>
-                                            <el-dropdown-item command="edit" :icon="Edit">编辑</el-dropdown-item>
-                                            <el-dropdown-item command="toggle" :icon="SwitchButton">{{ user.is_approved
+                                            <el-dropdown-item command="edit" :icon="Edit">{{ canManageUsers ? '编辑' : '查看' }}</el-dropdown-item>
+                                            <el-dropdown-item v-if="canManageUsers" command="toggle" :icon="SwitchButton">{{ user.is_approved
                                                 ? '封禁账号' : '解封账号' }}</el-dropdown-item>
-                                            <el-dropdown-item command="reset" :icon="Key">重置密码</el-dropdown-item>
-                                            <el-dropdown-item command="delete" :icon="Delete" divided
+                                            <el-dropdown-item v-if="canManageUsers" command="reset" :icon="Key">重置密码</el-dropdown-item>
+                                            <el-dropdown-item v-if="canManageUsers" command="delete" :icon="Delete" divided
                                                 style="color: var(--el-color-danger)">删除用户</el-dropdown-item>
                                         </el-dropdown-menu>
                                     </template>
@@ -88,7 +90,7 @@
                                 <el-icon>
                                     <Calendar />
                                 </el-icon>
-                                <span>ID: {{ user.id }}</span>
+                                <span>账号：{{ user.username }}</span>
                             </div>
                         </div>
                     </div>
@@ -102,11 +104,14 @@
                     <el-table-column label="用户" min-width="200">
                         <template #default="{ row }">
                             <div class="table-user-cell">
-                                <el-avatar :size="32" class="mr-3">{{ (row.nickname ||
+                                <el-avatar :size="32" :src="row.avatar_url || ''" class="mr-3">{{ (row.nickname ||
                                     row.username).charAt(0).toUpperCase() }}</el-avatar>
                                 <div class="user-texts">
-                                    <div class="u-name">{{ row.username }}</div>
-                                    <div class="u-nick">{{ row.nickname }}</div>
+                                    <div class="u-name">
+                                        <span>{{ row.nickname || row.username || '-' }}</span>
+                                        <span class="user-id-chip table-id-chip">ID {{ row.id }}</span>
+                                    </div>
+                                    <div class="u-nick"><span class="sub-label">账号</span>{{ row.username || '-' }}</div>
                                 </div>
                             </div>
                         </template>
@@ -121,21 +126,37 @@
                             </div>
                         </template>
                     </el-table-column>
+                    <el-table-column label="所属角色" min-width="220" show-overflow-tooltip>
+                        <template #default="{ row }">
+                            <div class="role-cell">
+                                <el-tag
+                                    v-for="role in (row.roles || [])"
+                                    :key="`${row.id}-${role.id}`"
+                                    size="small"
+                                    effect="plain"
+                                    class="role-tag"
+                                >
+                                    {{ role.name }}
+                                </el-tag>
+                                <span v-if="!row.roles || row.roles.length === 0" class="empty-role-text">暂无角色</span>
+                            </div>
+                        </template>
+                    </el-table-column>
                     <el-table-column label="状态" width="100" align="center">
                         <template #default="{ row }">
                             <el-switch v-model="row.is_approved" inline-prompt active-text="启用" inactive-text="封禁"
-                                :loading="saving" @change="() => toggleStatus(row, true)" />
+                                :loading="saving" :disabled="!canManageUsers" @change="() => toggleStatus(row, true)" />
                         </template>
                     </el-table-column>
                     <el-table-column label="操作" width="200" align="right" fixed="right">
                         <template #default="{ row }">
-                            <el-tooltip content="编辑" placement="top">
+                            <el-tooltip :content="canManageUsers ? '编辑' : '查看'" placement="top">
                                 <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
                             </el-tooltip>
-                            <el-tooltip content="重置密码" placement="top">
+                            <el-tooltip v-if="canManageUsers" content="重置密码" placement="top">
                                 <el-button link type="warning" :icon="Key" @click="openResetPwd(row)" />
                             </el-tooltip>
-                            <el-tooltip content="删除" placement="top">
+                            <el-tooltip v-if="canManageUsers" content="删除" placement="top">
                                 <el-button link type="danger" :icon="Delete" @click="handleDelete(row)" />
                             </el-tooltip>
                         </template>
@@ -180,48 +201,31 @@
             </template>
         </el-dialog>
 
-        <el-dialog v-model="editVisible" title="编辑用户" :width="isMobile ? '90%' : '500px'" class="custom-dialog">
-            <el-form :model="editForm" label-position="top" size="large">
-                <el-form-item label="昵称">
-                    <el-input v-model="editForm.nickname" placeholder="显示名称" :prefix-icon="UserFilled" />
-                </el-form-item>
-                <el-form-item label="邮箱">
-                    <el-input v-model="editForm.email" placeholder="联系邮箱" :prefix-icon="Message" />
-                </el-form-item>
-                <div class="form-row">
-                    <el-form-item label="邮件通知">
-                        <el-switch v-model="editForm.is_email_notify" />
-                    </el-form-item>
-                    <el-form-item label="账号状态">
-                        <el-switch v-model="editForm.is_approved" active-text="启用" inactive-text="封禁" />
-                    </el-form-item>
-                </div>
-                <el-form-item label="角色">
-                    <el-select v-model="editForm.role_ids" multiple placeholder="分配角色" style="width: 100%;">
-                        <el-option v-for="role in roleOptions" :key="role.id" :label="role.name" :value="role.id" />
-                    </el-select>
-                </el-form-item>
-            </el-form>
-            <template #footer>
-                <el-button @click="editVisible = false">取消</el-button>
-                <el-button type="primary" :loading="saving" @click="submitEdit">保存修改</el-button>
-            </template>
-        </el-dialog>
-
         <el-dialog v-model="detailVisible" title="用户详情" :width="isMobile ? '90%' : '500px'" class="custom-dialog">
             <div v-if="detailData" class="user-detail-view">
                 <div class="detail-header">
-                    <el-avatar :size="60" class="detail-avatar">{{ (detailData.nickname ||
+                    <el-avatar :size="60" :src="detailData.avatar_url || ''" class="detail-avatar">{{ (detailData.nickname ||
                         detailData.username).charAt(0).toUpperCase() }}</el-avatar>
                     <div class="detail-info">
-                        <h3>{{ detailData.username }}</h3>
-                        <p>{{ detailData.nickname || '未设置昵称' }}</p>
+                        <div class="detail-title-row">
+                            <h3>{{ detailData.nickname || detailData.username || '-' }}</h3>
+                            <span class="user-id-chip detail-id-chip">ID {{ detailData.id }}</span>
+                        </div>
+                        <p><span class="sub-label">账号</span>{{ detailData.username || '-' }}</p>
                     </div>
                 </div>
                 <div class="detail-list">
                     <div class="detail-item">
-                        <span class="label">ID</span>
-                        <span class="value">{{ detailData.id }}</span>
+                        <span class="label">显示名称</span>
+                        <span class="value">{{ detailData.nickname || detailData.username || '-' }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="label">账号</span>
+                        <span class="value">{{ detailData.username }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="label">昵称</span>
+                        <span class="value">{{ detailData.nickname || '未设置昵称' }}</span>
                     </div>
                     <div class="detail-item">
                         <span class="label">邮箱</span>
@@ -272,7 +276,9 @@
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount, reactive, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { homeDataStore } from '@/components/home/home/data';
 import axios from '@/axios/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -281,6 +287,10 @@ import {
     SwitchButton, Calendar, WarningFilled
 } from '@element-plus/icons-vue';
 
+const router = useRouter();
+const authStore = homeDataStore();
+const canManageUsers = computed(() => Boolean(authStore.isSuper) || (Array.isArray(authStore.permissions) && authStore.permissions.includes('sys:user:manage')));
+
 // Mobile Detection
 const isMobile = ref(window.innerWidth < 768);
 const handleResize = () => {
@@ -288,8 +298,12 @@ const handleResize = () => {
 };
 
 const fetchRoles = async () => {
+    if (!canManageUsers.value) {
+        roleOptions.value = [];
+        return;
+    }
     try {
-        const res = await axios.get('/api/v1/rbac/roles');
+        const res = await axios.get('/api/v1/users/role-options');
         if (res.data?.code === 200) {
             roleOptions.value = res.data.data;
         }
@@ -315,17 +329,21 @@ const query = reactive({
 
 // Dialog States
 const createVisible = ref(false);
-const editVisible = ref(false);
 const detailVisible = ref(false);
 const resetPwdVisible = ref(false);
 
 // Forms
 const createForm = reactive({ username: '', nickname: '', email: '', password: '', role_ids: [] });
-const editUserId = ref(null);
-const editForm = reactive({ nickname: '', email: '', is_email_notify: false, is_approved: true, role_ids: [] });
 const detailData = ref(null);
 const resetPwdUser = ref(null);
 const resetPwdForm = reactive({ password: '' });
+
+const formatRoleNames = (roles) => {
+    const names = Array.isArray(roles)
+        ? roles.map((role) => String(role?.name || '').trim()).filter(Boolean)
+        : [];
+    return names.length ? names.join(' / ') : '暂无角色';
+};
 
 // Methods
 const fetchUsers = async () => {
@@ -402,34 +420,11 @@ const submitCreate = async () => {
     }
 };
 
-// Edit
-const openEdit = (row) => {
-    editUserId.value = row.id;
-    editForm.nickname = row.nickname || '';
-    editForm.email = row.email || '';
-    editForm.is_email_notify = Boolean(row.is_email_notify);
-    editForm.is_approved = Boolean(row.is_approved);
-    editForm.role_ids = row.roles ? row.roles.map(r => r.id) : [];
-    editVisible.value = true;
-};
-
-const submitEdit = async () => {
-    if (!editUserId.value) return;
-    saving.value = true;
-    try {
-        const res = await axios.put(`/api/v1/users/${editUserId.value}`, editForm);
-        if (res.data?.code === 200) {
-            ElMessage.success('保存成功');
-            editVisible.value = false;
-            fetchUsers();
-        } else {
-            ElMessage.error(res.data?.message || '保存失败');
-        }
-    } catch (e) {
-        ElMessage.error('保存失败');
-    } finally {
-        saving.value = false;
-    }
+const openEdit = async (row) => {
+    if (!row?.id) return;
+    authStore.syncAuthFromToken();
+    await authStore.fetchPermissions({ force: true });
+    await router.push(`/user/user-manage/${row.id}/edit`);
 };
 
 // Status
@@ -577,8 +572,11 @@ const handleBatchDelete = async () => {
 // Lifecycle
 onMounted(() => {
     window.addEventListener('resize', handleResize);
+    authStore.syncAuthFromToken();
     fetchUsers();
-    fetchRoles();
+    authStore.fetchPermissions({ force: false }).finally(() => {
+        fetchRoles();
+    });
 });
 
 onBeforeUnmount(() => {
@@ -740,6 +738,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .username {
@@ -752,6 +751,29 @@ onBeforeUnmount(() => {
     font-size: 12px;
     color: #909399;
     margin-top: 2px;
+}
+
+.sub-label {
+    display: inline-block;
+    min-width: 34px;
+    margin-right: 6px;
+    color: #606266;
+}
+
+.role-row {
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.user-id-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef3fb;
+    color: #5b6b82;
+    font-size: 12px;
+    line-height: 1;
 }
 
 .card-more {
@@ -796,7 +818,26 @@ onBeforeUnmount(() => {
     flex-direction: column;
 }
 
+.role-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.role-tag {
+    margin: 0;
+}
+
+.empty-role-text {
+    color: #909399;
+    font-size: 12px;
+}
+
 .u-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     font-weight: 500;
     font-size: 14px;
 }
@@ -804,6 +845,11 @@ onBeforeUnmount(() => {
 .u-nick {
     font-size: 12px;
     color: #909399;
+    line-height: 1.5;
+}
+
+.table-id-chip {
+    transform: translateY(-1px);
 }
 
 .icon-text {
@@ -867,9 +913,20 @@ onBeforeUnmount(() => {
     color: #303133;
 }
 
+.detail-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .detail-info p {
     margin: 4px 0 0;
     color: #909399;
+}
+
+.detail-id-chip {
+    font-size: 12px;
 }
 
 .detail-list {

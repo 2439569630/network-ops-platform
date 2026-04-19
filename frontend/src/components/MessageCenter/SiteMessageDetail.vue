@@ -36,7 +36,7 @@
                   class="meta-avatar"
                   :style="message.sender_avatar_url ? {} : { backgroundColor: avatarConfig.bg, color: avatarConfig.color }"
                 />
-                <span class="sender-name">{{ message.sender_name || message.source || '系统消息' }}</span>
+                <span class="sender-name">{{ formatSenderName(message) }}</span>
                 <span class="meta-dot">·</span>
                 <span class="send-time">{{ formatDateTime(message.created_at) }}</span>
               </div>
@@ -68,6 +68,7 @@ import axios from '@/axios/axios';
 import { ElMessage } from 'element-plus';
 import { messageCenterDataStore } from '@/components/MessageCenter/date';
 import { ArrowLeft, BellFilled, Check, RefreshLeft, UserFilled } from '@element-plus/icons-vue';
+import { formatUserDisplay } from '@/utils/userDisplay';
 
 const route = useRoute();
 const router = useRouter();
@@ -79,6 +80,19 @@ const marking = ref(false);
 const message = ref(null);
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
+
+const formatSenderName = (row) => {
+  const sender = formatUserDisplay(
+    {
+      display_name: row?.sender_name,
+      username: row?.sender_username,
+      nickname: row?.sender_nickname,
+      id: row?.sender_id,
+    },
+    { fallback: '', showUsernameWhenDifferent: true }
+  );
+  return sender || String(row?.source || '').trim() || '系统消息';
+};
 
 const getAvatarConfig = (row) => {
   const source = normalizeText(row?.source);

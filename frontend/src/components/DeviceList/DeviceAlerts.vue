@@ -126,13 +126,10 @@
             v-model="form.metric"
             placeholder="请选择或输入监控指标"
             filterable
-            allow-create
-            default-first-option
           >
             <el-option label="CPU 使用率" value="cpu_usage" />
             <el-option label="内存使用率" value="memory_usage" />
             <el-option label="磁盘使用率" value="disk_usage" />
-            <el-option label="温度" value="temperature" />
             <el-option label="在线状态" value="online_status" />
             <el-option label="接口物理 Down 数" value="if_phy_down_count" />
             <el-option label="接口协议 Down 数" value="if_protocol_down_count" />
@@ -344,7 +341,6 @@ const formatMetric = (metric) => {
     cpu_usage: 'CPU 使用率',
     memory_usage: '内存使用率',
     disk_usage: '磁盘使用率',
-    temperature: '温度',
     online_status: '在线状态',
     if_phy_down_count: '接口物理 Down 数',
     if_protocol_down_count: '接口协议 Down 数',
@@ -583,9 +579,6 @@ const deleteSubscription = async () => {
 const applyTemplate = async (name) => {
   if (!props.deviceId) return
   const templates = {
-    temp: [
-      { metric: 'temperature', operator: '>=', threshold: 75, severity: 'warning', duration: 120, is_enabled: true },
-    ],
     if_counts: [
       { metric: 'if_phy_down_count', operator: '>', threshold: 0, severity: 'warning', duration: 60, is_enabled: true },
       { metric: 'if_protocol_down_count', operator: '>', threshold: 0, severity: 'warning', duration: 60, is_enabled: true },
