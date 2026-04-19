@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from tortoise import Tortoise
 from tortoise.transactions import in_transaction
 
+from app.constants.user import DELETED_USER_DISPLAY_NAME
+from app.core.database import db
 from app.models.orm.location import LocationNode, LocationNodeRole, LocationNodeUser, LocationNodeDevice
 
 class LocationService:
@@ -70,6 +72,46 @@ class LocationService:
             user_map.setdefault(nid, []).append(int(r.user_id))
 
         return role_map, user_map
+
+    @staticmethod
+    async def _get_user_briefs(user_ids: List[int]) -> Dict[int, dict]:
+        ids = [int(x) for x in (user_ids or []) if x is not None]
+        if not ids:
+            return {}
+
+        uniq: List[int] = []
+        seen: set[int] = set()
+        for uid in ids:
+            if uid in seen:
+                continue
+            seen.add(uid)
+            uniq.append(uid)
+
+        rows = await db.fetch_all(
+            """
+            SELECT id, username, nickname, email
+            FROM users
+            WHERE id = ANY($1::int[])
+            """,
+            uniq,
+        )
+        row_map = {
+            int(r["id"]): {
+                "id": int(r["id"]),
+                "username": r.get("username"),
+                "nickname": r.get("nickname"),
+                "email": r.get("email"),
+            }
+            for r in (rows or [])
+            if r and r.get("id") is not None
+        }
+
+        for uid in uniq:
+            row_map.setdefault(
+                int(uid),
+                {"id": int(uid), "username": None, "nickname": DELETED_USER_DISPLAY_NAME, "email": None},
+            )
+        return row_map
 
     @staticmethod
     async def _set_node_bindings(*, node_id: int, role_ids: Optional[List[int]] = None, user_ids: Optional[List[int]] = None) -> None:
@@ -304,6 +346,7 @@ class LocationService:
             "updatedAt": node.updated_at.isoformat() if node.updated_at else None,
             "roleIds": [],
             "userIds": [],
+            "users": [],
             "children": [],
         }
 
@@ -317,10 +360,14 @@ class LocationService:
         items = [LocationService._model_to_dict(n) for n in nodes]
         node_ids = [int(it["id"]) for it in items if it and it.get("id") is not None]
         role_map, user_map = await LocationService._get_bindings_map(node_ids)
+        user_brief_map = await LocationService._get_user_briefs(
+            [uid for ids in user_map.values() for uid in (ids or [])]
+        )
         for it in items:
             nid = int(it["id"])
             it["roleIds"] = role_map.get(nid, [])
             it["userIds"] = user_map.get(nid, [])
+            it["users"] = [user_brief_map[uid] for uid in it["userIds"] if uid in user_brief_map]
 
         by_id: Dict[int, dict] = {int(it["id"]): it for it in items}
         roots: List[dict] = []
@@ -388,6 +435,8 @@ class LocationService:
                 )
                 res["roleIds"] = role_ids
                 res["userIds"] = user_ids
+                user_brief_map = await LocationService._get_user_briefs(user_ids)
+                res["users"] = [user_brief_map[uid] for uid in user_ids if uid in user_brief_map]
                 return res
             except Exception as e:
                 # Check for unique violation on code
@@ -463,6 +512,8 @@ class LocationService:
         role_map, user_map = await LocationService._get_bindings_map([int(node_id)])
         res["roleIds"] = role_map.get(int(node_id), [])
         res["userIds"] = user_map.get(int(node_id), [])
+        user_brief_map = await LocationService._get_user_briefs(res["userIds"])
+        res["users"] = [user_brief_map[uid] for uid in res["userIds"] if uid in user_brief_map]
         return res
 
     @staticmethod

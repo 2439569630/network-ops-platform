@@ -85,12 +85,11 @@ async def _build_overview() -> Dict[str, Any]:
         base = status_fields_from_snapshot(snap)
         display_status = str(base.get("display_status") or "").strip() or "未知"
         fsm_state = str(base.get("fsm_state") or "").strip() or "init"
-        online_status = bool(base.get("online_status"))
         is_stale = bool(snap.get("stale"))
 
-        if online_status:
+        if display_status == "在线":
             online += 1
-        else:
+        elif display_status == "离线":
             offline += 1
         if is_stale:
             stale += 1
@@ -238,13 +237,42 @@ def _period_range(period: str) -> Tuple[datetime, datetime]:
 
 async def _get_alert_level_distribution(period: str) -> Dict[str, Any]:
     start_dt, end_exclusive = _period_range(period)
+    p = str(period or "week").strip().lower() or "week"
+
+    if p == "today":
+        bucket_format = "%H:00"
+        sql_bucket = "to_char(date_trunc('hour', triggered_at), 'HH24:00')"
+        bucket_step = timedelta(hours=1)
+        x_axis: List[str] = []
+        cursor = start_dt
+        while cursor < end_exclusive:
+            x_axis.append(cursor.strftime(bucket_format))
+            cursor += bucket_step
+    else:
+        bucket_format = "%m-%d"
+        sql_bucket = "to_char(triggered_at::date, 'MM-DD')"
+        bucket_step = timedelta(days=1)
+        x_axis = []
+        cursor = start_dt
+        while cursor < end_exclusive:
+            x_axis.append(cursor.strftime(bucket_format))
+            cursor += bucket_step
+
+    series_map: Dict[str, List[int]] = {
+        "critical": [0 for _ in x_axis],
+        "warning": [0 for _ in x_axis],
+        "info": [0 for _ in x_axis],
+    }
+    index_map = {label: idx for idx, label in enumerate(x_axis)}
+
     try:
         rows = await db.fetch_all(
-            """
-            SELECT severity, COUNT(*)::int AS cnt
+            f"""
+            SELECT {sql_bucket} AS bucket, severity, COUNT(*)::int AS cnt
             FROM device_alert_logs
             WHERE triggered_at >= $1 AND triggered_at < $2
-            GROUP BY severity
+            GROUP BY bucket, severity
+            ORDER BY bucket ASC
             """,
             start_dt,
             end_exclusive,
@@ -252,21 +280,22 @@ async def _get_alert_level_distribution(period: str) -> Dict[str, Any]:
     except Exception:
         rows = []
 
-    counts = {"critical": 0, "warning": 0, "info": 0}
     for r in rows or []:
+        bucket = str(r.get("bucket") or "").strip()
         sev = str(r.get("severity") or "").strip()
         cnt = int(r.get("cnt") or 0)
-        if sev in counts:
-            counts[sev] += cnt
+        idx = index_map.get(bucket)
+        if idx is None or sev not in series_map:
+            continue
+        series_map[sev][idx] += cnt
 
     return {
-        "period": str(period or "week"),
-        "xAxis": ["严重", "警告", "提醒"],
+        "period": p,
+        "xAxis": x_axis,
         "series": [
-            {
-                "name": "告警数量",
-                "data": [int(counts["critical"]), int(counts["warning"]), int(counts["info"])],
-            }
+            {"name": "严重", "data": series_map["critical"]},
+            {"name": "警告", "data": series_map["warning"]},
+            {"name": "提醒", "data": series_map["info"]},
         ],
     }
 

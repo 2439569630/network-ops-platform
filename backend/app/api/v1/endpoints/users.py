@@ -413,6 +413,75 @@ async def upload_avatar(
     except Exception as e:
         return {"code": 500, "message": f"上传失败: {str(e)}"}
 
+
+@router.post("/{user_id}/avatar/upload", response_model=dict)
+async def admin_upload_user_avatar(
+    user_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"])),
+):
+    """
+    管理员上传指定用户头像
+
+    支持管理员在用户管理模块中为指定用户设置或替换头像。
+    """
+    try:
+        uid = int(user_id)
+        await _require_actor_superadmin_when_target_protected(uid, current_user)
+
+        existing = await User.filter(id=uid).first()
+        if not existing:
+            return {"code": 404, "message": "用户不存在"}
+
+        old_key = str(getattr(existing, "avatar_key", "") or "").strip()
+        if not old_key:
+            old_url = str(getattr(existing, "avatar_url", "") or "").strip()
+            if old_url:
+                try:
+                    parsed = urlparse(old_url)
+                    candidate = str(parsed.path or "").lstrip("/")
+                    if candidate:
+                        old_key = candidate
+                except Exception:
+                    pass
+
+        result = await AvatarService.upload_avatar(file)
+        avatar_url = str(result.url or "").strip()
+        avatar_key = str(getattr(result, "key", "") or "").strip()
+        if not avatar_url:
+            return {"code": 500, "message": "头像上传失败: 返回链接为空"}
+
+        await User.filter(id=uid).update(avatar_url=avatar_url, avatar_key=avatar_key or None)
+
+        if old_key and old_key != avatar_key:
+            try:
+                await ImageStorageService.delete_remote(old_key)
+            except Exception:
+                logger.exception("delete old avatar failed")
+
+        await UserAdminAuditService.log(
+            action="user.update",
+            actor=current_user,
+            target_user_id=int(uid),
+            request_ip=_get_request_ip(request),
+            detail={"avatar_url": avatar_url},
+        )
+
+        return {"code": 200, "message": "头像更新成功", "data": {"avatar_url": avatar_url}}
+    except ValueError as e:
+        return {"code": 400, "message": str(e)}
+    except RemoteImageApiError as e:
+        http_status = getattr(e, "status_code", None)
+        if http_status == 429:
+            return {"code": 429, "message": str(e)}
+        if http_status in (401, 403):
+            return {"code": 401, "message": str(e)}
+        return {"code": 500, "message": str(e)}
+    except Exception as e:
+        return {"code": 500, "message": f"上传失败: {str(e)}"}
+
 @router.get("/profile/summary", response_model=dict)
 async def get_profile_summary(current_user: dict = Depends(deps.get_current_user)):
     """
@@ -1635,6 +1704,41 @@ async def admin_list_users(
         }
     except Exception as e:
         return {"code": 500, "message": f"获取用户列表失败: {str(e)}"}
+
+
+@router.get("/role-options", response_model=dict)
+async def admin_get_role_options(
+    current_user: dict = Depends(deps.get_current_user),
+    _: dict = Depends(PermissionChecker(["sys:user:manage"])),
+):
+    """
+    获取用户管理场景可分配的角色列表
+
+    与 RBAC 管理页角色列表解耦，避免仅拥有用户管理权限的管理员
+    因缺少 sys:role:manage 而无法编辑用户角色。
+    """
+    try:
+        rows = await db.fetch_all(
+            """
+            SELECT id, name, code
+            FROM roles
+            ORDER BY id
+            """
+        )
+        data = []
+        for row in rows or []:
+            if not row or row.get("id") is None:
+                continue
+            data.append(
+                {
+                    "id": int(row["id"]),
+                    "name": row.get("name"),
+                    "code": row.get("code"),
+                }
+            )
+        return {"code": 200, "data": data}
+    except Exception as e:
+        return {"code": 500, "message": f"获取角色选项失败: {str(e)}"}
 
 
 @router.get("/{user_id}", response_model=dict)

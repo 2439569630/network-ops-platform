@@ -135,7 +135,7 @@ async def create_site_message(
         # 3. 创建消息记录
         row = await NotificationService.create_site_message(
             sender_id=int(user.get("id")) if user.get("id") is not None else None,
-            sender_name=str(user.get("username") or user.get("name") or ""),
+            sender_name=str(user.get("nickname") or user.get("username") or user.get("name") or ""),
             title=title,
             content=content,
             source="管理员",

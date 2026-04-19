@@ -1,5 +1,6 @@
 
 import json
+import re
 from datetime import datetime
 from typing import List, Optional, Dict
 from app.core.database import db
@@ -10,7 +11,7 @@ from app.schemas.repair_order import RepairOrderCreate, RepairOrderUpdate, Order
 from app.models.orm.repair import RepairOrder, OrderLog, OrderReview, WorkLog, RepairImage
 from app.models.orm.user import User
 from app.models.orm.device import NetworkDevice
-from app.models.orm.location import LocationNode
+from app.models.orm.location import LocationNode, LocationNodeRole, LocationNodeUser
 from app.models.orm.rbac import Role, UserRole
 from tortoise.expressions import Q
 from app.services.image_storage_service import ImageStorageService
@@ -20,6 +21,88 @@ class RepairOrderService:
     工单服务类
     处理报修工单的创建、指派、流转、评论等业务逻辑。
     """
+    @staticmethod
+    def _get_user_display_name(user: Optional[User]) -> Optional[str]:
+        if not user:
+            return None
+        nickname = str(getattr(user, "nickname", "") or "").strip()
+        if nickname:
+            return nickname
+        username = str(getattr(user, "username", "") or "").strip()
+        return username or None
+
+    @staticmethod
+    async def get_user_display_name_by_id(user_id: Optional[int]) -> Optional[str]:
+        if user_id is None:
+            return None
+        try:
+            uid = int(user_id)
+        except Exception:
+            return None
+        if uid <= 0:
+            return None
+        user = await User.filter(id=uid).first()
+        return RepairOrderService._get_user_display_name(user)
+
+    @staticmethod
+    async def normalize_log_remark(remark: Optional[str]) -> Optional[str]:
+        text = str(remark or "").strip()
+        if not text:
+            return remark
+        matched = RepairOrderService._legacy_assignee_remark_re.match(text)
+        if not matched:
+            return remark
+
+        prefix, user_id, suffix = matched.groups()
+        display_name = await RepairOrderService.get_user_display_name_by_id(int(user_id))
+        if not display_name:
+            display_name = f"用户#{int(user_id)}"
+        normalized_prefix = "自动派单给" if prefix.startswith("自动派单") else "指派给"
+        return f"{normalized_prefix} {display_name}{suffix}"
+
+    @staticmethod
+    async def pick_location_assignee_id(location_id: Optional[int]) -> Optional[int]:
+        if not location_id:
+            return None
+        try:
+            node_id = int(location_id)
+        except Exception:
+            return None
+        if node_id <= 0:
+            return None
+
+        direct_user_ids = await LocationNodeUser.filter(node_id=node_id).order_by("id").values_list("user_id", flat=True)
+        role_ids = await LocationNodeRole.filter(node_id=node_id).order_by("id").values_list("role_id", flat=True)
+        role_user_ids: List[int] = []
+        if role_ids:
+            role_user_ids = await UserRole.filter(role_id__in=list(role_ids)).order_by("user_id").values_list("user_id", flat=True)
+
+        seen: set[int] = set()
+        candidate_user_ids: List[int] = []
+        for uid in list(direct_user_ids or []) + list(role_user_ids or []):
+            try:
+                v = int(uid)
+            except Exception:
+                continue
+            if v <= 0 or v in seen:
+                continue
+            seen.add(v)
+            candidate_user_ids.append(v)
+
+        if not candidate_user_ids:
+            return None
+
+        active_ids = await User.filter(
+            id__in=candidate_user_ids,
+            is_approved=True,
+            is_deleted=False,
+        ).values_list("id", flat=True)
+        active_set = {int(x) for x in (active_ids or []) if x is not None}
+        for uid in candidate_user_ids:
+            if uid in active_set:
+                return uid
+        return None
+
     @staticmethod
     async def pick_auto_assignee_id() -> Optional[int]:
         """
@@ -73,8 +156,16 @@ class RepairOrderService:
         user_ids = [ur.user_id for ur in urs]
         
         users = await User.filter(id__in=user_ids, is_approved=True).order_by("id").all()
-        
-        return [{"id": u.id, "username": u.username} for u in users]
+
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "nickname": u.nickname,
+                "display_name": RepairOrderService._get_user_display_name(u),
+            }
+            for u in users
+        ]
 
     @staticmethod
     async def create_order(data: RepairOrderCreate, submitter_id: int) -> int:
@@ -82,7 +173,7 @@ class RepairOrderService:
         创建工单
         """
         # Auto-detect location if device_id is provided but location_id is not
-        from app.models.orm.location import LocationNodeDevice, LocationNodeUser
+        from app.models.orm.location import LocationNodeDevice
         
         location_id = data.location_id
         if not location_id and data.device_id:
@@ -95,29 +186,9 @@ class RepairOrderService:
         auto_assigned_reason = ""
         
         if location_id:
-            # Check if any user is bound to this location
-            # We pick the first one as the responsible admin
-            loc_users = await LocationNodeUser.filter(node_id=location_id).order_by("id").all()
-            candidate_user_ids: list[int] = []
-            for r in loc_users or []:
-                try:
-                    candidate_user_ids.append(int(r.user_id))
-                except Exception:
-                    continue
-            if candidate_user_ids:
-                active_ids = await User.filter(
-                    id__in=candidate_user_ids, is_approved=True, is_deleted=False
-                ).values_list("id", flat=True)
-                active_set = {int(x) for x in (active_ids or []) if x is not None}
-                for r in loc_users or []:
-                    try:
-                        uid = int(r.user_id)
-                    except Exception:
-                        continue
-                    if uid in active_set:
-                        assignee_id = uid
-                        auto_assigned_reason = "自动派单给区域管理员"
-                        break
+            assignee_id = await RepairOrderService.pick_location_assignee_id(location_id)
+            if assignee_id:
+                auto_assigned_reason = "自动派单给区域负责人"
         
         order = await RepairOrder.create(
             title=data.title,
@@ -147,7 +218,7 @@ class RepairOrderService:
                     title=order.title,
                     assignee_id=assignee_id,
                     priority=order.priority,
-                    reason="自动派单 (区域管理员)"
+                    reason="自动派单 (区域负责人)"
                 )
             except Exception as e:
                 logging.getLogger(__name__).error(f"发送自动派单通知失败: {e}")
@@ -233,7 +304,7 @@ class RepairOrderService:
         
         all_u_ids = s_ids | a_ids
         users = await User.filter(id__in=list(all_u_ids)).all()
-        user_map = {u.id: u.username for u in users}
+        user_map = {u.id: (RepairOrderService._get_user_display_name(u) or "") for u in users}
         
         devices = await NetworkDevice.filter(id__in=list(d_ids)).all()
         device_map = {d.id: d.device_name for d in devices}
@@ -289,10 +360,10 @@ class RepairOrderService:
         device = await NetworkDevice.filter(id=o.device_id).first() if o.device_id else None
         location = await LocationNode.filter(id=o.location_id).first() if o.location_id else None
         
-        submitter_name = submitter.username if submitter else None
+        submitter_name = RepairOrderService._get_user_display_name(submitter)
         if o.submitter_id and not submitter_name:
             submitter_name = DELETED_USER_DISPLAY_NAME
-        assignee_name = assignee.username if assignee else None
+        assignee_name = RepairOrderService._get_user_display_name(assignee)
         if o.assignee_id and not assignee_name:
             assignee_name = DELETED_USER_DISPLAY_NAME
         order = {
@@ -319,13 +390,14 @@ class RepairOrderService:
         # Fetch operator names
         op_ids = {l.operator_id for l in logs}
         operators = await User.filter(id__in=list(op_ids)).all()
-        op_map = {u.id: u.username for u in operators}
+        op_map = {u.id: (RepairOrderService._get_user_display_name(u) or "") for u in operators}
         
         order['logs'] = []
         for l in logs:
             operator_name = op_map.get(l.operator_id)
             if l.operator_id and not operator_name:
                 operator_name = DELETED_USER_DISPLAY_NAME
+            remark = await RepairOrderService.normalize_log_remark(l.remark)
             order['logs'].append({
                 "id": l.id,
                 "order_id": l.order_id,
@@ -334,7 +406,7 @@ class RepairOrderService:
                 "action": l.action,
                 "from_status": l.from_status,
                 "to_status": l.to_status,
-                "remark": l.remark,
+                "remark": remark,
                 "created_at": l.created_at
             })
         
@@ -402,7 +474,9 @@ class RepairOrderService:
                 aid = None
             if aid is not None and aid > 0:
                 if not skip_log:
-                    await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给用户ID: {aid}")
+                    assignee_name = await RepairOrderService.get_user_display_name_by_id(aid)
+                    assignee_label = assignee_name or f"用户#{aid}"
+                    await RepairOrderService.log_action(order_id, operator_id, "assign", current.status, current.status, f"指派给 {assignee_label}")
                 updates['assignee_id'] = aid
                 if current.assignee_id != aid:
                     new_assignee_id = aid
@@ -619,3 +693,4 @@ class RepairOrderService:
                 "created_at": l.created_at
             })
         return out
+    _legacy_assignee_remark_re = re.compile(r"^(自动派单给用户ID|指派给用户ID):\s*(\d+)(.*)$")

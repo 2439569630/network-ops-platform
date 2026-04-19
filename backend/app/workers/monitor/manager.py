@@ -1279,14 +1279,22 @@ class MonitorManager:
         disk = float(device.last_metrics.get("disk_usage", 0) or 0)
         # 计算最后更新时间：取 指标更新时间 和 心跳时间 的较大值
         last_updated = max(float(device.last_metrics_updated or 0), float(device.last_heartbeat or 0))
+        online_status = bool(getattr(device, "connected", False)) or str(device.fsm_state or "").strip().lower() in {
+            "online",
+            "recovering",
+            "degraded",
+            "checking",
+            "collecting",
+            "reloading",
+        }
         
         # 构建基础快照
-        online_status = bool(getattr(device, "online_status", False))
         snapshot = {
             "status": status,
             "cpu_usage": f"{cpu}%" if online_status else "--",
             "memory_usage": f"{mem}%" if online_status else "--",
             "disk_usage": f"{disk}%" if online_status else "--",
+            "online_status": online_status,
             "fsm_state": str(device.fsm_state or ""),
             "fsm_reason": str(device.fsm_reason or ""),
             "fsm_updated": str(getattr(device, "fsm_updated", "") or ""),

@@ -5,6 +5,7 @@ from app.services.repair_order_service import RepairOrderService
 from app.core.security import user_is_super, user_has_role, PermissionChecker, user_has_permission
 from app.services.notification_service import NotificationService
 from app.utils.remote_image_api import RemoteImageApiError
+from app.models.orm.user import User
 import logging
 
 router = APIRouter()
@@ -231,7 +232,7 @@ async def assign_order(
         if target_assignee_id is None:
             auto_assign = True
             if current_assignee_id is not None:
-                return {"code": 200, "message": "工单已指派，无需自动派单"}
+                return {"code": 400, "message": "工单已指派，不支持重复派单"}
             # 调用 Service 层获取最合适的维修人员 (例如负载最小的)
             target_assignee_id = await RepairOrderService.pick_auto_assignee_id()
             if not target_assignee_id:
@@ -243,8 +244,8 @@ async def assign_order(
                 return {"code": 400, "message": "无效的处理人ID"}
             if target_assignee_id <= 0:
                 return {"code": 400, "message": "无效的处理人ID"}
-            if current_assignee_id is not None and current_assignee_id == int(target_assignee_id):
-                return {"code": 200, "message": "工单已指派给该人员"}
+            if current_assignee_id is not None:
+                return {"code": 400, "message": "工单已指派，不支持重复派单"}
 
         # 4. 更新工单状态为 pending (待确认) 并设置 assignee
         # 注意：这里状态仍为 pending，意味着工单已指派但维修人员尚未接单 (accept)
@@ -257,7 +258,12 @@ async def assign_order(
             return {"code": 404, "message": "工单不存在"}
         
         # 5. 记录操作日志
-        log_detail = f"自动派单给用户ID: {target_assignee_id} (待接单)" if auto_assign else f"指派给用户ID: {target_assignee_id} (待接单)"
+        assignee = await User.filter(id=int(target_assignee_id)).first()
+        assignee_name = None
+        if assignee:
+            assignee_name = str(assignee.nickname or "").strip() or str(assignee.username or "").strip()
+        assignee_label = assignee_name or f"用户#{int(target_assignee_id)}"
+        log_detail = f"自动派单给 {assignee_label} (待接单)" if auto_assign else f"指派给 {assignee_label} (待接单)"
         log_type = "auto_assign" if auto_assign else "assign"
         
         await RepairOrderService.log_action(

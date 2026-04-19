@@ -4,6 +4,7 @@ from app.core.security import PermissionChecker
 from app.core.system_config import SystemConfig
 from app.services.user_admin_audit_service import UserAdminAuditService
 from app.models.orm.audit import UserAdminAuditLog
+from app.models.orm.user import User
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -317,10 +318,51 @@ async def list_user_admin_audit_logs(
         logs = await query_set.order_by("-created_at", "-id").offset(offset).limit(limit).values()
 
         items = [dict(r) for r in (logs or [])]
+        user_ids: set[int] = set()
+        for it in items:
+            try:
+                actor_uid = int(it.get("actor_user_id")) if it.get("actor_user_id") is not None else None
+            except Exception:
+                actor_uid = None
+            try:
+                target_uid = int(it.get("target_user_id")) if it.get("target_user_id") is not None else None
+            except Exception:
+                target_uid = None
+            if actor_uid and actor_uid > 0:
+                user_ids.add(actor_uid)
+            if target_uid and target_uid > 0:
+                user_ids.add(target_uid)
+
+        user_map: dict[int, dict] = {}
+        if user_ids:
+            rows = await User.filter(id__in=list(user_ids)).values("id", "username", "nickname")
+            for row in rows or []:
+                try:
+                    uid = int(row.get("id"))
+                except Exception:
+                    continue
+                user_map[uid] = dict(row)
+
         for it in items:
             it["action_label"] = UserAdminAuditService.get_action_label(it.get("action"))
             if it.get("target_label") and it.get("action") == "system.config.update":
                 it["target_label"] = UserAdminAuditService.get_target_label(it.get("target_label"))
+            try:
+                actor_uid = int(it.get("actor_user_id")) if it.get("actor_user_id") is not None else None
+            except Exception:
+                actor_uid = None
+            try:
+                target_uid = int(it.get("target_user_id")) if it.get("target_user_id") is not None else None
+            except Exception:
+                target_uid = None
+            actor_meta = user_map.get(actor_uid) if actor_uid else None
+            target_meta = user_map.get(target_uid) if target_uid else None
+            actor_display_name = str((actor_meta or {}).get("nickname") or (actor_meta or {}).get("username") or it.get("actor_username") or "").strip()
+            target_display_name = str((target_meta or {}).get("nickname") or (target_meta or {}).get("username") or "").strip()
+            it["actor_display_name"] = actor_display_name or str(it.get("actor_username") or "").strip() or None
+            it["actor_username"] = str((actor_meta or {}).get("username") or it.get("actor_username") or "").strip() or None
+            it["target_user_display_name"] = target_display_name or None
+            it["target_user_username"] = str((target_meta or {}).get("username") or "").strip() or None
         return {
             "code": 200,
             "data": items,
@@ -395,6 +437,8 @@ async def list_login_logs(
                 l.id,
                 l.user_id,
                 COALESCE(NULLIF(TRIM(u.username), ''), '{DELETED_USER_DISPLAY_NAME}') AS username,
+                NULLIF(TRIM(u.nickname), '') AS nickname,
+                COALESCE(NULLIF(TRIM(u.nickname), ''), NULLIF(TRIM(u.username), ''), '{DELETED_USER_DISPLAY_NAME}') AS display_name,
                 l.ip,
                 l.user_agent,
                 l.device,
@@ -447,7 +491,7 @@ async def list_device_change_logs(
             params.append(f"%{str(change_type).strip()}%")
             idx += 1
         if changed_by:
-            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR d.changed_by ILIKE ${idx})")
+            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR COALESCE(u.nickname, '') ILIKE ${idx} OR d.changed_by ILIKE ${idx})")
             params.append(f"%{str(changed_by).strip()}%")
             idx += 1
         if start_at is not None:
@@ -483,7 +527,9 @@ async def list_device_change_logs(
                 d.change_type,
                 d.change_description,
                 d.changed_by,
-                COALESCE(NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(d.changed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS changed_by_name,
+                NULLIF(TRIM(u.username), '') AS changed_by_username,
+                NULLIF(TRIM(u.nickname), '') AS changed_by_nickname,
+                COALESCE(NULLIF(TRIM(u.nickname), ''), NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(d.changed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS changed_by_name,
                 d.changed_at,
                 d.old_values,
                 d.new_values
@@ -532,7 +578,7 @@ async def list_ssh_command_audit_logs(
             params.append(f"%{str(device_name).strip()}%")
             idx += 1
         if executed_by:
-            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR s.executed_by ILIKE ${idx})")
+            where.append(f"(COALESCE(u.username, '') ILIKE ${idx} OR COALESCE(u.nickname, '') ILIKE ${idx} OR s.executed_by ILIKE ${idx})")
             params.append(f"%{str(executed_by).strip()}%")
             idx += 1
         if command:
@@ -572,7 +618,9 @@ async def list_ssh_command_audit_logs(
                 s.device_ip,
                 s.command,
                 s.executed_by,
-                COALESCE(NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(s.executed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS executed_by_name,
+                NULLIF(TRIM(u.username), '') AS executed_by_username,
+                NULLIF(TRIM(u.nickname), '') AS executed_by_nickname,
+                COALESCE(NULLIF(TRIM(u.nickname), ''), NULLIF(TRIM(u.username), ''), CASE WHEN NULLIF(TRIM(s.executed_by), '') IS NOT NULL THEN '{DELETED_USER_DISPLAY_NAME}' ELSE '' END) AS executed_by_name,
                 s.executed_at
             FROM ssh_command_audit_log s
             LEFT JOIN network_devices nd ON nd.id = s.device_id

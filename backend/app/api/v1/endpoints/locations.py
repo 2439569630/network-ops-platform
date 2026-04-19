@@ -312,7 +312,7 @@ async def remove_devices_from_location(
 @router.get("/bind/users/by_ids", response_model=dict)
 async def list_bind_users_by_ids(
     ids: list[int] = Query(default=[]),
-    user: dict = Depends(PermissionChecker(["sys:location:bind"])),
+    user: dict = Depends(PermissionChecker(["sys:location:view", "sys:location:bind"])),
 ):
     """
     根据ID列表批量获取用户信息。

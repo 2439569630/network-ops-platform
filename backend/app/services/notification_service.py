@@ -470,9 +470,11 @@ class NotificationService:
                 sender_ids.add(sid)
 
         sender_avatar_map: Dict[int, Optional[str]] = {}
+        sender_meta_map: Dict[int, dict] = {}
         if sender_ids:
-            sender_rows = await User.filter(id__in=list(sender_ids)).values("id", "avatar_url")
+            sender_rows = await User.filter(id__in=list(sender_ids)).values("id", "avatar_url", "username", "nickname")
             sender_avatar_map = {int(r["id"]): r.get("avatar_url") for r in sender_rows if r.get("id") is not None}
+            sender_meta_map = {int(r["id"]): dict(r) for r in sender_rows if r.get("id") is not None}
         
         result = []
         for m in messages:
@@ -488,16 +490,22 @@ class NotificationService:
                 read_at = read_entry.read_at
             
             sender_avatar_url = None
+            sender_meta = {}
             if m.sender_id is not None:
                 try:
-                    sender_avatar_url = sender_avatar_map.get(int(m.sender_id))
+                    sid = int(m.sender_id)
+                    sender_avatar_url = sender_avatar_map.get(sid)
+                    sender_meta = sender_meta_map.get(sid) or {}
                 except Exception:
                     sender_avatar_url = None
+                    sender_meta = {}
 
             result.append({
                 "id": m.id,
                 "sender_id": m.sender_id,
                 "sender_name": m.sender_name,
+                "sender_username": sender_meta.get("username"),
+                "sender_nickname": sender_meta.get("nickname"),
                 "sender_avatar_url": sender_avatar_url,
                 "source": m.source,
                 "title": m.title,
@@ -574,6 +582,8 @@ class NotificationService:
                     "id": m.id,
                     "sender_id": m.sender_id,
                     "sender_name": m.sender_name,
+                    "sender_username": (sender_meta or {}).get("username"),
+                    "sender_nickname": (sender_meta or {}).get("nickname"),
                     "sender_avatar_url": (sender_meta or {}).get("avatar_url"),
                     "source": m.source,
                     "title": m.title,
@@ -581,6 +591,8 @@ class NotificationService:
                     "is_global": m.is_global,
                     "target_user_id": m.target_user_id,
                     "target_user_name": (target_meta or {}).get("nickname") or (target_meta or {}).get("username"),
+                    "target_user_username": (target_meta or {}).get("username"),
+                    "target_user_nickname": (target_meta or {}).get("nickname"),
                     "created_at": m.created_at,
                 }
             )
@@ -598,18 +610,26 @@ class NotificationService:
         read_entry = await SiteMessageRead.filter(user_id=user_id, message_id=message_id).first()
 
         sender_avatar_url = None
+        sender_username = None
+        sender_nickname = None
         if m.sender_id is not None:
             try:
                 sid = int(m.sender_id)
             except Exception:
                 sid = None
             if sid and sid > 0:
-                sender_avatar_url = await User.filter(id=sid).values_list("avatar_url", flat=True).first()
+                sender_user = await User.filter(id=sid).values("avatar_url", "username", "nickname").first()
+                if sender_user:
+                    sender_avatar_url = sender_user.get("avatar_url")
+                    sender_username = sender_user.get("username")
+                    sender_nickname = sender_user.get("nickname")
         
         return {
             "id": m.id,
             "sender_id": m.sender_id,
             "sender_name": m.sender_name,
+            "sender_username": sender_username,
+            "sender_nickname": sender_nickname,
             "sender_avatar_url": sender_avatar_url,
             "source": m.source,
             "title": m.title,

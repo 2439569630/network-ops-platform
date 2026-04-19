@@ -6,6 +6,25 @@ AlertOperator = Literal[">", ">=", "<", "<=", "="]
 AlertSeverity = Literal["info", "warning", "critical"]
 AlertSubscriptionScope = Literal["device", "location", "rule"]  
 AlertSubscriptionChannel = Literal["site", "email"]
+ALLOWED_ALERT_METRICS = {
+    "cpu_usage",
+    "memory_usage",
+    "disk_usage",
+    "online_status",
+    "if_phy_down_count",
+    "if_protocol_down_count",
+}
+
+
+def _validate_metric_name(metric: Optional[str]) -> str:
+    m = str(metric or "").strip()
+    if not m:
+        raise ValueError("metric 不能为空")
+    if m in ALLOWED_ALERT_METRICS:
+        return m
+    if m.startswith("if_phy_down:") or m.startswith("if_protocol_down:"):
+        return m
+    raise ValueError("仅支持 CPU/内存/磁盘/在线状态/接口 Down 相关指标")
 
 class AlertRuleBase(BaseModel):
     metric: str
@@ -22,7 +41,7 @@ class AlertRuleCreate(AlertRuleBase):
 
     @model_validator(mode="after")
     def _validate_create(self):
-        m = str(self.metric or "").strip()
+        m = _validate_metric_name(self.metric)
         if m == "online_status":
             try:
                 v = float(self.threshold)
@@ -44,7 +63,8 @@ class AlertRuleUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_update(self):
-        if self.metric is not None and str(self.metric or "").strip() == "online_status" and self.threshold is not None:
+        m = _validate_metric_name(self.metric) if self.metric is not None else None
+        if m == "online_status" and self.threshold is not None:
             try:
                 v = float(self.threshold)
             except Exception:

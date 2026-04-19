@@ -56,6 +56,55 @@ class TestNotificationLocationRecipientsFiltering(unittest.IsolatedAsyncioTestCa
         self.assertEqual(result, {2})
 
 
+class TestLocationTreeUserDisplay(unittest.IsolatedAsyncioTestCase):
+    async def test_tree_includes_bound_user_display_info(self) -> None:
+        class _FakeQS:
+            def __init__(self, rows):
+                self._rows = rows
+
+            async def order_by(self, *_args):
+                return self._rows
+
+        fake_node = type(
+            "Node",
+            (),
+            {
+                "id": 10,
+                "parent_id": None,
+                "name": "计算机工程学院",
+                "type": "department",
+                "code": "1",
+                "address": "test",
+                "description": "test",
+                "status": True,
+                "sort_order": 0,
+                "created_at": None,
+                "updated_at": None,
+            },
+        )()
+
+        with patch("app.services.location_service.LocationNode.all", return_value=_FakeQS([fake_node])):
+            with patch(
+                "app.services.location_service.LocationService._get_bindings_map",
+                new=AsyncMock(return_value=({}, {10: [4, 9]})),
+            ):
+                with patch(
+                    "app.services.location_service.LocationService._get_user_briefs",
+                    new=AsyncMock(
+                        return_value={
+                            4: {"id": 4, "username": "zhangsan", "nickname": "张三", "email": "a@example.com"},
+                            9: {"id": 9, "username": "lisi", "nickname": "李四", "email": "b@example.com"},
+                        }
+                    ),
+                ):
+                    from app.services.location_service import LocationService
+
+                    data = await LocationService.get_tree()
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["userIds"], [4, 9])
+        self.assertEqual([item["nickname"] for item in data[0]["users"]], ["张三", "李四"])
+
+
 if __name__ == "__main__":
     unittest.main()
-
