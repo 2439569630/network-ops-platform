@@ -1,0 +1,12 @@
+:root {
+  --el-text-color-primary: #1d2129;
+  --el-text-color-regular: #303133;
+  --el-text-color-secondary: #606266;
+  --el-input-text-color: #303133;
+  --el-input-placeholder-color: #a8abb2;
+}
+
+.el-input__inner,
+.el-textarea__inner {
+  color: var(--el-input-text-color);
+}
