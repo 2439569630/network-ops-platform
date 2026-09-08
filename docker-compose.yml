@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-bise}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+      POSTGRES_DB: ${DB_NAME:-bise}
+    ports:
+      - "127.0.0.1:${PG_EXPOSE_PORT:-54322}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDISPASSWORD: ${REDISPASSWORD:-}
+    command: >
+      sh -c 'redis-server --appendonly yes $${REDISPASSWORD:+--requirepass "$$REDISPASSWORD"}'
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-63790}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli $${REDISPASSWORD:+-a \"$$REDISPASSWORD\"} ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${PG_EXPOSE_PORT:-54322}
+      DB_USER: ${DB_USER:-bise}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DB_NAME: ${DB_NAME:-bise}
+      REDISHOST: 127.0.0.1
+      REDISPORT: ${REDIS_EXPOSE_PORT:-63790}
+      REDISPASSWORD: ${REDISPASSWORD:-}
+      ALLOW_EPHEMERAL_JWT_SECRETS: ${ALLOW_EPHEMERAL_JWT_SECRETS:-1}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY:-}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["https://example.com"]}
+      FASTAPI_HOST: ${FASTAPI_HOST:-0.0.0.0}
+      FASTAPI_PORT: ${FASTAPI_PORT:-8000}
+      FASTAPI_WORKERS: ${FASTAPI_WORKERS:-1}
+      FASTAPI_RELOAD: ${FASTAPI_RELOAD:-0}
+      SUPERVISOR_LOG_MODE: ${SUPERVISOR_LOG_MODE:-stdout}
+      LOG_CONSOLE: ${LOG_CONSOLE:-1}
+      LOG_TO_FILE: ${LOG_TO_FILE:-1}
+      LOG_DIR: ${LOG_DIR:-/app/logs}
+    volumes:
+      - ./backend/logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
